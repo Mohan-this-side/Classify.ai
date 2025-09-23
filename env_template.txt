@@ -1,0 +1,47 @@
+# 🔑 LangChain Ecosystem API Keys Configuration
+# ==============================================
+# 
+# Copy this content to a '.env' file and fill in your actual API keys
+# The .env file will be automatically loaded by the application
+#
+# 🚨 IMPORTANT: Never commit .env files to version control!
+
+# 🤖 Google Gemini API Key (REQUIRED)
+# Get from: https://ai.google.dev/
+# Click "Get API Key" and copy your key here
+GOOGLE_API_KEY=your_google_gemini_api_key_here
+
+# 📊 LangSmith API Key (REQUIRED for dashboard visualization)
+# Get from: https://smith.langchain.com/
+# Sign up → Settings → API Keys → Create new key
+LANGCHAIN_API_KEY=your_langsmith_api_key_here
+
+# 🔧 LangSmith Configuration (Optional - defaults provided)
+LANGCHAIN_PROJECT=data-cleaning-agent
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_ENDPOINT=https://api.smith.langchain.com
+
+# 🤖 Model Configuration (Optional - defaults provided)
+DEFAULT_MODEL=gemini-2.5-flash
+MODEL_PROVIDER=google_genai
+MODEL_TEMPERATURE=0.1
+MAX_TOKENS=4000
+
+# 🎯 Agent Configuration (Optional - defaults provided)
+MAX_RETRIES=3
+TIMEOUT_SECONDS=30
+ENABLE_STREAMING=true
+ENABLE_EVALUATION=true
+EVALUATION_DATASET=data-cleaning-test-cases
+
+# 🔑 OpenAI API Key (OPTIONAL - for model comparison)
+# Get from: https://platform.openai.com/api-keys
+# OPENAI_API_KEY=your_openai_api_key_here
+
+# 📋 SETUP INSTRUCTIONS:
+# ======================
+# 1. Copy this content to a file named '.env' in your project root
+# 2. Replace the placeholder values with your actual API keys
+# 3. Run: python config.py (to test configuration)
+# 4. Start your agent: streamlit run app.py
+# 5. View dashboard: https://smith.langchain.com/
