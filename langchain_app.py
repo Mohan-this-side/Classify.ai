@@ -352,7 +352,7 @@ def display_cleaning_results(results: Dict[str, Any], original_df: pd.DataFrame)
         
         with col1:
             st.markdown("### 📊 Original Dataset")
-            st.dataframe(original_df.head(), use_container_width=True)
+            st.dataframe(original_df.head(), width="stretch")
             
             # Original dataset metrics
             col1a, col1b = st.columns(2)
@@ -365,7 +365,7 @@ def display_cleaning_results(results: Dict[str, Any], original_df: pd.DataFrame)
         
         with col2:
             st.markdown("### ✨ Cleaned Dataset")
-            st.dataframe(cleaned_df.head(), use_container_width=True)
+            st.dataframe(cleaned_df.head(), width="stretch")
             
             # Cleaned dataset metrics
             col2a, col2b = st.columns(2)
@@ -395,7 +395,7 @@ def display_cleaning_results(results: Dict[str, Any], original_df: pd.DataFrame)
                 data=csv_data,
                 file_name=f"cleaned_dataset_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                 mime="text/csv",
-                use_container_width=True
+                width="stretch"
             )
         
         with col2:
@@ -405,7 +405,7 @@ def display_cleaning_results(results: Dict[str, Any], original_df: pd.DataFrame)
                     data=results["cleaning_code"],
                     file_name=f"cleaning_code_{datetime.now().strftime('%Y%m%d_%H%M%S')}.py",
                     mime="text/plain",
-                    use_container_width=True
+                    width="stretch"
                 )
         
         # LangSmith trace link
@@ -489,7 +489,7 @@ def create_quality_visualization(original_df: pd.DataFrame, cleaned_df: pd.DataF
         showlegend=False
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 async def run_cleaning_process(df: pd.DataFrame, agent_type: str, max_retries: int) -> Dict[str, Any]:
     """Run the data cleaning process with selected agent"""
@@ -511,9 +511,9 @@ async def run_cleaning_process(df: pd.DataFrame, agent_type: str, max_retries: i
                 with st.spinner("🕸️ Initializing LangGraph Workflow..."):
                     st.session_state.langgraph_workflow = LangGraphDataCleaningWorkflow()
             
-            # Run workflow
+            # Run workflow using sync wrapper
             with st.spinner("🔄 Processing dataset with LangGraph Workflow..."):
-                result = await st.session_state.langgraph_workflow.process_dataset(df)
+                result = st.session_state.langgraph_workflow.process_dataset_sync(df)
         
         return result
         
@@ -606,7 +606,7 @@ def main():
             
             with col1:
                 st.markdown("**📊 Data Sample (First 5 rows)**")
-                st.dataframe(uploaded_df.head(), use_container_width=True)
+                st.dataframe(uploaded_df.head(), width="stretch")
                 
                 # Additional data info
                 st.markdown("**📈 Quick Stats**")
@@ -626,7 +626,7 @@ def main():
             col1, col2 = st.columns(2)
             
             with col1:
-                if st.button("🤖 Clean Dataset", type="primary", use_container_width=True):
+                if st.button("🤖 Clean Dataset", type="primary", width="stretch"):
                     # Run cleaning process
                     async def run_cleaning():
                         return await run_cleaning_process(uploaded_df, agent_type, max_retries)
@@ -641,7 +641,7 @@ def main():
                         st.error(f"❌ Cleaning process failed: {str(e)}")
             
             with col2:
-                if enable_evaluation and st.button("🔬 Run Evaluation", use_container_width=True):
+                if enable_evaluation and st.button("🔬 Run Evaluation", width="stretch"):
                     st.info("🔬 Evaluation feature will be available after cleaning")
     
     with tab2:

@@ -26,25 +26,25 @@ LangGraph: Advanced state machine with conditional logic, parallel execution,
 import pandas as pd
 import numpy as np
 import logging
-from typing import Dict, Any, List, Optional, Tuple, Annotated, Literal
+from typing import Dict, Any, List, Optional, Tuple, Annotated, Literal, TypedDict
 from datetime import datetime
 import json
 import asyncio
-from pydantic import BaseModel, Field
+import traceback
+import operator
+import threading
+import concurrent.futures
 
 # LangGraph Imports
-from langgraph.graph import StateGraph, MessagesState, START, END
-from langgraph.graph.message import add_messages
+from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.prebuilt import create_react_agent
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
 # LangChain imports
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 # Local imports
-from config import config
+import config
 from langchain_agent import LangChainDataCleaningAgent, DatasetAnalysis, CleaningCode
 from code_executor import SafeCodeExecutor
 
@@ -52,7 +52,7 @@ from code_executor import SafeCodeExecutor
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class DataCleaningState(MessagesState):
+class DataCleaningState(TypedDict):
     """
     🎛️ Complete State Definition for Data Cleaning Workflow
     
@@ -66,43 +66,43 @@ class DataCleaningState(MessagesState):
     """
     
     # Input data
-    original_dataset: Optional[pd.DataFrame] = None
-    dataset_metadata: Dict[str, Any] = Field(default_factory=dict)
+    original_dataset: Optional[pd.DataFrame]
+    dataset_metadata: Dict[str, Any]
     
     # Analysis results
-    analysis_complete: bool = False
-    analysis_results: Optional[DatasetAnalysis] = None
-    quality_score: float = 0.0
+    analysis_complete: bool
+    analysis_results: Optional[DatasetAnalysis]
+    quality_score: float
     
     # Code generation
-    code_generated: bool = False
-    cleaning_code: Optional[CleaningCode] = None
-    code_attempts: int = 0
+    code_generated: bool
+    cleaning_code: Optional[CleaningCode]
+    code_attempts: int
     
     # Execution results
-    execution_complete: bool = False
-    execution_successful: bool = False
-    cleaned_dataset: Optional[pd.DataFrame] = None
-    execution_output: str = ""
+    execution_complete: bool
+    execution_successful: bool
+    cleaned_dataset: Optional[pd.DataFrame]
+    execution_output: str
     
     # Error handling
-    error_count: int = 0
-    last_error: str = ""
-    recovery_attempted: bool = False
+    error_count: int
+    last_error: str
+    recovery_attempted: bool
     
     # Workflow control
-    current_step: str = "initialization"
-    requires_human_intervention: bool = False
-    parallel_tasks_complete: Dict[str, bool] = Field(default_factory=dict)
+    current_step: str
+    requires_human_intervention: bool
+    parallel_tasks_complete: Dict[str, bool]
     
     # Performance tracking
-    step_start_times: Dict[str, datetime] = Field(default_factory=dict)
-    step_durations: Dict[str, float] = Field(default_factory=dict)
-    total_processing_time: float = 0.0
+    step_start_times: Dict[str, datetime]
+    step_durations: Dict[str, float]
+    total_processing_time: float
     
     # Quality assurance
-    validation_checks: List[str] = Field(default_factory=list)
-    quality_improvements: Dict[str, Any] = Field(default_factory=dict)
+    validation_checks: Annotated[List[str], operator.add]
+    quality_improvements: Dict[str, Any]
 
 class LangGraphDataCleaningWorkflow:
     """
@@ -205,9 +205,9 @@ class LangGraphDataCleaningWorkflow:
         # Build the state graph
         self.workflow = self._build_workflow_graph()
         
-        # Compile the workflow with checkpointing
+        # Compile the workflow without checkpointing to avoid DataFrame serialization issues
         self.app = self.workflow.compile(
-            checkpointer=self.checkpointer,
+            # checkpointer=self.checkpointer,  # Disabled - DataFrames not msgpack serializable
             interrupt_before=["human_intervention"],  # Pause for human input
             interrupt_after=["error_recovery"]       # Review recovery results
         )
@@ -317,7 +317,7 @@ class LangGraphDataCleaningWorkflow:
         logger.info("🏗️ Workflow graph built with conditional routing and parallel processing")
         return workflow
     
-    async def _initialize_dataset(self, state: DataCleaningState) -> DataCleaningState:
+    def _initialize_dataset(self, state: DataCleaningState) -> DataCleaningState:
         """
         🚀 Initialize dataset and collect metadata
         
@@ -326,14 +326,18 @@ class LangGraphDataCleaningWorkflow:
         """
         
         logger.info("🚀 [INITIALIZE] Starting dataset initialization...")
-        state.current_step = "initialization"
-        state.step_start_times["initialization"] = datetime.now()
+        start_time = datetime.now()
+        
+        # Create updated state dictionary
+        updated_state = state.copy()
+        updated_state["current_step"] = "initialization"
+        updated_state["step_start_times"]["initialization"] = start_time
         
         # Collect comprehensive dataset metadata
-        if state.original_dataset is not None:
-            df = state.original_dataset
+        if updated_state.get("original_dataset") is not None:
+            df = updated_state["original_dataset"]
             
-            state.dataset_metadata = {
+            updated_state["dataset_metadata"] = {
                 "shape": df.shape,
                 "memory_usage_mb": df.memory_usage(deep=True).sum() / 1024 / 1024,
                 "dtypes": df.dtypes.to_dict(),
@@ -345,15 +349,15 @@ class LangGraphDataCleaningWorkflow:
             }
             
             logger.info(f"📊 Dataset initialized: {df.shape[0]} rows, {df.shape[1]} columns")
-            logger.info(f"💾 Memory usage: {state.dataset_metadata['memory_usage_mb']:.2f} MB")
+            logger.info(f"💾 Memory usage: {updated_state['dataset_metadata']['memory_usage_mb']:.2f} MB")
         
         # Calculate step duration
-        duration = (datetime.now() - state.step_start_times["initialization"]).total_seconds()
-        state.step_durations["initialization"] = duration
+        duration = (datetime.now() - start_time).total_seconds()
+        updated_state["step_durations"]["initialization"] = duration
         
-        return state
+        return updated_state
     
-    async def _analyze_dataset(self, state: DataCleaningState) -> DataCleaningState:
+    def _analyze_dataset(self, state: DataCleaningState) -> DataCleaningState:
         """
         📊 Perform comprehensive dataset analysis
         
@@ -362,32 +366,37 @@ class LangGraphDataCleaningWorkflow:
         """
         
         logger.info("📊 [ANALYZE] Starting dataset analysis...")
-        state.current_step = "analysis"
-        state.step_start_times["analysis"] = datetime.now()
+        start_time = datetime.now()
+        
+        # Create updated state dictionary
+        updated_state = state.copy()
+        updated_state["current_step"] = "analysis"
+        updated_state["step_start_times"]["analysis"] = start_time
         
         try:
             # Use LangChain agent for structured analysis
-            analysis_result = self.langchain_agent.analyze_dataset(state.original_dataset)
+            analysis_result = self.langchain_agent.analyze_dataset(updated_state["original_dataset"])
             
-            state.analysis_results = analysis_result
-            state.analysis_complete = True
-            state.quality_score = analysis_result.data_quality_score
+            updated_state["analysis_results"] = analysis_result
+            updated_state["analysis_complete"] = True
+            updated_state["quality_score"] = analysis_result.data_quality_score
             
-            logger.info(f"✅ Analysis complete - Quality Score: {state.quality_score}/100")
+            logger.info(f"✅ Analysis complete - Quality Score: {updated_state['quality_score']}/100")
             logger.info(f"🔍 Issues found: {len(analysis_result.major_issues)}")
             
         except Exception as e:
             logger.error(f"❌ Analysis failed: {str(e)}")
-            state.last_error = f"Analysis error: {str(e)}"
-            state.error_count += 1
+            logger.error(f"📄 Traceback: {traceback.format_exc()}")
+            updated_state["last_error"] = f"Analysis error: {str(e)}"
+            updated_state["error_count"] = updated_state.get("error_count", 0) + 1
         
         # Calculate step duration
-        duration = (datetime.now() - state.step_start_times["analysis"]).total_seconds()
-        state.step_durations["analysis"] = duration
+        duration = (datetime.now() - start_time).total_seconds()
+        updated_state["step_durations"]["analysis"] = duration
         
-        return state
+        return updated_state
     
-    async def _assess_complexity(self, state: DataCleaningState) -> DataCleaningState:
+    def _assess_complexity(self, state: DataCleaningState) -> DataCleaningState:
         """
         🎯 Assess data complexity for routing decisions
         
@@ -396,30 +405,41 @@ class LangGraphDataCleaningWorkflow:
         """
         
         logger.info("🎯 [ASSESS] Assessing data complexity...")
-        state.current_step = "complexity_assessment"
-        state.step_start_times["complexity_assessment"] = datetime.now()
+        start_time = datetime.now()
+        
+        # Create updated state dictionary
+        updated_state = state.copy()
+        updated_state["current_step"] = "complexity_assessment"
+        updated_state["step_start_times"]["complexity_assessment"] = start_time
         
         # Analyze complexity factors
+        dataset_metadata = updated_state.get("dataset_metadata", {})
+        analysis_results = updated_state.get("analysis_results")
+        quality_score = updated_state.get("quality_score", 0)
+        
         complexity_factors = {
-            "size_complexity": state.dataset_metadata["shape"][0] > 10000,
-            "type_complexity": len(state.dataset_metadata["categorical_columns"]) > 5,
-            "quality_complexity": state.quality_score < 70,
-            "corruption_complexity": len(state.analysis_results.corruption_indicators) > 3,
-            "missing_data_complexity": state.dataset_metadata["missing_values"] > 0.1
+            "size_complexity": dataset_metadata.get("shape", [0, 0])[0] > 10000,
+            "type_complexity": len(dataset_metadata.get("categorical_columns", [])) > 5,
+            "quality_complexity": quality_score < 70,
+            "corruption_indicators": len(analysis_results.corruption_indicators) if analysis_results else 0 > 3,
+            "missing_data_complexity": dataset_metadata.get("missing_values", 0) > 0.1
         }
         
         complexity_score = sum(complexity_factors.values())
         
-        state.dataset_metadata["complexity_score"] = complexity_score
-        state.dataset_metadata["complexity_factors"] = complexity_factors
+        # Update metadata in the state
+        if "dataset_metadata" not in updated_state:
+            updated_state["dataset_metadata"] = {}
+        updated_state["dataset_metadata"]["complexity_score"] = complexity_score
+        updated_state["dataset_metadata"]["complexity_factors"] = complexity_factors
         
         logger.info(f"🎯 Complexity assessment: {complexity_score}/5 factors detected")
         
         # Calculate step duration
-        duration = (datetime.now() - state.step_start_times["complexity_assessment"]).total_seconds()
-        state.step_durations["complexity_assessment"] = duration
+        duration = (datetime.now() - start_time).total_seconds()
+        updated_state["step_durations"]["complexity_assessment"] = duration
         
-        return state
+        return updated_state
     
     async def _simple_cleaning(self, state: DataCleaningState) -> DataCleaningState:
         """
@@ -430,11 +450,17 @@ class LangGraphDataCleaningWorkflow:
         """
         
         logger.info("🧹 [SIMPLE] Executing simple cleaning strategy...")
-        state.current_step = "simple_cleaning"
-        state.step_start_times["simple_cleaning"] = datetime.now()
+        start_time = datetime.now()
+        
+        # Create updated state dictionary
+        updated_state = state.copy()
+        updated_state["current_step"] = "simple_cleaning"
+        updated_state["step_start_times"]["simple_cleaning"] = start_time
         
         # Simple cleaning operations
-        state.validation_checks.extend([
+        if "validation_checks" not in updated_state:
+            updated_state["validation_checks"] = []
+        updated_state["validation_checks"].extend([
             "basic_type_validation",
             "simple_missing_value_check",
             "duplicate_detection"
@@ -443,10 +469,10 @@ class LangGraphDataCleaningWorkflow:
         logger.info("✅ Simple cleaning strategy prepared")
         
         # Calculate step duration
-        duration = (datetime.now() - state.step_start_times["simple_cleaning"]).total_seconds()
-        state.step_durations["simple_cleaning"] = duration
+        duration = (datetime.now() - start_time).total_seconds()
+        updated_state["step_durations"]["simple_cleaning"] = duration
         
-        return state
+        return updated_state
     
     async def _complex_analysis(self, state: DataCleaningState) -> DataCleaningState:
         """
@@ -518,33 +544,37 @@ class LangGraphDataCleaningWorkflow:
         """
         
         logger.info("🤖 [GENERATE] Generating cleaning code...")
-        state.current_step = "code_generation"
-        state.step_start_times["code_generation"] = datetime.now()
+        start_time = datetime.now()
+        
+        # Create updated state dictionary
+        updated_state = state.copy()
+        updated_state["current_step"] = "code_generation"
+        updated_state["step_start_times"]["code_generation"] = start_time
         
         try:
             # Generate code using LangChain agent
             code_result = self.langchain_agent.generate_cleaning_code(
-                state.original_dataset, 
-                state.analysis_results
+                updated_state.get("original_dataset"), 
+                updated_state.get("analysis_results")
             )
             
-            state.cleaning_code = code_result
-            state.code_generated = True
-            state.code_attempts += 1
+            updated_state["cleaning_code"] = code_result
+            updated_state["code_generated"] = True
+            updated_state["code_attempts"] = updated_state.get("code_attempts", 0) + 1
             
-            logger.info(f"✅ Code generated successfully (attempt {state.code_attempts})")
+            logger.info(f"✅ Code generated successfully (attempt {updated_state['code_attempts']})")
             logger.info(f"📝 Generated {len(code_result.cleaning_code.split('\\n'))} lines of code")
             
         except Exception as e:
             logger.error(f"❌ Code generation failed: {str(e)}")
-            state.last_error = f"Code generation error: {str(e)}"
-            state.error_count += 1
+            updated_state["last_error"] = f"Code generation error: {str(e)}"
+            updated_state["error_count"] = updated_state.get("error_count", 0) + 1
         
         # Calculate step duration
-        duration = (datetime.now() - state.step_start_times["code_generation"]).total_seconds()
-        state.step_durations["code_generation"] = duration
+        duration = (datetime.now() - start_time).total_seconds()
+        updated_state["step_durations"]["code_generation"] = duration
         
-        return state
+        return updated_state
     
     async def _execute_code(self, state: DataCleaningState) -> DataCleaningState:
         """
@@ -555,40 +585,44 @@ class LangGraphDataCleaningWorkflow:
         """
         
         logger.info("⚡ [EXECUTE] Executing cleaning code...")
-        state.current_step = "code_execution"
-        state.step_start_times["code_execution"] = datetime.now()
+        start_time = datetime.now()
+        
+        # Create updated state dictionary
+        updated_state = state.copy()
+        updated_state["current_step"] = "code_execution"
+        updated_state["step_start_times"]["code_execution"] = start_time
         
         try:
             # Execute code using safe executor
             success, output, cleaned_df = self.langchain_agent.execute_cleaning_code(
-                state.original_dataset,
-                state.cleaning_code
+                updated_state.get("original_dataset"),
+                updated_state.get("cleaning_code")
             )
             
-            state.execution_complete = True
-            state.execution_successful = success
-            state.execution_output = output
+            updated_state["execution_complete"] = True
+            updated_state["execution_successful"] = success
+            updated_state["execution_output"] = output
             
             if success and cleaned_df is not None:
-                state.cleaned_dataset = cleaned_df
+                updated_state["cleaned_dataset"] = cleaned_df
                 logger.info("✅ Code execution successful")
                 logger.info(f"📊 Result shape: {cleaned_df.shape}")
             else:
                 logger.warning("⚠️ Code execution failed")
-                state.last_error = output
-                state.error_count += 1
+                updated_state["last_error"] = output
+                updated_state["error_count"] = updated_state.get("error_count", 0) + 1
                 
         except Exception as e:
             logger.error(f"❌ Execution error: {str(e)}")
-            state.last_error = f"Execution error: {str(e)}"
-            state.error_count += 1
-            state.execution_successful = False
+            updated_state["last_error"] = f"Execution error: {str(e)}"
+            updated_state["error_count"] = updated_state.get("error_count", 0) + 1
+            updated_state["execution_successful"] = False
         
         # Calculate step duration
-        duration = (datetime.now() - state.step_start_times["code_execution"]).total_seconds()
-        state.step_durations["code_execution"] = duration
+        duration = (datetime.now() - start_time).total_seconds()
+        updated_state["step_durations"]["code_execution"] = duration
         
-        return state
+        return updated_state
     
     async def _error_recovery(self, state: DataCleaningState) -> DataCleaningState:
         """
@@ -599,32 +633,40 @@ class LangGraphDataCleaningWorkflow:
         """
         
         logger.info("🔧 [RECOVERY] Attempting error recovery...")
-        state.current_step = "error_recovery"
-        state.step_start_times["error_recovery"] = datetime.now()
+        start_time = datetime.now()
+        
+        # Create updated state dictionary
+        updated_state = state.copy()
+        updated_state["current_step"] = "error_recovery"
+        updated_state["step_start_times"]["error_recovery"] = start_time
         
         try:
             # Attempt to fix the code using LangChain
+            cleaning_code = updated_state.get("cleaning_code")
+            last_error = updated_state.get("last_error", "")
+            original_dataset = updated_state.get("original_dataset")
+            
             corrected_code = self.langchain_agent.fix_code_with_langchain(
-                state.cleaning_code.cleaning_code,
-                state.last_error,
-                state.original_dataset
+                cleaning_code.cleaning_code if cleaning_code else "",
+                last_error,
+                original_dataset
             )
             
-            state.cleaning_code = corrected_code
-            state.recovery_attempted = True
+            updated_state["cleaning_code"] = corrected_code
+            updated_state["recovery_attempted"] = True
             
             logger.info("✅ Error recovery completed")
             logger.info("🔧 Generated corrected code")
             
         except Exception as e:
             logger.error(f"❌ Recovery failed: {str(e)}")
-            state.last_error = f"Recovery error: {str(e)}"
+            updated_state["last_error"] = f"Recovery error: {str(e)}"
         
         # Calculate step duration
-        duration = (datetime.now() - state.step_start_times["error_recovery"]).total_seconds()
-        state.step_durations["error_recovery"] = duration
+        duration = (datetime.now() - start_time).total_seconds()
+        updated_state["step_durations"]["error_recovery"] = duration
         
-        return state
+        return updated_state
     
     async def _human_intervention(self, state: DataCleaningState) -> DataCleaningState:
         """
@@ -635,15 +677,18 @@ class LangGraphDataCleaningWorkflow:
         """
         
         logger.info("👤 [HUMAN] Requesting human intervention...")
-        state.current_step = "human_intervention"
-        state.requires_human_intervention = True
+        
+        # Create updated state dictionary
+        updated_state = state.copy()
+        updated_state["current_step"] = "human_intervention"
+        updated_state["requires_human_intervention"] = True
         
         # In a real implementation, this would present options to the user
         logger.info("⏸️ Workflow paused for human decision")
-        logger.info(f"📄 Context: {state.last_error}")
+        logger.info(f"📄 Context: {updated_state.get('last_error', 'No error details')}")
         logger.info("🤔 Please review the error and decide on next steps")
         
-        return state
+        return updated_state
     
     async def _validate_results(self, state: DataCleaningState) -> DataCleaningState:
         """
@@ -654,51 +699,59 @@ class LangGraphDataCleaningWorkflow:
         """
         
         logger.info("✅ [VALIDATE] Validating cleaning results...")
-        state.current_step = "validation"
-        state.step_start_times["validation"] = datetime.now()
+        start_time = datetime.now()
         
-        if state.cleaned_dataset is not None:
+        # Create updated state dictionary
+        updated_state = state.copy()
+        updated_state["current_step"] = "validation"
+        updated_state["step_start_times"]["validation"] = start_time
+        
+        cleaned_dataset = updated_state.get("cleaned_dataset")
+        if cleaned_dataset is not None:
             # Calculate quality improvements
-            original_missing = state.original_dataset.isnull().sum().sum()
-            final_missing = state.cleaned_dataset.isnull().sum().sum()
+            original_dataset = updated_state.get("original_dataset")
+            original_missing = original_dataset.isnull().sum().sum()
+            final_missing = cleaned_dataset.isnull().sum().sum()
             
-            original_duplicates = state.original_dataset.duplicated().sum()
-            final_duplicates = state.cleaned_dataset.duplicated().sum()
+            original_duplicates = original_dataset.duplicated().sum()
+            final_duplicates = cleaned_dataset.duplicated().sum()
             
-            state.quality_improvements = {
+            updated_state["quality_improvements"] = {
                 "missing_values_removed": original_missing - final_missing,
                 "duplicates_removed": original_duplicates - final_duplicates,
-                "shape_preserved": state.original_dataset.shape[1] == state.cleaned_dataset.shape[1],
+                "shape_preserved": original_dataset.shape[1] == cleaned_dataset.shape[1],
                 "data_types_optimized": True  # Simplified check
             }
             
             logger.info("✅ Validation completed successfully")
-            logger.info(f"📈 Missing values removed: {state.quality_improvements['missing_values_removed']}")
-            logger.info(f"🗂️ Duplicates removed: {state.quality_improvements['duplicates_removed']}")
+            logger.info(f"📈 Missing values removed: {updated_state['quality_improvements']['missing_values_removed']}")
+            logger.info(f"🗂️ Duplicates removed: {updated_state['quality_improvements']['duplicates_removed']}")
         
         # Calculate total processing time
-        state.total_processing_time = sum(state.step_durations.values())
+        step_durations = updated_state.get("step_durations", {})
+        updated_state["total_processing_time"] = sum(step_durations.values())
         
         # Calculate step duration
-        duration = (datetime.now() - state.step_start_times["validation"]).total_seconds()
-        state.step_durations["validation"] = duration
+        duration = (datetime.now() - start_time).total_seconds()
+        updated_state["step_durations"]["validation"] = duration
         
-        return state
+        return updated_state
     
     # Conditional routing functions
     
     def _should_use_simple_cleaning(self, state: DataCleaningState) -> Literal["simple", "complex", "assess"]:
         """Route based on data quality score"""
-        if state.quality_score >= 80:
+        quality_score = state.get("quality_score", 0)
+        if quality_score >= 80:
             return "simple"
-        elif state.quality_score >= 60:
+        elif quality_score >= 60:
             return "assess"
         else:
             return "complex"
     
     def _complexity_routing(self, state: DataCleaningState) -> Literal["simple", "complex", "parallel"]:
         """Route based on complexity assessment"""
-        complexity_score = state.dataset_metadata.get("complexity_score", 0)
+        complexity_score = state.get("dataset_metadata", {}).get("complexity_score", 0)
         
         if complexity_score <= 2:
             return "simple"
@@ -709,22 +762,22 @@ class LangGraphDataCleaningWorkflow:
     
     def _execution_success_check(self, state: DataCleaningState) -> Literal["success", "recoverable_error", "complex_error", "retry"]:
         """Route based on execution results"""
-        if state.execution_successful:
+        if state.get("execution_successful", False):
             return "success"
-        elif state.error_count >= 3:
+        elif state.get("error_count", 0) >= 3:
             return "complex_error"
-        elif "import" in state.last_error.lower() or "syntax" in state.last_error.lower():
+        elif "import" in state.get("last_error", "").lower() or "syntax" in state.get("last_error", "").lower():
             return "recoverable_error"
-        elif state.code_attempts < 2:
+        elif state.get("code_attempts", 0) < 2:
             return "retry"
         else:
             return "recoverable_error"
     
     def _recovery_success_check(self, state: DataCleaningState) -> Literal["fixed", "need_human", "give_up"]:
         """Route based on recovery results"""
-        if state.recovery_attempted and state.error_count <= 2:
+        if state.get("recovery_attempted", False) and state.get("error_count", 0) <= 2:
             return "fixed"
-        elif state.error_count >= 5:
+        elif state.get("error_count", 0) >= 5:
             return "give_up"
         else:
             return "need_human"
@@ -732,7 +785,7 @@ class LangGraphDataCleaningWorkflow:
     def _human_decision_routing(self, state: DataCleaningState) -> Literal["retry", "manual_fix", "abort"]:
         """Route based on human decisions (simplified for demo)"""
         # In a real implementation, this would get actual human input
-        if state.error_count <= 3:
+        if state.get("error_count", 0) <= 3:
             return "retry"
         else:
             return "abort"
@@ -747,65 +800,70 @@ class LangGraphDataCleaningWorkflow:
         
         logger.info("🚀 Starting LangGraph Data Cleaning Workflow...")
         
-        # Initialize state
-        initial_state = DataCleaningState(
-            messages=[],
-            original_dataset=df,
-            dataset_metadata={},
-            analysis_complete=False,
-            code_generated=False,
-            execution_complete=False,
-            execution_successful=False,
-            error_count=0,
-            current_step="initialization",
-            requires_human_intervention=False,
-            parallel_tasks_complete={},
-            step_start_times={},
-            step_durations={},
-            validation_checks=[],
-            quality_improvements={}
-        )
-        
-        # Create thread config for checkpointing
-        thread_config = {"configurable": {"thread_id": f"cleaning_{datetime.now().strftime('%Y%m%d_%H%M%S')}"}}
+        # Initialize state dictionary
+        initial_state: DataCleaningState = {
+            "original_dataset": df,
+            "dataset_metadata": {},
+            "analysis_complete": False,
+            "analysis_results": None,
+            "quality_score": 0.0,
+            "code_generated": False,
+            "cleaning_code": None,
+            "code_attempts": 0,
+            "execution_complete": False,
+            "execution_successful": False,
+            "cleaned_dataset": None,
+            "execution_output": "",
+            "error_count": 0,
+            "last_error": "",
+            "recovery_attempted": False,
+            "current_step": "initialization",
+            "requires_human_intervention": False,
+            "parallel_tasks_complete": {},
+            "step_start_times": {},
+            "step_durations": {},
+            "total_processing_time": 0.0,
+            "validation_checks": [],
+            "quality_improvements": {}
+        }
         
         try:
-            # Execute the workflow
+            # Execute the workflow (no thread config needed without checkpointing)
             final_state = None
             
-            async for state in self.app.astream(initial_state, config=thread_config):
+            async for state in self.app.astream(initial_state):
                 # Get the current state
-                current_state = state[list(state.keys())[0]]
+                current_state = state[list(state.keys())[0]] if state else initial_state
                 final_state = current_state
                 
                 # Log progress
-                logger.info(f"🔄 Current step: {current_state.current_step}")
+                logger.info(f"🔄 Current step: {current_state.get('current_step', 'unknown')}")
                 
                 # Check for human intervention requirement
-                if current_state.requires_human_intervention:
+                if current_state.get("requires_human_intervention", False):
                     logger.info("⏸️ Workflow paused for human intervention")
                     logger.info("💡 In a real application, this would present options to the user")
                     
                     # For demo purposes, automatically continue
-                    current_state.requires_human_intervention = False
+                    current_state["requires_human_intervention"] = False
             
             # Compile final results
             result = {
-                "success": final_state.execution_successful if final_state else False,
+                "success": final_state.get("execution_successful", False) if final_state else False,
                 "workflow_complete": True,
-                "final_state": final_state.current_step if final_state else "failed",
-                "total_processing_time": final_state.total_processing_time if final_state else 0,
-                "step_durations": final_state.step_durations if final_state else {},
-                "quality_improvements": final_state.quality_improvements if final_state else {},
-                "error_count": final_state.error_count if final_state else 0,
-                "validation_checks": final_state.validation_checks if final_state else [],
-                "cleaned_dataset": final_state.cleaned_dataset if final_state and final_state.cleaned_dataset is not None else None,
-                "cleaning_code": final_state.cleaning_code.cleaning_code if final_state and final_state.cleaning_code else None,
+                "final_state": final_state.get("current_step", "failed") if final_state else "failed",
+                "total_processing_time": final_state.get("total_processing_time", 0) if final_state else 0,
+                "step_durations": final_state.get("step_durations", {}) if final_state else {},
+                "quality_improvements": final_state.get("quality_improvements", {}) if final_state else {},
+                "error_count": final_state.get("error_count", 0) if final_state else 0,
+                "validation_checks": final_state.get("validation_checks", []) if final_state else [],
+                "cleaned_dataset": final_state.get("cleaned_dataset") if final_state else None,
+                "cleaning_code": final_state.get("cleaning_code").cleaning_code if final_state and final_state.get("cleaning_code") else None,
                 "workflow_metadata": {
-                    "thread_id": thread_config["configurable"]["thread_id"],
-                    "checkpoints_available": True,
+                    "thread_id": f"cleaning_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                    "checkpoints_available": False,  # Disabled for DataFrame compatibility
                     "langgraph_version": "0.6.7",
-                    "state_transitions": len(final_state.step_durations) if final_state else 0
+                    "state_transitions": len(final_state.get("step_durations", {})) if final_state else 0
                 }
             }
             
@@ -817,11 +875,65 @@ class LangGraphDataCleaningWorkflow:
             
         except Exception as e:
             logger.error(f"❌ Workflow failed: {str(e)}")
+            logger.error(f"📄 Traceback: {traceback.format_exc()}")
             return {
                 "success": False,
                 "error": str(e),
                 "workflow_complete": False,
-                "final_state": "error"
+                "final_state": "error",
+                "traceback": traceback.format_exc()
+            }
+    
+    def process_dataset_sync(self, df: pd.DataFrame, config_dict: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        🔄 Synchronous wrapper for the LangGraph workflow
+        
+        This provides a simple sync interface for the Streamlit app to use.
+        Uses a thread to avoid event loop conflicts with Streamlit.
+        """
+        def run_async_in_thread():
+            """Run the async workflow in a separate thread with its own event loop"""
+            try:
+                # Create a new event loop for this thread
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+                try:
+                    # Run the async method
+                    result = loop.run_until_complete(self.process_dataset(df, config_dict))
+                    return result
+                finally:
+                    loop.close()
+                    
+            except Exception as e:
+                logger.error(f"❌ Thread workflow execution failed: {str(e)}")
+                return {
+                    "success": False,
+                    "workflow_complete": False,
+                    "error": str(e),
+                    "traceback": traceback.format_exc()
+                }
+        
+        try:
+            # Execute in a separate thread to avoid event loop conflicts
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(run_async_in_thread)
+                result = future.result(timeout=300)  # 5 minute timeout
+                return result
+                
+        except concurrent.futures.TimeoutError:
+            logger.error("❌ LangGraph workflow timed out (5 minutes)")
+            return {
+                "success": False,
+                "workflow_complete": False,
+                "error": "Workflow timed out after 5 minutes"
+            }
+        except Exception as e:
+            logger.error(f"❌ Sync workflow wrapper failed: {str(e)}")
+            return {
+                "success": False,
+                "workflow_complete": False,
+                "error": str(e)
             }
 
 def main():

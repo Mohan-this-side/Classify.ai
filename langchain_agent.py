@@ -18,6 +18,7 @@ Enhanced: Professional framework, structured I/O, comprehensive monitoring
 import pandas as pd
 import numpy as np
 import logging
+import time
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
 import json
@@ -222,6 +223,8 @@ class LangChainDataCleaningAgent:
 
 Your task is to analyze datasets and provide comprehensive insights for cleaning and improvement.
 
+**CRITICAL: You MUST respond with VALID JSON only. No explanatory text before or after the JSON.**
+
 Key Analysis Areas:
 1. **Data Structure**: Examine shape, types, and memory usage
 2. **Quality Issues**: Identify missing values, duplicates, and inconsistencies  
@@ -231,7 +234,20 @@ Key Analysis Areas:
 
 {format_instructions}
 
-Provide a thorough analysis that will guide intelligent data cleaning decisions."""
+**FORMATTING REQUIREMENTS:**
+- Start your response immediately with {{
+- End your response with }}
+- Use double quotes for all strings
+- Ensure all JSON fields are present and properly formatted
+- Do not include markdown code blocks, explanations, or any text outside the JSON
+
+**EXAMPLE START:**
+{{
+  "total_rows": 150,
+  "total_columns": 5,
+  ...
+
+**IMPORTANT: Your response must be a single valid JSON object that matches the required schema exactly. Do not include any text outside the JSON.**"""
 
         human_template = """Please analyze this dataset:
 
@@ -279,6 +295,8 @@ Based on this information, provide a comprehensive analysis with specific recomm
         
         system_template = """You are an expert Python data scientist who generates robust, production-ready data cleaning code.
 
+**CRITICAL: You MUST respond with VALID JSON only. No explanatory text before or after the JSON.**
+
 **CRITICAL REQUIREMENTS:**
 1. Generate ONLY executable Python code - NO import statements allowed
 2. Use pre-available variables: pd, np, df, sklearn classes
@@ -317,6 +335,20 @@ print("✅ Cleaning completed successfully!")
 ```
 
 {format_instructions}
+
+**JSON FORMATTING REQUIREMENTS:**
+- Start your response immediately with {{
+- End your response with }}
+- Use double quotes for all strings in JSON
+- Escape any quotes within code strings using \"
+- Ensure all required JSON fields are present
+- Do not include markdown code blocks, explanations, or any text outside the JSON
+
+**EXAMPLE JSON START:**
+{{
+  "cleaning_code": "# Step 1: Initialize and validate\\ncleaned_df = df.copy()\\n...",
+  "explanation": "This code handles...",
+  ...
 
 Generate code that handles ANY dataset robustly and passes all validation checks."""
 
@@ -440,6 +472,7 @@ Analyze the error and generate corrected code that:
             
             # Execute analysis chain with structured input
             try:
+                # First attempt with structured parsing
                 analysis_result = self.analysis_chain.invoke(
                     dataset_info,
                     config={"callbacks": [self.trace_handler]}
@@ -453,8 +486,56 @@ Analyze the error and generate corrected code that:
                 
             except Exception as parse_error:
                 logger.warning(f"⚠️ Structured analysis parsing failed: {str(parse_error)}")
-                logger.info("🔄 Attempting fallback analysis...")
                 
+                # Try one more time with a simpler prompt
+                try:
+                    logger.info("🔄 Attempting retry with simplified prompt...")
+                    
+                    # Create a simpler chain without complex formatting
+                    simple_prompt = f"""Analyze this dataset and return valid JSON:
+Dataset shape: {df.shape}
+Missing values: {df.isnull().sum().sum()}
+Duplicates: {df.duplicated().sum()}
+
+Return JSON with: {{"data_quality_score": 75, "major_issues": ["example"], "recommended_actions": ["example"]}}"""
+                    
+                    simple_result = self.llm.invoke(simple_prompt)
+                    
+                    # Try to parse the simple result
+                    import json
+                    if hasattr(simple_result, 'content'):
+                        content = simple_result.content
+                    else:
+                        content = str(simple_result)
+                    
+                    # Extract JSON from the response
+                    json_start = content.find('{')
+                    json_end = content.rfind('}') + 1
+                    if json_start != -1 and json_end > json_start:
+                        json_str = content[json_start:json_end]
+                        simple_data = json.loads(json_str)
+                        
+                        # Create analysis from simple data
+                        return DatasetAnalysis(
+                            total_rows=df.shape[0],
+                            total_columns=df.shape[1],
+                            memory_usage_mb=df.memory_usage(deep=True).sum() / 1024 / 1024,
+                            missing_values_count=df.isnull().sum().sum(),
+                            duplicate_rows_count=df.duplicated().sum(),
+                            numeric_columns=list(df.select_dtypes(include=[np.number]).columns),
+                            categorical_columns=list(df.select_dtypes(include=['object']).columns),
+                            datetime_columns=list(df.select_dtypes(include=['datetime64']).columns),
+                            data_quality_score=simple_data.get("data_quality_score", 75),
+                            major_issues=simple_data.get("major_issues", ["Analysis parsing failed"]),
+                            recommended_actions=simple_data.get("recommended_actions", ["Use fallback cleaning"]),
+                            corruption_indicators=[],
+                            outlier_columns=[]
+                        )
+                        
+                except Exception as simple_error:
+                    logger.warning(f"⚠️ Simple analysis also failed: {str(simple_error)}")
+                
+                logger.info("🔄 Using fallback analysis...")
                 # Fallback: Create basic analysis from dataset inspection
                 fallback_analysis = self._create_fallback_analysis(df)
                 return fallback_analysis
@@ -614,8 +695,17 @@ Analyze the error and generate corrected code that:
                 
             except Exception as parse_error:
                 logger.warning(f"⚠️ Structured parsing failed: {str(parse_error)}")
-                logger.info("🔄 Attempting fallback code generation...")
                 
+                # Try to extract partial JSON first
+                try:
+                    logger.info("🔄 Attempting to extract partial JSON...")
+                    partial_result = self._extract_partial_json_response(parse_error, generation_input)
+                    if partial_result:
+                        return partial_result
+                except Exception as partial_error:
+                    logger.warning(f"⚠️ Partial JSON extraction failed: {str(partial_error)}")
+                
+                logger.info("🔄 Using complete fallback code generation...")
                 # Fallback: Use basic LLM without structured parsing
                 fallback_result = self._generate_code_fallback(generation_input)
                 return fallback_result
@@ -624,6 +714,72 @@ Analyze the error and generate corrected code that:
             logger.error(f"❌ Code generation failed completely: {str(e)}")
             logger.error(f"📄 Traceback: {traceback.format_exc()}")
             raise
+    
+    def _extract_partial_json_response(self, parse_error: Exception, generation_input: Dict[str, str]) -> Optional[CleaningCode]:
+        """
+        🔄 Extract partial JSON response when structured parsing fails
+        
+        This method attempts to extract cleaning code from partial JSON responses
+        that contain only some fields instead of the complete CleaningCode schema.
+        """
+        
+        try:
+            # Extract the raw response from the error message
+            error_str = str(parse_error)
+            
+            # Look for JSON content in the error message
+            if "Invalid json output:" in error_str:
+                # Find the JSON part after the error description
+                json_start = error_str.find('{"')
+                if json_start == -1:
+                    json_start = error_str.find('{')
+                
+                if json_start != -1:
+                    # Extract potential JSON content
+                    json_part = error_str[json_start:]
+                    
+                    # Try to find the end of JSON
+                    brace_count = 0
+                    json_end = 0
+                    for i, char in enumerate(json_part):
+                        if char == '{':
+                            brace_count += 1
+                        elif char == '}':
+                            brace_count -= 1
+                            if brace_count == 0:
+                                json_end = i + 1
+                                break
+                    
+                    if json_end > 0:
+                        potential_json = json_part[:json_end]
+                        
+                        # Try to parse the partial JSON
+                        try:
+                            partial_data = json.loads(potential_json)
+                            
+                            # Check if we have the essential cleaning_code field
+                            if "cleaning_code" in partial_data:
+                                logger.info("✅ Successfully extracted cleaning code from partial JSON")
+                                
+                                # Construct CleaningCode with available data and defaults
+                                return CleaningCode(
+                                    cleaning_code=partial_data.get("cleaning_code", ""),
+                                    explanation=partial_data.get("explanation", "Partially extracted code from JSON parsing failure"),
+                                    expected_changes=partial_data.get("expected_changes", ["Data type optimization", "Missing value imputation", "Duplicate removal"]),
+                                    estimated_processing_time=partial_data.get("estimated_processing_time", "2-5 seconds"),
+                                    validation_checks=partial_data.get("validation_checks", ["Check for missing values", "Validate data types", "Confirm duplicate removal"]),
+                                    potential_risks=partial_data.get("potential_risks", ["Potential data loss during type conversion"]),
+                                    model_used=partial_data.get("model_used", config.default_model)
+                                )
+                                
+                        except json.JSONDecodeError:
+                            logger.warning("⚠️ Partial JSON is still invalid")
+                            
+            return None
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Partial JSON extraction error: {str(e)}")
+            return None
     
     def _generate_code_fallback(self, generation_input: Dict[str, str]) -> CleaningCode:
         """
@@ -649,6 +805,7 @@ You are an expert Python data scientist. Generate robust data cleaning code for 
 - Handle corrupted values in: {generation_input['corruption_details']}
 - Ensure zero missing values in final result
 - Include data validation and error checking
+- AVOID chained assignment (use .loc[] or direct assignment)
 
 **Code Structure:**
 ```python
@@ -657,7 +814,8 @@ cleaned_df = df.copy()
 print(f"Starting shape: {{cleaned_df.shape}}")
 
 # Step 2: Your cleaning logic here
-# ... your data cleaning code ...
+# Use .loc[] or direct assignment to avoid pandas warnings
+# Example: cleaned_df.loc[:, 'column'] = cleaned_df['column'].fillna(value)
 
 # Step 3: Final validation
 assert cleaned_df.isnull().sum().sum() == 0, "Missing values still present!"
@@ -709,16 +867,28 @@ Generate the complete cleaning code:
 cleaned_df = df.copy()
 print(f"Starting shape: {cleaned_df.shape}")
 
-# Remove missing values
+# Handle missing values with proper pandas methods (avoid chained assignment)
 for col in cleaned_df.columns:
     if cleaned_df[col].dtype == 'object':
-        cleaned_df[col] = cleaned_df[col].fillna('unknown')
+        # Use mode for categorical data, fallback to 'unknown'
+        mode_value = cleaned_df[col].mode()
+        fill_value = mode_value.iloc[0] if len(mode_value) > 0 else 'unknown'
+        # Use .loc[] to avoid chained assignment warning
+        cleaned_df.loc[:, col] = cleaned_df[col].fillna(fill_value)
     else:
-        cleaned_df[col] = cleaned_df[col].fillna(cleaned_df[col].median())
+        # Use median for numeric data
+        median_value = cleaned_df[col].median()
+        # Use .loc[] to avoid chained assignment warning
+        cleaned_df.loc[:, col] = cleaned_df[col].fillna(median_value)
 
-# Remove duplicates
+# Remove duplicates safely
+initial_rows = len(cleaned_df)
 cleaned_df = cleaned_df.drop_duplicates()
+final_rows = len(cleaned_df)
+print(f"Removed {initial_rows - final_rows} duplicate rows")
 
+# Final validation
+assert cleaned_df.isnull().sum().sum() == 0, "Missing values still present!"
 print(f"Final shape: {cleaned_df.shape}")
 print("✅ Basic cleaning completed!")
 """
@@ -966,6 +1136,96 @@ print("✅ Minimal cleaning completed!")
             "quality_observations": f"Duplicates: {df.duplicated().sum()}, Memory efficient: {memory_usage < 100}",
             "format_instructions": self.analysis_parser.get_format_instructions()
         }
+    
+    def clean_dataset(self, df: pd.DataFrame, max_attempts: int = 3) -> Dict[str, Any]:
+        """
+        🧹 Public interface for data cleaning that matches Streamlit app expectations
+        
+        This implements the complete data cleaning pipeline using LangChain components.
+        """
+        logger.info("🧹 Starting LangChain data cleaning process...")
+        start_time = time.time()
+        
+        try:
+            # Step 1: Analyze the dataset
+            logger.info("📊 Step 1: Analyzing dataset...")
+            analysis = self.analyze_dataset(df)
+            
+            # Step 2: Generate cleaning code
+            logger.info("🤖 Step 2: Generating cleaning code...")
+            code_obj = self.generate_cleaning_code(df, analysis)
+            
+            # Step 3: Execute cleaning code with retry logic
+            logger.info("⚡ Step 3: Executing cleaning code...")
+            attempts_used = 0
+            last_error = ""
+            
+            for attempt in range(max_attempts):
+                attempts_used = attempt + 1
+                logger.info(f"🔄 Execution attempt {attempts_used}/{max_attempts}")
+                
+                success, output, cleaned_df = self.execute_cleaning_code(df, code_obj)
+                
+                if success and cleaned_df is not None:
+                    processing_time = time.time() - start_time
+                    logger.info(f"✅ Data cleaning completed successfully in {processing_time:.2f}s")
+                    
+                    return {
+                        "success": True,
+                        "cleaned_df": cleaned_df,
+                        "cleaning_code": code_obj.cleaning_code,
+                        "analysis": analysis,
+                        "processing_time": processing_time,
+                        "attempts_used": attempts_used,
+                        "langchain_traces": [],  # Could add LangSmith traces here
+                        "metadata": {
+                            "explanation": code_obj.explanation,
+                            "expected_changes": code_obj.expected_changes,
+                            "estimated_processing_time": code_obj.estimated_processing_time,
+                            "validation_checks": code_obj.validation_checks,
+                            "potential_risks": code_obj.potential_risks,
+                            "model_used": code_obj.model_used
+                        }
+                    }
+                else:
+                    last_error = output
+                    logger.warning(f"⚠️ Attempt {attempts_used} failed: {output}")
+                    
+                    # Try to fix the code for next attempt
+                    if attempt < max_attempts - 1:
+                        logger.info("🔧 Attempting to fix the code...")
+                        try:
+                            corrected_code = self.fix_code_with_langchain(
+                                code_obj.cleaning_code, 
+                                output, 
+                                df
+                            )
+                            code_obj = corrected_code
+                        except Exception as fix_error:
+                            logger.warning(f"⚠️ Code fixing failed: {str(fix_error)}")
+            
+            # All attempts failed
+            processing_time = time.time() - start_time
+            logger.error(f"❌ All {max_attempts} attempts failed")
+            
+            return {
+                "success": False,
+                "error": f"All {max_attempts} cleaning attempts failed. Last error: {last_error}",
+                "attempts_used": attempts_used,
+                "processing_time": processing_time,
+                "analysis": analysis,
+                "last_error": last_error
+            }
+                    
+        except Exception as e:
+            processing_time = time.time() - start_time
+            logger.error(f"❌ Clean dataset failed: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "attempts_used": 1,
+                "processing_time": processing_time
+            }
     
     def _classify_error(self, error_message: str) -> str:
         """Classify error type for targeted fixing"""
