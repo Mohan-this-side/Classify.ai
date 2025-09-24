@@ -94,8 +94,12 @@ class SafeCodeExecutor:
         string_char = None
         
         for line_num, line in enumerate(lines, 1):
+            # Reset string state for each line (simple but effective for our case)
+            in_string = False
+            string_char = None
+            
             for i, char in enumerate(line):
-                # Handle string literals
+                # Handle string literals (improved detection)
                 if char in ['"', "'"] and (i == 0 or line[i-1] != '\\'):
                     if not in_string:
                         in_string = True
@@ -112,7 +116,22 @@ class SafeCodeExecutor:
                 if char == ':' and not in_string:
                     # Check if this is a control structure
                     line_stripped = line[:i+1].strip()
-                    if any(keyword in line_stripped for keyword in ['if ', 'elif ', 'else:', 'for ', 'while ', 'try:', 'except:', 'finally:', 'with ', 'def ', 'class ']):
+                    
+                    # Skip comments and string literals
+                    if line_stripped.startswith('#'):
+                        continue
+                    
+                    # More precise keyword matching - ensure we match actual Python keywords
+                    is_control_structure = False
+                    for keyword in ['if ', 'elif ', 'else:', 'for ', 'while ', 'try:', 'except:', 'finally:', 'with ', 'def ', 'class ']:
+                        # Check if keyword appears at start of line or after whitespace
+                        if (line_stripped.startswith(keyword) or 
+                            (' ' + keyword) in line_stripped or 
+                            ('\t' + keyword) in line_stripped):
+                            is_control_structure = True
+                            break
+                    
+                    if is_control_structure:
                         open_blocks += 1
                         
                         # Check if there's content after the colon on same line or proper indentation follows

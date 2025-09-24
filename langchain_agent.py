@@ -52,6 +52,9 @@ class DatasetAnalysis(BaseModel):
     instead of free-form text that needs manual parsing.
     """
     
+    # Analysis summary
+    analysis_summary: str = Field(default="Comprehensive dataset analysis completed", description="Summary of the analysis performed")
+    
     # Basic dataset information
     total_rows: int = Field(description="Total number of rows in the dataset")
     total_columns: int = Field(description="Total number of columns in the dataset")
@@ -1236,12 +1239,18 @@ print("✅ Minimal cleaning completed!")
         logger.info("🔧 Fixing code with LangChain error correction...")
         
         try:
+            # Prepare dataset context safely
+            if df is not None:
+                dataset_context = f"Shape: {df.shape}, Columns: {list(df.columns)[:5]}..."
+            else:
+                dataset_context = "Dataset not available"
+            
             # Prepare error correction input
             correction_input = {
                 "original_code": original_code,
                 "error_details": error_details,
                 "error_type": self._classify_error(error_details),
-                "dataset_context": f"Shape: {df.shape}, Columns: {list(df.columns)[:5]}...",
+                "dataset_context": dataset_context,
                 "format_instructions": self.code_parser.get_format_instructions()
             }
             
