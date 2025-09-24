@@ -30,7 +30,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import json
-import asyncio
+# import asyncio  # Removed - not needed for sync processing
 from datetime import datetime
 import time
 from typing import Dict, Any, Optional
@@ -491,7 +491,7 @@ def create_quality_visualization(original_df: pd.DataFrame, cleaned_df: pd.DataF
     
     st.plotly_chart(fig, width="stretch")
 
-async def run_cleaning_process(df: pd.DataFrame, agent_type: str, max_retries: int) -> Dict[str, Any]:
+def run_cleaning_process(df: pd.DataFrame, agent_type: str, max_retries: int) -> Dict[str, Any]:
     """Run the data cleaning process with selected agent"""
     
     try:
@@ -628,12 +628,8 @@ def main():
             with col1:
                 if st.button("🤖 Clean Dataset", type="primary", width="stretch"):
                     # Run cleaning process
-                    async def run_cleaning():
-                        return await run_cleaning_process(uploaded_df, agent_type, max_retries)
-                    
                     try:
-                        # Run async function in Streamlit
-                        result = asyncio.run(run_cleaning())
+                        result = run_cleaning_process(uploaded_df, agent_type, max_retries)
                         st.session_state.cleaning_results = result
                         st.rerun()
                     

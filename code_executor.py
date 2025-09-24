@@ -26,9 +26,23 @@ class SafeCodeExecutor:
             'input', 'raw_input', 'file', 'execfile'
         ]
     
-    def validate_code_safety(self, code: str) -> Tuple[bool, str]:
-        """Check if code is safe to execute"""
+    def validate_code_safety(self, code: str, strict_validation: bool = True) -> Tuple[bool, str]:
+        """Check if code is safe to execute and complete"""
         lines = code.split('\n')
+        
+        # Check for code completeness first (but allow relaxed validation for fallbacks)
+        if strict_validation:
+            is_complete, completeness_msg = self._check_code_completeness(code)
+            if not is_complete:
+                return False, f"Code completeness check failed: {completeness_msg}"
+        else:
+            # Relaxed validation - just check for basic requirements
+            has_cleaned_df = any('cleaned_df' in line for line in lines)
+            has_assert = any('assert' in line for line in lines)
+            if not has_cleaned_df:
+                return False, "Code must create a 'cleaned_df' variable"
+            if not has_assert:
+                return False, "Code must include basic validation"
         
         for line_num, line in enumerate(lines, 1):
             stripped_line = line.strip()
@@ -54,13 +68,90 @@ class SafeCodeExecutor:
             if any(keyword in line for keyword in ['os.system', 'subprocess', 'sys.exit']) and not stripped_line.startswith('#'):
                 return False, f"System operation detected at line {line_num}"
         
-        return True, "Code appears safe"
+        return True, "Code appears safe and complete"
     
-    def execute_with_timeout(self, code: str, dataframe: pd.DataFrame, timeout: int = 30) -> Tuple[bool, str, Any]:
+    def _check_code_completeness(self, code: str) -> Tuple[bool, str]:
+        """Check if the generated code is complete and properly structured"""
+        lines = [line.strip() for line in code.split('\n') if line.strip()]
+        
+        # Check for required elements
+        has_assert = any('assert' in line and 'cleaned_df.isnull().sum().sum() == 0' in line for line in lines)
+        has_success_message = any('✅' in line and 'Cleaning completed successfully' in line for line in lines)
+        has_cleaned_df = any('cleaned_df' in line for line in lines)
+        
+        if not has_cleaned_df:
+            return False, "Code must create a 'cleaned_df' variable"
+        
+        if not has_assert:
+            return False, "Code must include final validation: assert cleaned_df.isnull().sum().sum() == 0"
+        
+        if not has_success_message:
+            return False, "Code must include success message"
+        
+        # Check for unterminated constructs
+        open_blocks = 0
+        in_string = False
+        string_char = None
+        
+        for line_num, line in enumerate(lines, 1):
+            for i, char in enumerate(line):
+                # Handle string literals
+                if char in ['"', "'"] and (i == 0 or line[i-1] != '\\'):
+                    if not in_string:
+                        in_string = True
+                        string_char = char
+                    elif char == string_char:
+                        in_string = False
+                        string_char = None
+                
+                # Skip if inside string
+                if in_string:
+                    continue
+                
+                # Count block structures
+                if char == ':' and not in_string:
+                    # Check if this is a control structure
+                    line_stripped = line[:i+1].strip()
+                    if any(keyword in line_stripped for keyword in ['if ', 'elif ', 'else:', 'for ', 'while ', 'try:', 'except:', 'finally:', 'with ', 'def ', 'class ']):
+                        open_blocks += 1
+                        
+                        # Check if there's content after the colon on same line or proper indentation follows
+                        rest_of_line = line[i+1:].strip()
+                        if not rest_of_line:  # Colon at end of line
+                            # This should be followed by indented content
+                            if line_num < len(lines):
+                                next_line = lines[line_num]
+                                if not next_line.startswith('    ') and not next_line.startswith('\t'):
+                                    return False, f"Line {line_num} ends with ':' but has no indented block following"
+            
+            # Check for incomplete string literals at end of line
+            if in_string:
+                return False, f"Unterminated string literal at line {line_num}"
+        
+        # Check if code ends abruptly with incomplete constructs
+        last_line = lines[-1] if lines else ""
+        if last_line.endswith(('if ', 'elif ', 'else', 'for ', 'while ', 'try', 'except', 'def ', 'class ')):
+            return False, "Code ends with incomplete control structure"
+        
+        # Check for specific patterns that indicate truncation
+        truncation_indicators = [
+            'if final_unique_species_count != 3',  # Specific pattern from the logs
+            'species_mapping = {',
+            "'iris-vers",  # Unterminated string
+        ]
+        
+        for line in lines:
+            for indicator in truncation_indicators:
+                if indicator in line and not line.strip().endswith((':', ')', '}', ']')):
+                    return False, f"Code appears truncated at: {line}"
+        
+        return True, "Code appears complete"
+    
+    def execute_with_timeout(self, code: str, dataframe: pd.DataFrame, timeout: int = 30, strict_validation: bool = True) -> Tuple[bool, str, Any]:
         """Execute code with timeout and capture output"""
         try:
             # Validate code safety first
-            is_safe, safety_msg = self.validate_code_safety(code)
+            is_safe, safety_msg = self.validate_code_safety(code, strict_validation)
             if not is_safe:
                 return False, f"Code safety check failed: {safety_msg}", None
             
