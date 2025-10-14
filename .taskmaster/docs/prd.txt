@@ -1,0 +1,408 @@
+# Classify AI: Product Requirements Document
+
+## Executive Summary
+
+**Product Name:** Classify AI  
+**Mission:** To make machine learning accessible to non-experts by automating the end-to-end classification pipeline through a multi-agent LLM system.  
+**Target Audience:** Non-technical domain experts, data analysts, and ML engineers looking to automate prototyping.  
+**Value Proposition:** Users can upload a dataset, specify a prediction goal, and receive a cleaned dataset, a trained model, a reproducible Jupyter notebook, and a detailed report, all while learning and maintaining control through an interactive, secure, and transparent process.
+
+## Problem Statement
+
+Building predictive models is complex, requiring expertise in coding, statistics, and machine learning. Current solutions either:
+- Require extensive technical knowledge (scikit-learn, pandas, etc.)
+- Are black-box solutions that don't teach users
+- Lack transparency and user control
+- Don't prevent common pitfalls like data leakage
+
+Classify AI removes these barriers by providing an intelligent, educational, and secure platform that guides users through the entire ML pipeline while maintaining transparency and control.
+
+## Core Features
+
+### F1: Simple User Interface
+- Clean web UI for file upload (CSV/Excel)
+- Target column specification
+- Gemini API key input
+- Real-time workflow progress visualization
+- Approval gate interactions
+- Results download interface
+
+### F2: Multi-Agent Workflow Engine
+- LangGraph orchestration managing 8 specialized AI agents
+- Sequential and parallel agent execution
+- State persistence and checkpointing
+- Automatic error recovery and self-healing
+- Human-in-the-loop approval gates
+
+### F3: Human-in-the-Loop Approval Gates
+- Key decision points where workflow pauses
+- User approval required for critical decisions
+- Educational explanations of proposed actions
+- Options to approve, modify, or reject proposals
+- Transparent reasoning for each decision
+
+### F4: Secure Sandboxed Code Execution
+- Docker-based isolation for AI-generated code
+- No network access, limited resources
+- CPU, memory, and execution time limits
+- Multi-layer security validation
+- Automatic cleanup and resource management
+
+### F5: Automated Data Leakage Prevention
+- Enforced use of sklearn.pipeline.Pipeline
+- Automated detection of preprocessing before train/test split
+- Educational explanations of data leakage concepts
+- Validation at multiple stages
+- Clear warnings and guidance
+
+### F6: Comprehensive Deliverables
+- Cleaned dataset (CSV)
+- Trained model (.joblib file)
+- Reproducible Jupyter Notebook (.ipynb)
+- Detailed technical report (.md)
+- Educational content throughout
+
+## Technical Architecture
+
+### Layer 1: Presentation (Frontend)
+- **Technology:** Next.js with React
+- **Responsibilities:**
+  - File upload handling
+  - Real-time progress display
+  - Approval gate UI
+  - Results visualization
+  - WebSocket communication
+- **Key Components:**
+  - File upload component
+  - Progress tracker
+  - Approval decision interface
+  - Results viewer
+  - Educational content display
+
+### Layer 2: Orchestration (Backend)
+- **Technology:** FastAPI with LangGraph
+- **Responsibilities:**
+  - Multi-agent workflow orchestration
+  - State management and persistence
+  - API endpoints for frontend
+  - WebSocket real-time updates
+  - Agent communication coordination
+- **Key Components:**
+  - LangGraph workflow engine
+  - State management system
+  - Agent coordination logic
+  - API route handlers
+  - WebSocket handlers
+
+### Layer 3: Infrastructure
+- **Database:** PostgreSQL for state persistence
+- **Cache/Broker:** Redis for task queues and caching
+- **Sandbox:** Docker containers for code execution
+- **Storage:** File system for artifacts and datasets
+- **Monitoring:** Comprehensive logging and metrics
+
+## Agent Architecture
+
+### Core Agents (MVP - Phase 1)
+
+#### 1. Data Cleaning Agent
+- **Purpose:** Handle missing values and basic data cleaning
+- **Input:** Raw dataset path, data schema
+- **Output:** Cleaned dataset path, cleaning code, reasoning
+- **Key Features:**
+  - Missing value analysis and handling
+  - Data type validation
+  - Outlier detection (with user approval)
+  - Educational explanations
+
+#### 2. Model Builder Agent
+- **Purpose:** Train classification models with data leakage prevention
+- **Input:** Cleaned dataset path, target column
+- **Output:** Trained model path, training code, performance metrics
+- **Key Features:**
+  - Enforced sklearn.pipeline.Pipeline usage
+  - Train/test split before preprocessing
+  - Multiple algorithm options
+  - Hyperparameter optimization
+
+#### 3. Model Evaluation Agent
+- **Purpose:** Calculate and report model performance
+- **Input:** Trained model, test dataset
+- **Output:** Performance metrics, evaluation code, visualizations
+- **Key Features:**
+  - Multiple metric calculations (accuracy, F1, precision, recall, ROC-AUC)
+  - Confusion matrix generation
+  - ROC curve plotting
+  - Performance interpretation
+
+#### 4. Technical Reporter Agent
+- **Purpose:** Generate comprehensive Jupyter notebook and report
+- **Input:** All agent code, results, metrics
+- **Output:** Jupyter notebook, technical report, usage instructions
+- **Key Features:**
+  - Code compilation and organization
+  - Educational content generation
+  - Markdown explanations
+  - Usage instructions
+
+### Advanced Agents (Phase 2)
+
+#### 5. EDA (Exploratory Data Analysis) Agent
+- **Purpose:** Generate comprehensive data analysis and visualizations
+- **Key Features:**
+  - Statistical summaries
+  - Distribution plots
+  - Correlation analysis
+  - Feature importance analysis
+
+#### 6. Feature Engineering Agent
+- **Purpose:** Create and select optimal features
+- **Key Features:**
+  - Automated feature creation
+  - Feature selection algorithms
+  - Encoding strategies
+  - Scaling and normalization
+
+#### 7. Data Discovery Agent
+- **Purpose:** Analyze data quality and provide insights
+- **Key Features:**
+  - Data quality assessment
+  - Schema analysis
+  - Pattern recognition
+  - Anomaly detection
+
+#### 8. Project Manager Agent
+- **Purpose:** Coordinate workflow and provide user updates
+- **Key Features:**
+  - Progress tracking
+  - Educational insights
+  - Error handling
+  - User communication
+
+## User Experience Flow
+
+### Primary User Journey
+1. **Upload Dataset:** User uploads CSV/Excel file
+2. **Specify Target:** User selects target column for prediction
+3. **Provide API Key:** User enters Gemini API key
+4. **Initiate Workflow:** System starts multi-agent processing
+5. **Real-time Updates:** User sees progress and agent activities
+6. **Approval Gates:** User approves key decisions (data cleaning, model training)
+7. **Results Delivery:** User receives four deliverables
+8. **Learning Experience:** User understands the process through educational content
+
+### Approval Gate Examples
+- **Data Cleaning Gate:** "Found 42 missing values in 'age' column. Propose median imputation. Approve?"
+- **Feature Engineering Gate:** "Suggest one-hot encoding for categorical variables. This may create 15 new features. Proceed?"
+- **Model Training Gate:** "Ready to train RandomForest with 100 estimators. Estimated time: 2 minutes. Continue?"
+
+## Security and Safety Requirements
+
+### Code Validation (Multi-Layer)
+1. **Syntax Validation:** Python AST parsing
+2. **Security Validation:** Forbidden imports/functions detection
+3. **Logical Validation:** ML best practices enforcement
+4. **Execution Validation:** Sandbox testing
+
+### Sandbox Security
+- **Isolation:** Docker containers with no network access
+- **Resource Limits:** CPU, memory, and execution time constraints
+- **User Permissions:** Non-root execution
+- **File System:** Restricted access to specific directories
+
+### Data Protection
+- **Encryption:** API keys and sensitive data
+- **Access Control:** User-specific data isolation
+- **Audit Logging:** Complete activity tracking
+- **Data Retention:** Configurable cleanup policies
+
+## Performance Requirements
+
+### Response Times
+- **File Upload:** < 5 seconds for files up to 100MB
+- **Agent Execution:** < 30 seconds per agent
+- **Total Pipeline:** < 10 minutes for typical datasets
+- **WebSocket Updates:** < 100ms latency
+
+### Scalability
+- **Concurrent Users:** Support 50+ simultaneous workflows
+- **Dataset Size:** Handle up to 1M rows, 1000 features
+- **Throughput:** Process 100+ datasets per day
+- **Availability:** 99.9% uptime
+
+### Quality Metrics
+- **Success Rate:** >90% of workflows complete successfully
+- **Model Performance:** Within 10% of human expert performance
+- **Code Quality:** >95% of generated code executes without errors
+- **User Satisfaction:** >4.5/5 rating
+
+## Development Phases
+
+### Phase 1: MVP (Weeks 1-3)
+**Goal:** Functional end-to-end pipeline with core safety features
+
+**Features:**
+- [P1-F1] Foundational Backend: FastAPI, PostgreSQL, Redis
+- [P1-F2] Secure Code Execution Sandbox: Docker-based isolation
+- [P1-F3] LangGraph Workflow: Basic agent orchestration
+- [P1-F4] Core Agents: Data Cleaning, Model Builder, Evaluation, Reporter
+- [P1-F5] Basic Frontend: File upload, progress display, results download
+
+**Success Criteria:**
+- Complete pipeline works on Iris dataset
+- All four deliverables generated
+- At least one approval gate functional
+- F1 score within 20% of baseline
+
+### Phase 2: Enhanced Interactivity (Weeks 4-6)
+**Goal:** Human-in-the-loop control and improved intelligence
+
+**Features:**
+- [P2-F1] Approval Gates: Full interrupt/resume functionality
+- [P2-F2] Advanced Agents: EDA, Feature Engineering
+- [P2-F3] Real-Time UI: WebSocket updates, progress visualization
+- [P2-F4] Self-Healing: Iterative code refinement
+
+**Success Criteria:**
+- All approval gates working
+- Real-time updates functional
+- Self-healing reduces failures by 50%
+- Tested on 3+ different datasets
+
+### Phase 3: Production Readiness (Weeks 7-9)
+**Goal:** Polish, scalability, and professional user experience
+
+**Features:**
+- [P3-F1] Full Agent Suite: All 8 agents operational
+- [P3-F2] Comprehensive Reporting: Polished notebooks and reports
+- [P3-F3] Scalable Infrastructure: Docker Compose, Kubernetes
+- [P3-F4] Polished UI: Professional design, educational content
+
+**Success Criteria:**
+- All 8 agents working
+- Professional UI/UX
+- Scalable deployment
+- Production monitoring
+
+## Technical Requirements
+
+### Backend Requirements
+- **Framework:** FastAPI 0.104+
+- **Python:** 3.11+
+- **Database:** PostgreSQL 15+
+- **Cache:** Redis 7+
+- **Orchestration:** LangGraph 0.2+
+- **ML Libraries:** scikit-learn, pandas, numpy, matplotlib, seaborn
+
+### Frontend Requirements
+- **Framework:** Next.js 14+
+- **Language:** TypeScript
+- **UI Library:** React 18+
+- **WebSocket:** Socket.io
+- **File Handling:** react-dropzone
+- **Styling:** Tailwind CSS
+
+### Infrastructure Requirements
+- **Containerization:** Docker 24+
+- **Orchestration:** Docker Compose (dev), Kubernetes (prod)
+- **Monitoring:** Prometheus, Grafana
+- **Logging:** Structured logging with ELK stack
+- **Security:** HTTPS, API key management
+
+### API Requirements
+- **Authentication:** API key-based
+- **Rate Limiting:** 100 requests/minute per user
+- **File Upload:** Multipart form data, 100MB limit
+- **WebSocket:** Real-time bidirectional communication
+- **Error Handling:** Comprehensive error responses
+
+## Data Requirements
+
+### Input Data
+- **Formats:** CSV, Excel (.xlsx, .xls)
+- **Size Limits:** 1M rows, 1000 features, 100MB file size
+- **Data Types:** Numeric, categorical, text, datetime
+- **Quality:** Handles missing values, outliers, inconsistencies
+
+### Output Data
+- **Cleaned Dataset:** CSV format with same structure
+- **Trained Model:** Joblib serialized sklearn pipeline
+- **Jupyter Notebook:** .ipynb format with educational content
+- **Technical Report:** Markdown format with metrics and insights
+
+### State Management
+- **State Object:** JSON-serializable Pydantic model
+- **Persistence:** PostgreSQL with JSON columns
+- **Checkpointing:** After each agent execution
+- **Recovery:** Automatic resume from last checkpoint
+
+## Quality Assurance
+
+### Testing Strategy
+- **Unit Tests:** Individual agent functions
+- **Integration Tests:** Agent interactions
+- **End-to-End Tests:** Complete workflow
+- **Performance Tests:** Load and stress testing
+- **Security Tests:** Penetration testing
+
+### Benchmark Datasets
+- **Tier 1 (Development):** Iris, Titanic, Wine Quality
+- **Tier 2 (Validation):** Credit Card Fraud, Heart Disease
+- **Tier 3 (Production):** Kaggle competition datasets
+
+### Success Metrics
+- **Performance:** F1 score within 10% of human expert
+- **Reliability:** >90% success rate
+- **Security:** Zero security violations
+- **Usability:** <5 minutes to complete workflow
+
+## Risk Mitigation
+
+### Technical Risks
+- **LLM Code Generation Failures:** Self-healing loops, fallback strategies
+- **Data Leakage:** Multiple validation layers, pipeline enforcement
+- **Security Breaches:** Multi-layer security, sandbox isolation
+- **State Persistence Failures:** Frequent checkpointing, transaction safety
+
+### Business Risks
+- **Scope Creep:** Phased development, strict MVP focus
+- **Timeline Delays:** Buffer time, parallel development
+- **User Adoption:** Educational focus, transparent process
+- **Performance Issues:** Early optimization, monitoring
+
+## Success Criteria
+
+### Minimum Viable Product (MVP)
+- ✅ System accepts uploaded CSV
+- ✅ Shows real-time agent progress
+- ✅ At least one approval gate works
+- ✅ Generates trained model
+- ✅ Produces executable Jupyter notebook
+- ✅ F1 score within 20% of baseline
+
+### Ideal Product
+- ✅ All MVP features
+- ✅ 4+ agents fully functional
+- ✅ F1 score within 10% of baseline
+- ✅ Tested on 3+ datasets
+- ✅ Professional UI/UX
+- ✅ Clear educational explanations
+
+### Stretch Goals
+- ✅ All ideal features
+- ✅ 6+ agents operational
+- ✅ Beautiful visualizations
+- ✅ Polished user experience
+- ✅ Advanced reporting features
+
+## Conclusion
+
+Classify AI represents a significant advancement in making machine learning accessible to non-experts while maintaining the highest standards of security, transparency, and educational value. The phased development approach ensures a working MVP while building toward a comprehensive, production-ready platform.
+
+The success of this project depends on:
+1. **Reliable Code Generation:** Self-healing loops and robust validation
+2. **Zero Data Leakage:** Enforced best practices and multiple validation layers
+3. **User Trust:** Transparency, education, and human-in-the-loop control
+4. **Robustness:** Comprehensive testing and graceful failure handling
+
+This PRD provides the foundation for building a world-class ML automation platform that empowers users while maintaining the highest technical and educational standards.

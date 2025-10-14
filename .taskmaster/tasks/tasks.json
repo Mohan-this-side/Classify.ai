@@ -1,0 +1,1005 @@
+{
+  "master": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Set up FastAPI backend with PostgreSQL and Redis",
+        "description": "Initialize the FastAPI backend, configure PostgreSQL for state persistence, and Redis for caching and task queuing. Establish basic API endpoints for frontend communication.",
+        "details": "1.  Create a new FastAPI project.\n2.  Install necessary dependencies: `pip install fastapi uvicorn psycopg2-binary redis langgraph`.\n3.  Configure PostgreSQL connection using environment variables.\n4.  Configure Redis connection using environment variables.\n5.  Define API endpoints for file upload and workflow initiation.\n6.  Implement basic error handling and logging.\n7.  Create database models for storing workflow state.\n\nFastAPI app initialized with proper structure, CORS middleware configured, WebSocket connection manager implemented, API routes structure exists (workflow_routes.py), configuration system with PostgreSQL and Redis settings, and requirements.txt with all necessary dependencies.",
+        "testStrategy": "1.  Write unit tests to verify database and Redis connections.\n2.  Test API endpoints using Postman or similar tool.\n3.  Check for proper error handling and logging.",
+        "priority": "high",
+        "dependencies": [],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Initialize FastAPI Project",
+            "description": "Set up a new FastAPI project and install necessary dependencies.",
+            "dependencies": [],
+            "details": "Create a new FastAPI project structure. Install fastapi, uvicorn, psycopg2-binary, redis, and langgraph using pip. Verify installation by running a simple 'Hello, World' endpoint.",
+            "status": "completed",
+            "testStrategy": "Verify the FastAPI application starts without errors and the 'Hello, World' endpoint returns the expected response.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Configure PostgreSQL Connection",
+            "description": "Configure PostgreSQL connection using environment variables and create database models.",
+            "dependencies": [
+              1
+            ],
+            "details": "Set up environment variables for PostgreSQL connection details (host, port, database, user, password). Establish a database connection using psycopg2. Define database models using SQLAlchemy or similar ORM for workflow state.",
+            "status": "done",
+            "testStrategy": "Write unit tests to verify the database connection is established successfully and database models can be created and queried.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Configure Redis Connection",
+            "description": "Configure Redis connection using environment variables for caching and task queuing.",
+            "dependencies": [
+              1
+            ],
+            "details": "Set up environment variables for Redis connection details (host, port, database, password). Establish a Redis connection using the redis-py library. Implement basic caching functionality.",
+            "status": "done",
+            "testStrategy": "Write unit tests to verify the Redis connection is established successfully and data can be stored and retrieved from the cache.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 4,
+            "title": "Define API Endpoints",
+            "description": "Define API endpoints for file upload and workflow initiation with error handling and logging.",
+            "dependencies": [
+              2,
+              3
+            ],
+            "details": "Define API endpoints using FastAPI for file upload and workflow initiation. Implement error handling using try-except blocks and custom exception classes. Implement logging using Python's built-in logging module.",
+            "status": "completed",
+            "testStrategy": "Test API endpoints using Postman or a similar tool. Verify file upload and workflow initiation work correctly. Check for proper error handling and logging in various scenarios.",
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 7,
+        "recommendedSubtasks": 4,
+        "expansionPrompt": "Decompose the task into subtasks for setting up FastAPI, configuring PostgreSQL, configuring Redis, and defining API endpoints."
+      },
+      {
+        "id": 2,
+        "title": "Implement Secure Code Execution Sandbox using Docker",
+        "description": "Set up a Docker-based sandbox environment for executing AI-generated code. Configure resource limits (CPU, memory, execution time) and restrict network access.",
+        "details": "1.  Create a Dockerfile with a Python environment.\n2.  Install necessary ML libraries (scikit-learn, pandas, etc.) inside the Docker image.\n3.  Implement resource limits using Docker's `--cpus`, `--memory`, and `--runtime` flags.\n4.  Disable network access using `--network=none`.\n5.  Implement a mechanism to transfer code to the container, execute it, and retrieve the results.\n\nDocker Compose configuration exists, Backend Dockerfile implemented, PostgreSQL and Redis services configured, and basic containerization setup.",
+        "testStrategy": "1.  Write unit tests to verify resource limits are enforced.\n2.  Attempt to access the network from within the container and verify it's blocked.\n3.  Test execution of simple ML code within the sandbox.",
+        "priority": "high",
+        "dependencies": [],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Create Dockerfile with Python Environment and ML Libraries",
+            "description": "Define a Dockerfile that sets up a Python environment and installs necessary ML libraries (scikit-learn, pandas, etc.).",
+            "dependencies": [],
+            "details": "Create a Dockerfile based on a Python base image. Use pip to install scikit-learn, pandas, and other required ML libraries. Ensure the Dockerfile is optimized for size and security. Use a specific Python version.",
+            "status": "done",
+            "testStrategy": "Build the Docker image and verify that the Python environment and ML libraries are installed correctly by running a simple Python script within the container.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Implement Resource Limits using Docker Flags",
+            "description": "Configure resource limits (CPU, memory, execution time) for the Docker container using Docker's `--cpus`, `--memory`, and `--runtime` flags.",
+            "dependencies": [
+              1
+            ],
+            "details": "Implement resource limits using Docker's `--cpus`, `--memory`, and `--runtime` flags. Test different resource limits to find optimal values. Document the resource limits configuration. Use stress tests to verify limits.",
+            "status": "done",
+            "testStrategy": "Write unit tests to verify that the resource limits are enforced correctly. Monitor CPU and memory usage within the container to ensure they stay within the defined limits.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Disable Network Access for the Docker Container",
+            "description": "Disable network access for the Docker container using the `--network=none` flag to prevent unauthorized network communication.",
+            "dependencies": [
+              1
+            ],
+            "details": "Use the `--network=none` flag when running the Docker container to disable network access. Verify that no network interfaces are available within the container. Test network connectivity from within the container to confirm it's blocked. Document the network configuration.",
+            "status": "done",
+            "testStrategy": "Attempt to access the network from within the container and verify that the connection is blocked. Use network monitoring tools to confirm that no network traffic is being generated by the container.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 4,
+            "title": "Implement Code Transfer, Execution, and Result Retrieval",
+            "description": "Implement a mechanism to transfer code to the container, execute it, and retrieve the results securely and efficiently.",
+            "dependencies": [
+              1,
+              2,
+              3
+            ],
+            "details": "Implement a secure mechanism to transfer code to the container (e.g., using Docker volumes or `docker cp`). Execute the code within the container using a Python interpreter. Retrieve the results from the container and return them to the caller. Handle errors and exceptions gracefully. Use a secure communication channel.",
+            "status": "done",
+            "testStrategy": "Test the code transfer mechanism by transferring various types of code (e.g., simple scripts, ML models). Verify that the code executes correctly within the container and that the results are retrieved accurately. Test error handling and exception handling.",
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 8,
+        "recommendedSubtasks": 4,
+        "expansionPrompt": "Break down the task into subtasks for creating the Dockerfile, implementing resource limits, disabling network access, and implementing code transfer and execution."
+      },
+      {
+        "id": 3,
+        "title": "Implement LangGraph Workflow Engine",
+        "description": "Integrate LangGraph to orchestrate the multi-agent workflow. Define the workflow graph, manage state persistence, and implement error recovery mechanisms.",
+        "details": "1.  Define the LangGraph workflow graph with nodes representing agents and edges representing transitions.\n2.  Implement state management using PostgreSQL to persist the workflow state after each agent execution.\n3.  Implement error handling and retry mechanisms for agent failures.\n4.  Implement checkpointing to allow resuming workflows from the last known state.\n\nClassificationWorkflow class implemented, state management system with ClassificationState TypedDict, workflow graph structure defined with all agent nodes, state persistence and management utilities, and error handling and recovery mechanisms.",
+        "testStrategy": "1.  Write integration tests to verify the workflow executes correctly from start to finish.\n2.  Simulate agent failures and verify the error recovery mechanism works.\n3.  Test checkpointing and resuming workflows.",
+        "priority": "high",
+        "dependencies": [
+          "1"
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Define LangGraph Workflow Graph",
+            "description": "Define the structure of the LangGraph workflow, including nodes (agents) and edges (transitions).",
+            "dependencies": [],
+            "details": "Design the workflow graph using LangGraph's graph definition API. Specify the agents involved and the possible transitions between them based on conditions or outputs. Consider the overall flow of data and control.",
+            "status": "completed",
+            "testStrategy": null,
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Implement State Management with PostgreSQL",
+            "description": "Implement state persistence using PostgreSQL to track the workflow's progress.",
+            "dependencies": [
+              1
+            ],
+            "details": "Set up a PostgreSQL database to store the workflow state. Define the schema for storing agent outputs, current node, and other relevant state information. Implement functions to read and write the workflow state to the database after each agent execution.",
+            "status": "completed",
+            "testStrategy": "Write integration tests to verify that the workflow state is correctly persisted to PostgreSQL after each agent execution.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Implement Error Handling and Retry Mechanisms",
+            "description": "Implement error handling and retry mechanisms for agent failures within the LangGraph workflow.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Implement try-except blocks around agent executions to catch exceptions. Implement retry logic with exponential backoff for transient errors. Log error details for debugging purposes. Define maximum retry attempts.",
+            "status": "completed",
+            "testStrategy": "Simulate agent failures and verify the error recovery mechanism works as expected, including retries and logging.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 4,
+            "title": "Implement Checkpointing for Workflow Resumption",
+            "description": "Implement checkpointing to allow resuming workflows from the last known state.",
+            "dependencies": [
+              2,
+              3
+            ],
+            "details": "Implement a mechanism to periodically save the workflow state to PostgreSQL. Implement logic to load the workflow state from PostgreSQL and resume execution from the last checkpoint. Ensure data consistency during checkpointing.",
+            "status": "done",
+            "testStrategy": "Test checkpointing and resuming workflows from different points to ensure data consistency and correct execution flow.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 5,
+            "title": "Test LangGraph Workflow Integration",
+            "description": "Write integration tests to verify the entire LangGraph workflow functions correctly.",
+            "dependencies": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "details": "Write end-to-end integration tests to verify the workflow executes correctly from start to finish. Test different scenarios and edge cases. Verify data consistency and error handling.",
+            "status": "done",
+            "testStrategy": "Write integration tests to verify the workflow executes correctly from start to finish, including error handling and checkpointing.",
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 9,
+        "recommendedSubtasks": 5,
+        "expansionPrompt": "Divide the task into subtasks for defining the workflow graph, implementing state management, implementing error handling, implementing checkpointing, and testing the workflow."
+      },
+      {
+        "id": 4,
+        "title": "Develop Data Cleaning Agent",
+        "description": "Implement the Data Cleaning Agent to handle missing values, data type validation, and outlier detection. Include educational explanations for each cleaning step.",
+        "details": "1.  Implement missing value analysis using pandas.\n2.  Implement missing value imputation strategies (mean, median, mode, etc.).\n3.  Implement data type validation using pandas.\n4.  Implement outlier detection using IQR or Z-score methods.\n5.  Generate educational explanations for each cleaning step.\n\nBaseAgent abstract class implemented. EnhancedDataCleaningAgent class exists with proper structure and agent interfaces and dependencies defined.",
+        "testStrategy": "1.  Write unit tests to verify missing value handling, data type validation, and outlier detection.\n2.  Test the agent on various datasets with different types of missing values and outliers.",
+        "priority": "medium",
+        "dependencies": [
+          "2",
+          "3"
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement Missing Value Analysis",
+            "description": "Analyze missing values in the dataset using pandas to identify patterns and extent of missing data.",
+            "dependencies": [],
+            "details": "Use pandas functions like `isnull()`, `isna()`, and `info()` to identify and quantify missing values. Visualize missing data using heatmaps or bar plots.",
+            "status": "done",
+            "testStrategy": "Write unit tests to verify the correct identification and quantification of missing values in various datasets.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Implement Missing Value Imputation",
+            "description": "Implement different strategies for imputing missing values, including mean, median, mode, and constant value imputation.",
+            "dependencies": [
+              1
+            ],
+            "details": "Implement imputation strategies using pandas `fillna()` method. Allow users to select the imputation strategy. Handle different data types appropriately.",
+            "status": "done",
+            "testStrategy": "Write unit tests to verify the correct imputation of missing values using different strategies and data types.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Implement Data Type Validation",
+            "description": "Validate data types of columns using pandas to ensure they match the expected types.",
+            "dependencies": [],
+            "details": "Use pandas `dtype` attribute and `astype()` method to validate and convert data types. Implement checks for numeric, categorical, and date types.",
+            "status": "done",
+            "testStrategy": "Write unit tests to verify the correct validation and conversion of data types for different columns.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 4,
+            "title": "Implement Outlier Detection",
+            "description": "Implement outlier detection using IQR and Z-score methods to identify and flag outliers in the dataset.",
+            "dependencies": [],
+            "details": "Implement IQR and Z-score methods using pandas and numpy. Allow users to configure the thresholds for outlier detection. Provide options to remove or cap outliers.",
+            "status": "done",
+            "testStrategy": "Write unit tests to verify the correct identification of outliers using IQR and Z-score methods with different thresholds.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 5,
+            "title": "Generate Educational Explanations",
+            "description": "Generate educational explanations for each data cleaning step to provide context and understanding to the user.",
+            "dependencies": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "details": "Create Markdown explanations for each cleaning step, including the rationale, implementation details, and potential impact on the data. Integrate these explanations into the final report.",
+            "status": "done",
+            "testStrategy": "Manually review the generated explanations to ensure they are clear, accurate, and provide sufficient context for each cleaning step.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 6,
+            "title": "Implement Missing Value Analysis",
+            "description": "Implement missing value analysis using pandas to identify missing data patterns.",
+            "dependencies": [],
+            "details": "Use pandas functions like `isnull()`, `isna()`, and `info()` to analyze missing values. Visualize missing data using `missingno` library. Document findings in a report.",
+            "status": "done",
+            "testStrategy": "Write unit tests to verify the accuracy of missing value identification. Test on datasets with known missing value patterns.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 7,
+            "title": "Implement Missing Value Imputation Strategies",
+            "description": "Implement different missing value imputation strategies (mean, median, mode, etc.).",
+            "dependencies": [
+              6
+            ],
+            "details": "Implement mean, median, mode imputation using pandas `fillna()` method. Implement more advanced imputation techniques like KNN imputation using `sklearn.impute.KNNImputer`. Allow users to select imputation strategy.",
+            "status": "done",
+            "testStrategy": "Write unit tests to verify the correctness of each imputation strategy. Compare the performance of different strategies on various datasets.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 8,
+            "title": "Implement Data Type Validation",
+            "description": "Implement data type validation using pandas to ensure data consistency.",
+            "dependencies": [],
+            "details": "Use pandas `astype()` method to validate and convert data types. Implement checks for numeric, categorical, and date/time data types. Handle type conversion errors gracefully.",
+            "status": "done",
+            "testStrategy": "Write unit tests to verify the data type validation and conversion. Test on datasets with mixed data types and invalid values.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 9,
+            "title": "Implement Outlier Detection",
+            "description": "Implement outlier detection using IQR or Z-score methods.",
+            "dependencies": [],
+            "details": "Implement IQR and Z-score methods for outlier detection. Use pandas and numpy for calculations. Visualize outliers using box plots and scatter plots. Allow users to configure outlier detection parameters.",
+            "status": "done",
+            "testStrategy": "Write unit tests to verify the accuracy of outlier detection. Test on datasets with known outliers and compare the performance of different methods.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 10,
+            "title": "Generate Educational Explanations",
+            "description": "Generate educational explanations for each cleaning step.",
+            "dependencies": [
+              6,
+              7,
+              8,
+              9
+            ],
+            "details": "Generate Markdown explanations for each data cleaning step, including missing value analysis, imputation, data type validation, and outlier detection. Explain the rationale behind each step and the potential impact on the data.",
+            "status": "done",
+            "testStrategy": "Review the generated explanations for clarity and accuracy. Ensure the explanations are easy to understand for users with varying levels of technical expertise.",
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 7,
+        "recommendedSubtasks": 5,
+        "expansionPrompt": "Decompose the task into subtasks for missing value analysis, missing value imputation, data type validation, outlier detection, and generating educational explanations."
+      },
+      {
+        "id": 5,
+        "title": "Develop Model Builder Agent",
+        "description": "Implement the Model Builder Agent to train classification models while preventing data leakage. Enforce the use of sklearn.pipeline.Pipeline and train/test split before preprocessing.",
+        "details": "1.  Enforce the use of sklearn.pipeline.Pipeline.\n2.  Implement train/test split before any preprocessing steps.\n3.  Implement multiple classification algorithm options (Logistic Regression, Random Forest, etc.).\n4.  Implement hyperparameter optimization using GridSearchCV or RandomizedSearchCV.\n\nBaseAgent abstract class implemented. MLBuilderAgent class exists with proper structure and agent interfaces and dependencies defined.",
+        "testStrategy": "1.  Write unit tests to verify the use of sklearn.pipeline.Pipeline and train/test split before preprocessing.\n2.  Test the agent on various datasets and verify the model performance.",
+        "priority": "medium",
+        "dependencies": [
+          "4"
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Enforce sklearn.pipeline.Pipeline Usage",
+            "description": "Implement checks to ensure the use of sklearn.pipeline.Pipeline for all model building processes.",
+            "dependencies": [],
+            "details": "Implement a validation function that raises an exception if a pipeline is not used. This function should be called before model training.",
+            "status": "done",
+            "testStrategy": "Write unit tests to verify that the validation function correctly identifies non-pipeline models.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Implement Train/Test Split",
+            "description": "Implement train/test split functionality before any preprocessing steps are applied.",
+            "dependencies": [],
+            "details": "Use sklearn.model_selection.train_test_split to split the data. Ensure the split happens before any data cleaning or feature engineering.",
+            "status": "done",
+            "testStrategy": "Write unit tests to verify that the train/test split is performed correctly and that the test set is not used during training.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Implement Multiple Classification Algorithms",
+            "description": "Integrate multiple classification algorithms (Logistic Regression, Random Forest, etc.) as options for the agent.",
+            "dependencies": [],
+            "details": "Create a modular design to easily add or remove classification algorithms. Use a configuration file or similar to specify available algorithms.",
+            "status": "done",
+            "testStrategy": "Test each classification algorithm individually to ensure it integrates correctly and produces valid results.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 4,
+            "title": "Implement Hyperparameter Optimization",
+            "description": "Implement hyperparameter optimization using GridSearchCV or RandomizedSearchCV.",
+            "dependencies": [],
+            "details": "Use sklearn.model_selection.GridSearchCV or RandomizedSearchCV to find the best hyperparameters for each model. Define a hyperparameter search space for each algorithm.",
+            "status": "done",
+            "testStrategy": "Test the hyperparameter optimization process to ensure it converges to reasonable hyperparameter values and improves model performance.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 5,
+            "title": "Test Model Builder Agent",
+            "description": "Thoroughly test the Model Builder Agent to ensure it functions correctly and prevents data leakage.",
+            "dependencies": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "details": "Run the agent on various datasets and verify the model performance. Check for data leakage by comparing performance on train and test sets. Verify the use of pipelines.",
+            "status": "done",
+            "testStrategy": "Use a combination of unit tests and integration tests to verify the agent's functionality and prevent data leakage. Monitor performance metrics.",
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 8,
+        "recommendedSubtasks": 5,
+        "expansionPrompt": "Break down the task into subtasks for enforcing the use of sklearn.pipeline.Pipeline, implementing train/test split, implementing multiple classification algorithm options, implementing hyperparameter optimization, and testing the agent."
+      },
+      {
+        "id": 6,
+        "title": "Develop Model Evaluation Agent",
+        "description": "Implement the Model Evaluation Agent to calculate and report model performance metrics (accuracy, F1, precision, recall, ROC-AUC). Generate confusion matrix and ROC curve visualizations.",
+        "details": "1.  Calculate accuracy, F1, precision, recall, and ROC-AUC.\n2.  Generate confusion matrix.\n3.  Generate ROC curve plot.\n4.  Provide performance interpretation.\n\nBaseAgent abstract class implemented. ModelEvaluationAgent class exists with proper structure and agent interfaces and dependencies defined.",
+        "testStrategy": "1.  Write unit tests to verify the calculation of performance metrics and the generation of visualizations.\n2.  Test the agent on various datasets and verify the performance metrics are accurate.",
+        "priority": "medium",
+        "dependencies": [
+          "5"
+        ],
+        "status": "in-progress",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Calculate Performance Metrics",
+            "description": "Calculate accuracy, F1 score, precision, recall, and ROC-AUC using the model's predictions and ground truth labels.",
+            "dependencies": [
+              5
+            ],
+            "details": "Implement functions to calculate accuracy, F1 score, precision, recall, and ROC-AUC. Use sklearn.metrics for efficient calculation. Ensure correct handling of edge cases.",
+            "status": "pending",
+            "testStrategy": "Write unit tests to verify the correctness of each metric calculation. Compare results with known values for sample datasets.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Generate Confusion Matrix",
+            "description": "Generate a confusion matrix to visualize the performance of the classification model.",
+            "dependencies": [
+              5
+            ],
+            "details": "Use sklearn.metrics.confusion_matrix to generate the confusion matrix. Visualize the matrix using matplotlib or seaborn for better interpretability. Include labels for each cell.",
+            "status": "pending",
+            "testStrategy": "Verify the generated confusion matrix matches the expected values for a given set of predictions and labels. Check the matrix dimensions and label correctness.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Generate ROC Curve Plot",
+            "description": "Generate an ROC curve plot to visualize the trade-off between true positive rate and false positive rate.",
+            "dependencies": [
+              5
+            ],
+            "details": "Use sklearn.metrics.roc_curve to calculate the ROC curve. Plot the curve using matplotlib. Include the AUC (Area Under the Curve) value in the plot title. Ensure proper axis labeling.",
+            "status": "pending",
+            "testStrategy": "Visually inspect the generated ROC curve to ensure it matches the expected shape for the model's performance. Verify the AUC value is consistent with the model's performance.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 4,
+            "title": "Provide Performance Interpretation",
+            "description": "Interpret the calculated performance metrics, confusion matrix, and ROC curve to provide insights into the model's strengths and weaknesses.",
+            "dependencies": [
+              1,
+              2,
+              3
+            ],
+            "details": "Analyze the calculated metrics and visualizations to identify areas where the model performs well and areas where it struggles. Provide a written summary of the model's performance, including potential reasons for its behavior.",
+            "status": "pending",
+            "testStrategy": null,
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 6,
+        "recommendedSubtasks": 4,
+        "expansionPrompt": "Divide the task into subtasks for calculating performance metrics, generating the confusion matrix, generating the ROC curve plot, and providing performance interpretation."
+      },
+      {
+        "id": 7,
+        "title": "Develop Technical Reporter Agent",
+        "description": "Implement the Technical Reporter Agent to generate a comprehensive Jupyter notebook and technical report. Include code compilation, educational content, and usage instructions.",
+        "details": "1.  Compile and organize code from all agents.\n2.  Generate educational content explaining the ML pipeline.\n3.  Generate Markdown explanations for each step.\n4.  Include usage instructions for the generated model and notebook.\n\nBaseAgent abstract class implemented. TechnicalReporterAgent class exists with proper structure and agent interfaces and dependencies defined.",
+        "testStrategy": "1.  Verify the generated Jupyter notebook is executable and contains all the necessary code and explanations.\n2.  Verify the generated technical report is comprehensive and accurate.",
+        "priority": "medium",
+        "dependencies": [
+          "6"
+        ],
+        "status": "in-progress",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Compile and Organize Code",
+            "description": "Compile and organize code from all agents into a structured format for the technical report.",
+            "dependencies": [],
+            "details": "Gather code snippets from Data Cleaning Agent, Model Builder Agent, and Model Evaluation Agent. Organize into logical sections within the Jupyter notebook.",
+            "status": "done",
+            "testStrategy": "Verify that all code snippets are present and executable in the generated notebook.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Generate Educational Content",
+            "description": "Generate educational content explaining the ML pipeline and key concepts.",
+            "dependencies": [],
+            "details": "Create Markdown sections explaining data cleaning, model building, and evaluation. Include explanations of algorithms and techniques used.",
+            "status": "done",
+            "testStrategy": "Review the generated content for accuracy and clarity. Ensure it covers all key concepts.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Generate Markdown Explanations",
+            "description": "Generate Markdown explanations for each step in the ML pipeline.",
+            "dependencies": [],
+            "details": "Create Markdown cells in the Jupyter notebook to explain each code block and its purpose. Focus on clarity and conciseness.",
+            "status": "done",
+            "testStrategy": "Verify that each code block has a corresponding Markdown explanation and that the explanations are accurate.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 4,
+            "title": "Include Usage Instructions",
+            "description": "Include usage instructions for the generated model and Jupyter notebook.",
+            "dependencies": [],
+            "details": "Add a section on how to load the trained model, make predictions, and run the Jupyter notebook. Include example code snippets.",
+            "status": "done",
+            "testStrategy": "Verify that the usage instructions are clear and easy to follow. Test the instructions to ensure they work correctly.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 5,
+            "title": "Test Generated Report",
+            "description": "Test the generated Jupyter notebook and technical report for completeness and accuracy.",
+            "dependencies": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "details": "Run the Jupyter notebook from start to finish to ensure it executes without errors. Review the technical report for completeness and accuracy.",
+            "status": "done",
+            "testStrategy": "Execute the notebook and verify all cells run successfully. Manually review the report for any errors or omissions.",
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 7,
+        "recommendedSubtasks": 5,
+        "expansionPrompt": "Decompose the task into subtasks for compiling code, generating educational content, generating Markdown explanations, including usage instructions, and testing the generated report."
+      },
+      {
+        "id": 8,
+        "title": "Develop Basic Frontend with File Upload and Progress Display",
+        "description": "Implement a basic frontend using Next.js and React. Include a file upload component, a progress tracker, and a results download interface.",
+        "status": "in-progress",
+        "dependencies": [],
+        "priority": "high",
+        "details": "1.  Set up a Next.js project with React.\n2.  Implement a file upload component using `react-dropzone`.\n3.  Implement a progress tracker to display the workflow progress in real-time.\n4.  Implement a results download interface to allow users to download the generated deliverables.\n\nNext.js project set up with proper structure, main page with file upload, progress tracking, results viewing, WebSocket integration for real-time updates, component structure for AgentStatus, ProgressTracker, ResultsViewer, PlotViewer and RealtimeInsights components.",
+        "testStrategy": "1.  Verify the file upload component works correctly.\n2.  Verify the progress tracker displays the workflow progress in real-time.\n3.  Verify the results download interface allows users to download the generated deliverables.",
+        "subtasks": [
+          {
+            "id": 5,
+            "title": "Verify Backend Setup",
+            "description": "Check if the current backend is set up correctly and supports the current frontend progress.",
+            "dependencies": [],
+            "details": "Ensure the backend is running and accessible. Verify that the necessary APIs are available and functioning correctly. Check for any compatibility issues between the frontend and backend.",
+            "status": "in-progress",
+            "testStrategy": "Send test requests to the backend and verify the responses. Check the backend logs for any errors."
+          },
+          {
+            "id": 1,
+            "title": "Set up Next.js project",
+            "description": "Initialize a new Next.js project with React and configure basic project structure.",
+            "dependencies": [],
+            "details": "Use `create-next-app` to set up the project. Configure basic routing and styling. Ensure the project runs without errors.",
+            "status": "completed",
+            "testStrategy": "Verify the Next.js application starts successfully and displays the default page.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Implement file upload component",
+            "description": "Create a file upload component using `react-dropzone` to allow users to upload files.",
+            "dependencies": [
+              1
+            ],
+            "details": "Integrate `react-dropzone` for drag-and-drop file uploads. Implement file validation and display uploaded file names. Handle file upload errors gracefully.",
+            "status": "done",
+            "testStrategy": "Test the file upload component with different file types and sizes. Verify file validation and error handling.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Implement progress tracker",
+            "description": "Develop a progress tracker to display the workflow progress in real-time.",
+            "dependencies": [
+              2
+            ],
+            "details": "Implement a progress bar or similar UI element. Use websockets or server-sent events to update the progress in real-time. Display informative messages about the current workflow stage.",
+            "status": "done",
+            "testStrategy": "Simulate different workflow stages and verify the progress tracker updates correctly in real-time. Test with varying network conditions.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 4,
+            "title": "Implement results download interface",
+            "description": "Create an interface to allow users to download the generated deliverables.",
+            "dependencies": [
+              3
+            ],
+            "details": "Provide a download button or link for each generated deliverable. Implement error handling for download failures. Ensure downloaded files are correctly formatted.",
+            "status": "done",
+            "testStrategy": "Verify the download interface allows users to download the generated deliverables. Test with different file types and sizes. Verify error handling for download failures.",
+            "parentId": "undefined"
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "Implement Human-in-the-Loop Approval Gates",
+        "description": "Implement approval gates at key decision points in the workflow. Allow users to approve, modify, or reject proposals with educational explanations.",
+        "details": "1.  Define key decision points in the workflow where user approval is required.\n2.  Implement a UI for users to approve, modify, or reject proposals.\n3.  Provide educational explanations for each proposal.\n4.  Implement logic to pause the workflow and wait for user input.",
+        "testStrategy": "1.  Verify the approval gates are triggered at the correct decision points.\n2.  Verify users can approve, modify, or reject proposals.\n3.  Verify the workflow resumes correctly after user input.",
+        "priority": "medium",
+        "dependencies": [
+          "3",
+          "8"
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Define Key Decision Points",
+            "description": "Identify and document the specific points in the workflow where human approval is required.",
+            "dependencies": [],
+            "details": "Analyze the existing workflow and determine the optimal points for incorporating approval gates. Document these points with clear descriptions.",
+            "status": "pending",
+            "testStrategy": null,
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Implement Approval UI",
+            "description": "Develop a user interface for approving, modifying, or rejecting proposals.",
+            "dependencies": [],
+            "details": "Create a UI with options to approve, modify, or reject proposals. Include fields for comments and justifications. Integrate with the backend.",
+            "status": "pending",
+            "testStrategy": "Verify UI elements are functional and data is correctly transmitted to the backend.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Provide Educational Explanations",
+            "description": "Implement a system to provide educational explanations for each proposal presented to the user.",
+            "dependencies": [],
+            "details": "Develop a mechanism to fetch and display relevant educational information for each proposal. This could involve integrating with a knowledge base or generating explanations dynamically.",
+            "status": "pending",
+            "testStrategy": "Verify that the correct educational explanations are displayed for each proposal type.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 4,
+            "title": "Implement Workflow Pausing Logic",
+            "description": "Implement the logic to pause the workflow and wait for user input at the approval gates.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Modify the workflow engine to pause execution when an approval gate is reached. Store the workflow state and wait for user input before resuming.",
+            "status": "pending",
+            "testStrategy": "Test that the workflow pauses correctly at the approval gates and resumes after user input.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 5,
+            "title": "Test Approval Gates",
+            "description": "Thoroughly test the implemented approval gates to ensure they function correctly.",
+            "dependencies": [
+              3,
+              4
+            ],
+            "details": "Create test cases to verify that the approval gates are triggered at the correct decision points, users can approve/modify/reject proposals, and the workflow resumes correctly after user input.",
+            "status": "pending",
+            "testStrategy": "Execute test cases and verify expected behavior. Include edge cases and error handling scenarios.",
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 8,
+        "recommendedSubtasks": 5,
+        "expansionPrompt": "Divide the task into subtasks for defining decision points, implementing the UI for approval, providing educational explanations, implementing workflow pausing logic, and testing the approval gates."
+      },
+      {
+        "id": 10,
+        "title": "Integrate Gemini API for LLM functionality",
+        "description": "Integrate the Gemini API for code generation and educational content creation. Securely store and manage the API key.",
+        "details": "1.  Implement API key input in the frontend.\n2.  Securely store the API key in the backend (encryption).\n3.  Use the Gemini API for code generation in the agents.\n4.  Use the Gemini API for educational content creation in the Technical Reporter Agent.",
+        "testStrategy": "1.  Verify the Gemini API is called correctly for code generation and educational content creation.\n2.  Verify the API key is securely stored in the backend.",
+        "priority": "medium",
+        "dependencies": [
+          "1",
+          "7",
+          "8"
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement API Key Input in Frontend",
+            "description": "Create a user interface element in the frontend for users to input their Gemini API key.",
+            "dependencies": [],
+            "details": "Develop a text field in the settings page where users can enter their Gemini API key. Implement validation to ensure the key is in the correct format. Store the key temporarily in the frontend state.",
+            "status": "pending",
+            "testStrategy": "Verify the API key input field is present and accepts valid API keys. Check for basic format validation.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Securely Store API Key in Backend",
+            "description": "Encrypt and securely store the Gemini API key in the backend database.",
+            "dependencies": [
+              1
+            ],
+            "details": "Implement encryption for the API key before storing it in the PostgreSQL database. Use a secure encryption algorithm and manage encryption keys properly. Ensure the key is only accessible to authorized services.",
+            "status": "pending",
+            "testStrategy": "Verify the API key is encrypted in the database. Ensure only authorized services can access the decrypted key.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Integrate Gemini API",
+            "parentId": "undefined"
+          }
+        ],
+        "complexity": 7,
+        "recommendedSubtasks": 5,
+        "expansionPrompt": "Decompose the task into subtasks for implementing API key input, securely storing the API key, using the Gemini API for code generation, using the Gemini API for educational content creation, and testing the integration."
+      },
+      {
+        "id": 11,
+        "title": "Enhance Data Discovery Agent",
+        "description": "Improve the Data Discovery Agent with advanced data profiling, automatic data type detection, and intelligent feature recommendations.",
+        "details": "1.  Implement comprehensive data profiling including statistical summaries, data quality metrics, and pattern detection.\n2.  Add automatic data type detection and validation.\n3.  Implement intelligent feature recommendations based on data characteristics.\n4.  Add data visualization capabilities for better understanding.\n5.  Integrate with the enhanced data cleaning agent for seamless workflow.",
+        "testStrategy": "1.  Test data profiling on various dataset types and sizes.\n2.  Verify automatic data type detection accuracy.\n3.  Test feature recommendation quality and relevance.\n4.  Validate data visualization outputs.",
+        "priority": "medium",
+        "dependencies": [
+          "4"
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement Comprehensive Data Profiling",
+            "description": "Add advanced data profiling capabilities including statistical summaries, data quality metrics, and pattern detection.",
+            "dependencies": [],
+            "details": "Implement functions to generate comprehensive statistical summaries, detect data patterns, identify data quality issues, and provide data distribution analysis. Include support for both numerical and categorical data.",
+            "status": "pending",
+            "testStrategy": "Test profiling on datasets with various characteristics and verify accuracy of statistical summaries and pattern detection.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Add Automatic Data Type Detection",
+            "description": "Implement intelligent data type detection and validation for all columns in the dataset.",
+            "dependencies": [],
+            "details": "Create algorithms to automatically detect data types (numeric, categorical, datetime, text) based on data patterns and content. Provide confidence scores for each detection and allow manual override.",
+            "status": "pending",
+            "testStrategy": "Test detection accuracy on datasets with mixed data types and edge cases. Verify confidence scores are meaningful.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Implement Feature Recommendations",
+            "description": "Add intelligent feature recommendations based on data characteristics and target variable analysis.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Analyze data characteristics to recommend relevant features for machine learning, suggest feature engineering opportunities, and identify potential issues or improvements.",
+            "status": "pending",
+            "testStrategy": "Test recommendations on various datasets and verify their relevance and usefulness for machine learning tasks.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 4,
+            "title": "Add Data Visualization Capabilities",
+            "description": "Implement data visualization features to help users understand their data better.",
+            "dependencies": [
+              1
+            ],
+            "details": "Create visualizations for data distributions, correlations, missing value patterns, and other data characteristics. Generate plots that can be displayed in the frontend.",
+            "status": "pending",
+            "testStrategy": "Verify visualizations are accurate and informative. Test with different data types and sizes.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 5,
+            "title": "Integrate with Enhanced Data Cleaning Agent",
+            "description": "Ensure seamless integration with the enhanced data cleaning agent for a smooth workflow.",
+            "dependencies": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "details": "Modify the data discovery agent to work seamlessly with the enhanced data cleaning agent, sharing data and insights between the two agents.",
+            "status": "pending",
+            "testStrategy": "Test the integration between the two agents and verify data and insights are properly shared.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 6,
+            "title": "Implement Comprehensive Data Profiling",
+            "description": "Implement data profiling to generate statistical summaries, data quality metrics, and pattern detection.",
+            "dependencies": [],
+            "details": "Develop functions to calculate descriptive statistics (mean, median, std), identify missing values, detect outliers, and recognize data patterns. Use pandas and other libraries.",
+            "status": "pending",
+            "testStrategy": "Test data profiling on various dataset types and sizes to ensure accuracy and completeness.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 7,
+            "title": "Add Automatic Data Type Detection and Validation",
+            "description": "Implement automatic data type detection and validation to ensure data integrity.",
+            "dependencies": [],
+            "details": "Develop algorithms to automatically detect data types (numeric, categorical, datetime, etc.) and validate data against expected types. Use type hints and schema validation.",
+            "status": "pending",
+            "testStrategy": "Verify automatic data type detection accuracy on different datasets with mixed data types.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 8,
+            "title": "Implement Intelligent Feature Recommendations",
+            "description": "Implement intelligent feature recommendations based on data characteristics.",
+            "dependencies": [],
+            "details": "Develop algorithms to recommend relevant features based on data characteristics (e.g., correlation, entropy). Use machine learning techniques for feature selection.",
+            "status": "pending",
+            "testStrategy": "Test feature recommendation quality and relevance using different datasets and evaluation metrics.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 9,
+            "title": "Add Data Visualization Capabilities",
+            "description": "Add data visualization capabilities for better data understanding.",
+            "dependencies": [],
+            "details": "Integrate data visualization libraries (e.g., Matplotlib, Seaborn, Plotly) to create interactive visualizations of data profiles and feature distributions.",
+            "status": "pending",
+            "testStrategy": "Validate data visualization outputs for accuracy and clarity across different chart types.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 10,
+            "title": "Integrate with Enhanced Data Cleaning Agent",
+            "description": "Integrate the Data Discovery Agent with the enhanced Data Cleaning Agent.",
+            "dependencies": [],
+            "details": "Implement seamless workflow integration with the enhanced data cleaning agent to facilitate data cleaning based on discovery results. Pass data and metadata.",
+            "status": "pending",
+            "testStrategy": "Test the integrated workflow to ensure seamless data transfer and cleaning based on discovery results.",
+            "parentId": "undefined"
+          }
+        ]
+      },
+      {
+        "id": 12,
+        "title": "Enhance EDA Agent",
+        "description": "Improve the EDA Agent with advanced statistical analysis, interactive visualizations, and automated insights generation.",
+        "details": "1.  Implement advanced statistical analysis including correlation analysis, distribution analysis, and hypothesis testing.\n2.  Add interactive visualization capabilities with plotly and other advanced plotting libraries.\n3.  Implement automated insights generation using LLM integration.\n4.  Add support for different data types and analysis techniques.\n5.  Integrate with the enhanced data discovery and cleaning agents.",
+        "testStrategy": "1.  Test statistical analysis accuracy on various datasets.\n2.  Verify interactive visualizations work correctly in the frontend.\n3.  Test automated insights generation quality and relevance.\n4.  Validate integration with other agents.",
+        "priority": "medium",
+        "dependencies": [
+          "4",
+          "11"
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement Advanced Statistical Analysis",
+            "description": "Add comprehensive statistical analysis capabilities including correlation analysis, distribution analysis, and hypothesis testing.",
+            "dependencies": [],
+            "details": "Implement functions for correlation analysis, distribution fitting, hypothesis testing, and other advanced statistical techniques. Support both parametric and non-parametric tests.",
+            "status": "pending",
+            "testStrategy": "Test statistical analysis on various datasets and verify accuracy of results. Compare with known statistical software outputs.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Add Interactive Visualization Capabilities",
+            "description": "Implement interactive visualizations using plotly and other advanced plotting libraries.",
+            "dependencies": [],
+            "details": "Create interactive plots for data exploration, including scatter plots, histograms, box plots, and heatmaps. Ensure plots are responsive and can be displayed in the frontend.",
+            "status": "pending",
+            "testStrategy": "Test interactive visualizations in the frontend and verify they work correctly. Test with different data types and sizes.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Implement Automated Insights Generation",
+            "description": "Add automated insights generation using LLM integration to provide intelligent analysis and recommendations.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Use LLM to analyze statistical results and visualizations to generate intelligent insights, identify patterns, and provide recommendations for further analysis or data preprocessing.",
+            "status": "pending",
+            "testStrategy": "Test insights generation on various datasets and verify quality and relevance of generated insights.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 4,
+            "title": "Add Support for Different Data Types",
+            "description": "Implement analysis techniques and visualizations for different data types (numerical, categorical, datetime, text).",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Create specialized analysis techniques and visualizations for different data types. Ensure appropriate statistical tests and visualizations are used for each data type.",
+            "status": "pending",
+            "testStrategy": "Test analysis and visualizations on datasets with different data types and verify appropriateness of techniques used.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 5,
+            "title": "Integrate with Enhanced Data Discovery and Cleaning Agents",
+            "description": "Ensure seamless integration with the enhanced data discovery and cleaning agents for a comprehensive data analysis workflow.",
+            "dependencies": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "details": "Modify the EDA agent to work seamlessly with the enhanced data discovery and cleaning agents, sharing data, insights, and analysis results between the agents.",
+            "status": "pending",
+            "testStrategy": "Test the integration between all three agents and verify data, insights, and analysis results are properly shared and utilized.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 6,
+            "title": "Implement Advanced Statistical Analysis",
+            "description": "Implement correlation, distribution, and hypothesis testing within the EDA Agent.",
+            "dependencies": [],
+            "details": "Utilize libraries like SciPy and Statsmodels to perform statistical analysis. Implement functions for correlation matrices, distribution plots, and hypothesis tests. Ensure proper handling of different data types.",
+            "status": "pending",
+            "testStrategy": "Test statistical analysis accuracy on various datasets using known statistical properties.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 7,
+            "title": "Add Interactive Visualization Capabilities",
+            "description": "Integrate Plotly and other libraries for interactive data visualization.",
+            "dependencies": [],
+            "details": "Incorporate Plotly, Bokeh, or similar libraries to create interactive charts and graphs. Allow users to zoom, pan, and explore data points. Ensure visualizations are responsive and render correctly in the frontend.",
+            "status": "pending",
+            "testStrategy": "Verify interactive visualizations work correctly in the frontend and are responsive to user interactions.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 8,
+            "title": "Implement Automated Insights Generation",
+            "description": "Integrate LLM to automatically generate insights from EDA results.",
+            "dependencies": [],
+            "details": "Connect the EDA agent to a Large Language Model (LLM) to generate human-readable insights based on the statistical analysis and visualizations. Fine-tune the LLM for EDA-specific language and context. Ensure insights are relevant and accurate.",
+            "status": "pending",
+            "testStrategy": "Test automated insights generation quality and relevance using a diverse set of datasets and evaluation metrics.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 9,
+            "title": "Add Support for Diverse Data Types",
+            "description": "Extend the EDA Agent to handle different data types and analysis techniques.",
+            "dependencies": [],
+            "details": "Implement support for numerical, categorical, text, and time-series data. Adapt analysis techniques based on data type. Implement data validation and error handling for unsupported data types.",
+            "status": "pending",
+            "testStrategy": "Test the agent with various data types to ensure proper handling and analysis.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 10,
+            "title": "Integrate with Enhanced Data Agents",
+            "description": "Integrate the EDA Agent with the enhanced Data Discovery and Cleaning Agents.",
+            "dependencies": [
+              11
+            ],
+            "details": "Establish communication channels with the Data Discovery and Cleaning Agents. Receive processed data from these agents and seamlessly integrate it into the EDA workflow. Handle potential data format differences and errors.",
+            "status": "pending",
+            "testStrategy": "Validate integration with other agents by testing end-to-end workflows and data consistency.",
+            "parentId": "undefined"
+          }
+        ]
+      }
+    ],
+    "metadata": {
+      "version": "1.0.0",
+      "lastModified": "2025-10-14T05:16:10.902Z",
+      "taskCount": 12,
+      "completedCount": 5,
+      "tags": [
+        "master"
+      ],
+      "created": "2025-10-14T05:16:30.025Z",
+      "description": "Tasks for master context",
+      "updated": "2025-10-14T05:23:47.348Z"
+    }
+  }
+}

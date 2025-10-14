@@ -1,0 +1,93 @@
+{
+	"meta": {
+		"generatedAt": "2025-10-13T22:47:35.153Z",
+		"tasksAnalyzed": 10,
+		"totalTasks": 10,
+		"analysisCount": 10,
+		"thresholdScore": 5,
+		"projectName": "Taskmaster",
+		"usedResearch": true
+	},
+	"complexityAnalysis": [
+		{
+			"taskId": 1,
+			"taskTitle": "Set up FastAPI backend with PostgreSQL and Redis",
+			"complexityScore": 7,
+			"recommendedSubtasks": 4,
+			"expansionPrompt": "Decompose the task into subtasks for setting up FastAPI, configuring PostgreSQL, configuring Redis, and defining API endpoints.",
+			"reasoning": "This task involves setting up a complex backend infrastructure with multiple technologies. It requires knowledge of FastAPI, PostgreSQL, and Redis, as well as experience with database configuration, API design, and deployment. Error handling and logging also add to the complexity."
+		},
+		{
+			"taskId": 2,
+			"taskTitle": "Implement Secure Code Execution Sandbox using Docker",
+			"complexityScore": 8,
+			"recommendedSubtasks": 4,
+			"expansionPrompt": "Break down the task into subtasks for creating the Dockerfile, implementing resource limits, disabling network access, and implementing code transfer and execution.",
+			"reasoning": "This task requires a deep understanding of Docker and containerization. Implementing resource limits and restricting network access requires careful configuration and testing. The code transfer and execution mechanism also adds complexity."
+		},
+		{
+			"taskId": 3,
+			"taskTitle": "Implement LangGraph Workflow Engine",
+			"complexityScore": 9,
+			"recommendedSubtasks": 5,
+			"expansionPrompt": "Divide the task into subtasks for defining the workflow graph, implementing state management, implementing error handling, implementing checkpointing, and testing the workflow.",
+			"reasoning": "This task involves integrating a complex workflow engine (LangGraph) and requires a good understanding of its concepts and APIs. Implementing state management, error handling, and checkpointing adds significant complexity. The dependencies on other tasks also increase the overall difficulty."
+		},
+		{
+			"taskId": 4,
+			"taskTitle": "Develop Data Cleaning Agent",
+			"complexityScore": 7,
+			"recommendedSubtasks": 5,
+			"expansionPrompt": "Decompose the task into subtasks for missing value analysis, missing value imputation, data type validation, outlier detection, and generating educational explanations.",
+			"reasoning": "This task requires knowledge of data cleaning techniques and libraries like pandas. Implementing different imputation strategies, outlier detection methods, and generating educational explanations adds to the complexity. The dependencies on the sandbox and workflow engine also increase the difficulty."
+		},
+		{
+			"taskId": 5,
+			"taskTitle": "Develop Model Builder Agent",
+			"complexityScore": 8,
+			"recommendedSubtasks": 5,
+			"expansionPrompt": "Break down the task into subtasks for enforcing the use of sklearn.pipeline.Pipeline, implementing train/test split, implementing multiple classification algorithm options, implementing hyperparameter optimization, and testing the agent.",
+			"reasoning": "This task requires a strong understanding of machine learning concepts and best practices, such as preventing data leakage. Enforcing the use of pipelines and implementing hyperparameter optimization adds significant complexity. The dependency on the Data Cleaning Agent also increases the difficulty."
+		},
+		{
+			"taskId": 6,
+			"taskTitle": "Develop Model Evaluation Agent",
+			"complexityScore": 6,
+			"recommendedSubtasks": 4,
+			"expansionPrompt": "Divide the task into subtasks for calculating performance metrics, generating the confusion matrix, generating the ROC curve plot, and providing performance interpretation.",
+			"reasoning": "This task requires knowledge of model evaluation metrics and visualization techniques. Calculating the metrics and generating the visualizations adds complexity. The dependency on the Model Builder Agent also increases the difficulty."
+		},
+		{
+			"taskId": 7,
+			"taskTitle": "Develop Technical Reporter Agent",
+			"complexityScore": 7,
+			"recommendedSubtasks": 5,
+			"expansionPrompt": "Decompose the task into subtasks for compiling code, generating educational content, generating Markdown explanations, including usage instructions, and testing the generated report.",
+			"reasoning": "This task involves compiling code from multiple agents and generating a comprehensive report. Generating educational content and usage instructions adds to the complexity. The dependency on the Model Evaluation Agent also increases the difficulty."
+		},
+		{
+			"taskId": 8,
+			"taskTitle": "Develop Basic Frontend with File Upload and Progress Display",
+			"complexityScore": 6,
+			"recommendedSubtasks": 4,
+			"expansionPrompt": "Break down the task into subtasks for setting up the Next.js project, implementing the file upload component, implementing the progress tracker, and implementing the results download interface.",
+			"reasoning": "This task involves developing a basic frontend with file upload and progress display functionality. While the technologies are relatively standard, implementing the progress tracker in real-time adds some complexity."
+		},
+		{
+			"taskId": 9,
+			"taskTitle": "Implement Human-in-the-Loop Approval Gates",
+			"complexityScore": 8,
+			"recommendedSubtasks": 5,
+			"expansionPrompt": "Divide the task into subtasks for defining decision points, implementing the UI for approval, providing educational explanations, implementing workflow pausing logic, and testing the approval gates.",
+			"reasoning": "This task requires integrating the frontend with the backend workflow and implementing logic to pause and resume the workflow based on user input. Providing educational explanations and handling different user actions adds to the complexity. The dependencies on the workflow engine and frontend also increase the difficulty."
+		},
+		{
+			"taskId": 10,
+			"taskTitle": "Integrate Gemini API for LLM functionality",
+			"complexityScore": 7,
+			"recommendedSubtasks": 5,
+			"expansionPrompt": "Decompose the task into subtasks for implementing API key input, securely storing the API key, using the Gemini API for code generation, using the Gemini API for educational content creation, and testing the integration.",
+			"reasoning": "This task involves integrating with an external API (Gemini) and securely storing the API key. Using the API for both code generation and educational content creation adds to the complexity. The dependencies on the backend, frontend, and Technical Reporter Agent also increase the difficulty."
+		}
+	]
+}

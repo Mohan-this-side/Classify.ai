@@ -122,6 +122,43 @@ services:
     depends_on:
       - backend
 
+  # ML Code Execution Sandbox
+  ml-sandbox:
+    build:
+      context: ../backend
+      dockerfile: ../docker/Dockerfile.sandbox
+    container_name: ds-capstone-ml-sandbox
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'  # Increased for ML workloads
+          memory: 2G   # Increased for ML workloads
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    # GPU support (uncomment if GPU is available)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    network_mode: none
+    volumes:
+      - sandbox_code:/app/code
+      - sandbox_results:/app/results
+      - sandbox_data:/app/data  # For storing datasets
+    command: ["/app/entrypoint.sh"]
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=sandbox-seccomp.json
+    read_only: true
+    tmpfs:
+      - /tmp:size=256M,exec,nodev,nosuid  # Increased for ML operations
+    stop_grace_period: 30s
+    restart: "no"
+
   # Nginx Reverse Proxy (Optional)
   nginx:
     image: nginx:alpine
@@ -141,6 +178,9 @@ volumes:
   redis_data:
   uploads_data:
   temp_data:
+  sandbox_code:
+  sandbox_results:
+  sandbox_data:
 
 networks:
   default:

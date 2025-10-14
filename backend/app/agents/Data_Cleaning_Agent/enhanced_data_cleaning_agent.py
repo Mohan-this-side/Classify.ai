@@ -17,9 +17,14 @@ from sklearn.ensemble import IsolationForest
 import warnings
 warnings.filterwarnings('ignore')
 
-from .base_agent import BaseAgent, AgentResult
-from ..workflows.state_management import ClassificationState, AgentStatus, state_manager
-from ..config import settings
+from ..base_agent import BaseAgent, AgentResult
+from .missing_value_analyzer import MissingValueAnalyzer
+from .data_type_validator import DataTypeValidator
+from .outlier_detector import OutlierDetector
+from .missing_value_imputer import MissingValueImputer
+from .educational_explainer import EducationalExplainer
+from ...workflows.state_management import ClassificationState, AgentStatus, state_manager
+from ...config import settings
 
 class EnhancedDataCleaningAgent(BaseAgent):
     """
@@ -39,6 +44,13 @@ class EnhancedDataCleaningAgent(BaseAgent):
     def __init__(self):
         super().__init__("enhanced_data_cleaning", "2.0.0")
         self.logger = logging.getLogger("agent.enhanced_data_cleaning")
+        
+        # Initialize analyzers
+        self.missing_analyzer = MissingValueAnalyzer()
+        self.type_validator = DataTypeValidator()
+        self.outlier_detector = OutlierDetector()
+        self.missing_imputer = MissingValueImputer()
+        self.educational_explainer = EducationalExplainer()
         
         # Data quality patterns for detection
         self.outlier_threshold = 3.0  # Z-score threshold for outliers
@@ -130,7 +142,24 @@ class EnhancedDataCleaningAgent(BaseAgent):
         self.logger.info(f"Columns: {list(cleaned_dataset.columns)}")
         self.logger.info(f"Data types: {dict(cleaned_dataset.dtypes)}")
         
-        # 2. Structural error detection and correction
+        # 2. Comprehensive missing value analysis
+        missing_analysis = await self._comprehensive_missing_analysis(cleaned_dataset, state.get("target_column"))
+        cleaning_actions.append(f"Performed comprehensive missing value analysis: {missing_analysis['missing_statistics']['total_missing']} missing values found")
+        
+        # 3. Comprehensive data type validation
+        type_validation = await self._comprehensive_type_validation(cleaned_dataset, state.get("target_column"))
+        cleaning_actions.append(f"Performed comprehensive data type validation: {type_validation['quality_assessment']['columns_with_issues']} columns with issues found")
+        
+        # 4. Comprehensive outlier detection
+        outlier_detection = await self._comprehensive_outlier_detection(cleaned_dataset, state.get("target_column"))
+        cleaning_actions.append(f"Performed comprehensive outlier detection: {outlier_detection['outlier_summary']['total_outliers_detected']} outliers detected")
+        
+        # 5. Comprehensive missing value imputation
+        imputation_results = await self._comprehensive_missing_imputation(cleaned_dataset, state.get("target_column"))
+        cleaned_dataset = imputation_results['imputed_df']  # Update the dataset
+        cleaning_actions.append(f"Performed comprehensive missing value imputation: {imputation_results['imputation_details']['imputation_stats']['total_values_imputed']} values imputed using {imputation_results['strategy_used']} strategy")
+        
+        # 3. Structural error detection and correction
         cleaned_dataset, structural_actions = await self._fix_structural_errors(cleaned_dataset)
         cleaning_actions.extend(structural_actions)
         
@@ -174,6 +203,11 @@ class EnhancedDataCleaningAgent(BaseAgent):
             original_dataset, cleaned_dataset, cleaning_actions, issues_found, quality_metrics
         )
         
+        # 11. Generate comprehensive educational explanations
+        educational_explanations = await self._generate_educational_explanations(
+            cleaned_dataset, original_dataset, state
+        )
+        
         # Store cleaned dataset
         state_manager.store_dataset(state, cleaned_dataset, "cleaned")
         
@@ -185,6 +219,11 @@ class EnhancedDataCleaningAgent(BaseAgent):
         state["cleaning_actions_taken"] = cleaning_actions
         state["data_transformation_log"] = transformation_log
         state["quality_metrics"] = quality_metrics
+        state["missing_value_analysis"] = missing_analysis
+        state["data_type_validation"] = type_validation
+        state["outlier_detection"] = outlier_detection
+        state["missing_value_imputation"] = imputation_results
+        state["educational_explanations"] = educational_explanations
         
         # Update dataset metadata
         state["dataset_shape"] = cleaned_dataset.shape
@@ -225,6 +264,298 @@ class EnhancedDataCleaningAgent(BaseAgent):
         df = df.reset_index(drop=True)
         
         return df, actions
+    
+    async def _comprehensive_missing_analysis(self, df: pd.DataFrame, target_column: Optional[str] = None) -> Dict[str, Any]:
+        """Perform comprehensive missing value analysis using the MissingValueAnalyzer"""
+        self.logger.info("Starting comprehensive missing value analysis")
+        
+        try:
+            # Use the dedicated missing value analyzer
+            analysis_results = self.missing_analyzer.analyze_missing_values(df, target_column)
+            
+            # Log key findings
+            stats = analysis_results['missing_statistics']
+            self.logger.info(f"Missing value analysis completed:")
+            self.logger.info(f"  - Total missing values: {stats['total_missing']}")
+            self.logger.info(f"  - Overall missing percentage: {stats['overall_missing_percentage']}%")
+            self.logger.info(f"  - Columns with missing values: {stats['columns_with_missing']}")
+            self.logger.info(f"  - Complete rows percentage: {stats['complete_rows_percentage']}%")
+            
+            # Log pattern analysis
+            patterns = analysis_results['missing_patterns']
+            mcar_analysis = patterns['mcar_analysis']
+            self.logger.info(f"  - MCAR independence score: {mcar_analysis['independence_score']}")
+            self.logger.info(f"  - Likely MCAR: {mcar_analysis['likely_mcar']}")
+            
+            # Log recommendations
+            recommendations = analysis_results['recommendations']
+            self.logger.info(f"  - Generated {len(recommendations)} recommendations")
+            
+            return analysis_results
+            
+        except Exception as e:
+            self.logger.error(f"Error in missing value analysis: {e}")
+            # Return basic analysis if comprehensive analysis fails
+            return {
+                "missing_statistics": {
+                    "total_missing": int(df.isnull().sum().sum()),
+                    "overall_missing_percentage": round((df.isnull().sum().sum() / (df.shape[0] * df.shape[1])) * 100, 2),
+                    "columns_with_missing": int((df.isnull().sum() > 0).sum()),
+                    "missing_counts": df.isnull().sum().to_dict(),
+                    "missing_percentages": ((df.isnull().sum() / len(df)) * 100).to_dict()
+                },
+                "missing_patterns": {"mcar_analysis": {"independence_score": 0.0, "likely_mcar": False}},
+                "missing_correlations": {"strong_correlations": [], "max_correlation": 0.0},
+                "target_analysis": {},
+                "visualizations": {},
+                "explanations": {"overall": "Basic missing value analysis completed"},
+                "recommendations": ["Use standard imputation methods"],
+                "analysis_timestamp": datetime.now().isoformat()
+            }
+    
+    async def _comprehensive_type_validation(self, df: pd.DataFrame, target_column: Optional[str] = None) -> Dict[str, Any]:
+        """Perform comprehensive data type validation using the DataTypeValidator"""
+        self.logger.info("Starting comprehensive data type validation")
+        
+        try:
+            # Use the dedicated data type validator
+            validation_results = self.type_validator.validate_data_types(df, target_column)
+            
+            # Log key findings
+            type_analysis = validation_results['type_analysis']
+            quality_assessment = validation_results['quality_assessment']
+            
+            self.logger.info(f"Data type validation completed:")
+            self.logger.info(f"  - Columns analyzed: {len(type_analysis['column_types'])}")
+            self.logger.info(f"  - Type appropriateness score: {quality_assessment['type_appropriateness_score']:.2f}")
+            self.logger.info(f"  - Columns with issues: {quality_assessment['columns_with_issues']}")
+            self.logger.info(f"  - Conversion needed: {quality_assessment['conversion_needed']}")
+            
+            # Log type distribution
+            type_distribution = type_analysis['type_distribution']
+            self.logger.info(f"  - Type distribution: {type_distribution}")
+            
+            # Log conversion recommendations
+            conversion_recs = validation_results['conversion_recommendations']
+            self.logger.info(f"  - Immediate conversions: {len(conversion_recs['immediate_conversions'])}")
+            self.logger.info(f"  - Investigation needed: {len(conversion_recs['investigation_needed'])}")
+            
+            return validation_results
+            
+        except Exception as e:
+            self.logger.error(f"Error in data type validation: {e}")
+            # Return basic validation if comprehensive validation fails
+            return {
+                "type_analysis": {
+                    "column_types": {col: {"current_dtype": str(df[col].dtype), "detected_type": "unknown", "confidence": 0.0} for col in df.columns},
+                    "type_distribution": {"unknown": len(df.columns)},
+                    "mixed_type_columns": [],
+                    "inconsistent_types": []
+                },
+                "quality_assessment": {
+                    "overall_type_consistency": 0.0,
+                    "columns_with_issues": len(df.columns),
+                    "type_appropriateness_score": 0.0,
+                    "conversion_needed": len(df.columns),
+                    "quality_issues": ["Data type validation failed"]
+                },
+                "conversion_recommendations": {
+                    "immediate_conversions": [],
+                    "investigation_needed": [],
+                    "conversion_priority": []
+                },
+                "consistency_analysis": {
+                    "type_consistency_score": 0.0,
+                    "inconsistent_columns": list(df.columns),
+                    "type_patterns": {},
+                    "recommendations": []
+                },
+                "target_analysis": {},
+                "validation_report": "Basic data type validation completed with errors",
+                "explanations": {"overall": "Data type validation encountered errors"},
+                "recommendations": ["Review data types manually"],
+                "validation_timestamp": datetime.now().isoformat()
+            }
+    
+    async def _comprehensive_outlier_detection(self, df: pd.DataFrame, target_column: Optional[str] = None) -> Dict[str, Any]:
+        """Perform comprehensive outlier detection using the OutlierDetector"""
+        self.logger.info("Starting comprehensive outlier detection")
+        
+        try:
+            # Use the dedicated outlier detector
+            detection_results = self.outlier_detector.detect_outliers(df, target_column)
+            
+            # Log key findings
+            summary = detection_results['outlier_summary']
+            method_results = detection_results['method_results']
+            
+            self.logger.info(f"Outlier detection completed:")
+            self.logger.info(f"  - Columns analyzed: {summary['total_columns_analyzed']}")
+            self.logger.info(f"  - Columns with outliers: {summary['columns_with_outliers']}")
+            self.logger.info(f"  - Total outliers detected: {summary['total_outliers_detected']}")
+            self.logger.info(f"  - Outlier percentage: {summary['outlier_percentage']:.2f}%")
+            
+            # Log method performance
+            if method_results:
+                best_method = max(method_results.keys(), 
+                                key=lambda x: method_results[x]["consistency_score"])
+                self.logger.info(f"  - Best performing method: {best_method}")
+                self.logger.info(f"  - Methods used: {list(method_results.keys())}")
+            
+            return detection_results
+            
+        except Exception as e:
+            self.logger.error(f"Error in outlier detection: {e}")
+            # Return basic detection if comprehensive detection fails
+            return {
+                "outlier_summary": {
+                    "total_columns_analyzed": 0,
+                    "columns_with_outliers": 0,
+                    "columns_without_outliers": 0,
+                    "total_outliers_detected": 0,
+                    "outlier_percentage": 0,
+                    "method_usage": {},
+                    "most_common_method": None
+                },
+                "method_results": {},
+                "column_analysis": {},
+                "visualizations": {},
+                "explanations": {
+                    "overall": "Outlier detection encountered errors",
+                    "method_effectiveness": "N/A - detection failed",
+                    "data_quality": "N/A - detection failed"
+                },
+                "recommendations": ["Review data manually for outliers"],
+                "detection_timestamp": datetime.now().isoformat()
+            }
+    
+    async def _comprehensive_missing_imputation(self, df: pd.DataFrame, target_column: Optional[str] = None) -> Dict[str, Any]:
+        """Perform comprehensive missing value imputation using the MissingValueImputer"""
+        self.logger.info("Starting comprehensive missing value imputation")
+        
+        try:
+            # Use the dedicated missing value imputer
+            imputation_results = self.missing_imputer.impute_missing_values(df, target_column)
+            
+            # Log key findings
+            details = imputation_results['imputation_details']
+            quality = imputation_results['quality_assessment']
+            
+            self.logger.info(f"Missing value imputation completed:")
+            self.logger.info(f"  - Strategy used: {imputation_results['strategy_used']}")
+            self.logger.info(f"  - Columns imputed: {len(details['columns_imputed'])}")
+            self.logger.info(f"  - Values imputed: {details['imputation_stats']['total_values_imputed']}")
+            self.logger.info(f"  - Success rate: {quality['imputation_success_rate']:.1f}%")
+            self.logger.info(f"  - Quality score: {quality['quality_score']:.1f}")
+            
+            return imputation_results
+            
+        except Exception as e:
+            self.logger.error(f"Error in missing value imputation: {e}")
+            # Return basic imputation if comprehensive imputation fails
+            return {
+                "original_df": df,
+                "imputed_df": df.fillna(df.median() if df.select_dtypes(include=[np.number]).shape[1] > 0 else df.fillna('Unknown')),
+                "strategy_used": "fallback_median",
+                "parameters_used": {},
+                "missing_analysis": {"missing_percentage": 0},
+                "imputation_details": {
+                    "strategy": "fallback_median",
+                    "columns_imputed": [],
+                    "values_imputed": {},
+                    "imputation_stats": {"total_values_imputed": 0, "columns_processed": 0, "remaining_missing": 0}
+                },
+                "quality_assessment": {
+                    "missing_values_remaining": 0,
+                    "missing_values_imputed": 0,
+                    "imputation_success_rate": 0,
+                    "data_integrity_preserved": True,
+                    "statistical_changes": {},
+                    "quality_score": 0
+                },
+                "explanations": {
+                    "strategy_rationale": "Fallback imputation due to errors",
+                    "missing_pattern": "Unknown due to imputation failure",
+                    "quality": "Imputation encountered errors"
+                },
+                "recommendations": ["Review data quality and try manual imputation"],
+                "imputation_timestamp": datetime.now().isoformat()
+            }
+    
+    async def _generate_educational_explanations(self, cleaned_df: pd.DataFrame, 
+                                               original_df: pd.DataFrame, 
+                                               state: ClassificationState) -> Dict[str, Any]:
+        """Generate comprehensive educational explanations for the data cleaning process"""
+        self.logger.info("Generating comprehensive educational explanations")
+        
+        try:
+            # Prepare cleaning results for explanation generation
+            cleaning_results = {
+                "missing_value_analysis": state.get("missing_value_analysis", {}),
+                "data_type_validation": state.get("data_type_validation", {}),
+                "outlier_detection": state.get("outlier_detection", {}),
+                "missing_value_imputation": state.get("missing_value_imputation", {}),
+                "cleaning_actions_taken": state.get("cleaning_actions_taken", []),
+                "quality_metrics": state.get("quality_metrics", {}),
+                "data_quality_score": state.get("data_quality_score", 0)
+            }
+            
+            # Generate comprehensive explanations
+            explanations = self.educational_explainer.generate_comprehensive_explanations(
+                cleaning_results, original_df, cleaned_df
+            )
+            
+            # Log key findings
+            self.logger.info(f"Educational explanations generated:")
+            self.logger.info(f"  - Overview: {explanations['overview']['title']}")
+            self.logger.info(f"  - Steps explained: {len(explanations['step_by_step'])}")
+            self.logger.info(f"  - Impact level: {explanations['impact_assessment']['overall_impact']}")
+            self.logger.info(f"  - Recommendations: {len(explanations['recommendations'])}")
+            self.logger.info(f"  - Markdown report: {len(explanations['markdown_report'])} characters")
+            
+            return explanations
+            
+        except Exception as e:
+            self.logger.error(f"Error generating educational explanations: {e}")
+            # Return basic explanations if comprehensive generation fails
+            return {
+                "overview": {
+                    "title": "Data Cleaning Overview",
+                    "summary": "Data cleaning completed with basic operations",
+                    "dataset_changes": {
+                        "original_shape": original_df.shape,
+                        "cleaned_shape": cleaned_df.shape,
+                        "rows_removed": original_df.shape[0] - cleaned_df.shape[0],
+                        "columns_processed": 0
+                    },
+                    "quality_improvement": "Basic improvement achieved",
+                    "key_achievements": ["Basic data cleaning completed"],
+                    "overall_impact": "Moderate impact - standard cleaning applied"
+                },
+                "step_by_step": [],
+                "impact_assessment": {
+                    "overall_impact": "Moderate impact",
+                    "dataset_changes": {"rows_removed": 0, "columns_modified": 0, "missing_values_imputed": 0},
+                    "statistical_changes": {},
+                    "quality_improvements": ["Basic data cleaning"],
+                    "data_integrity": "Data integrity preserved",
+                    "recommendations": ["Review cleaning results manually"]
+                },
+                "best_practices": {
+                    "data_quality_monitoring": ["Regular data quality checks recommended"],
+                    "documentation": ["Document all cleaning decisions"]
+                },
+                "recommendations": [
+                    {
+                        "category": "General",
+                        "priority": "Medium",
+                        "recommendation": "Review data cleaning results manually",
+                        "rationale": "Educational explanation generation encountered errors"
+                    }
+                ],
+                "markdown_report": "# Data Cleaning Report\n\nBasic data cleaning completed. Please review results manually.",
+                "generation_timestamp": datetime.now().isoformat()
+            }
     
     def _standardize_column_name(self, col_name: str) -> str:
         """Standardize column names to snake_case"""

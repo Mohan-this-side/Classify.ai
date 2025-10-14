@@ -1,0 +1,87 @@
+# ML Sandbox Dockerfile for secure code execution
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+    # 120 seconds maximum execution time for complex ML tasks
+    ENV MAX_EXECUTION_TIME=120
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    coreutils \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python ML dependencies with comprehensive ML stack
+RUN pip install --no-cache-dir \
+    numpy==1.26.0 \
+    pandas==2.2.0 \
+    scikit-learn==1.3.2 \
+    matplotlib==3.8.2 \
+    seaborn==0.13.0 \
+    xgboost==2.0.2 \
+    lightgbm==4.1.0 \
+    joblib==1.3.2 \
+    psutil==5.9.5 \
+    category_encoders==2.6.1 \
+    imbalanced-learn==0.11.0 \
+    optuna==3.4.0 \
+    shap==0.43.0 \
+    statsmodels==0.14.0 \
+    scipy==1.11.3 \
+    plotly==5.17.0 \
+    feature-engine==1.6.1
+
+# Create necessary directories
+RUN mkdir -p /app/code /app/results /app/data
+
+# Create entrypoint script
+RUN echo '#!/bin/bash\n\
+# Wait for code to be available\n\
+while [ ! -f /app/code/script.py ]; do\n\
+  sleep 1\n\
+done\n\
+\n\
+# Execute the code with timeout\n\
+echo "Starting execution with ${MAX_EXECUTION_TIME}s timeout..."\n\
+timeout ${MAX_EXECUTION_TIME}s python /app/code/script.py > /app/results/output.txt 2> /app/results/error.txt\n\
+EXIT_CODE=$?\n\
+\n\
+# Check exit code\n\
+if [ $EXIT_CODE -eq 124 ]; then\n\
+  echo "Execution timed out after ${MAX_EXECUTION_TIME} seconds" > /app/results/status.txt\n\
+  echo "TIMEOUT" > /app/results/status_code.txt\n\
+elif [ $EXIT_CODE -ne 0 ]; then\n\
+  echo "Execution failed with exit code $EXIT_CODE" > /app/results/status.txt\n\
+  echo "FAILED" > /app/results/status_code.txt\n\
+else\n\
+  echo "Execution completed successfully" > /app/results/status.txt\n\
+  echo "SUCCESS" > /app/results/status_code.txt\n\
+fi\n\
+\n\
+# Keep container running until results are retrieved\n\
+touch /app/results/execution_complete\n\
+echo "Execution complete, waiting for results to be retrieved..."\n\
+while [ -f /app/results/execution_complete ]; do\n\
+  sleep 1\n\
+done\n\
+' > /app/entrypoint.sh
+
+# Make entrypoint script executable
+RUN chmod +x /app/entrypoint.sh
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash sandbox && \
+    chown -R sandbox:sandbox /app && \
+    chmod 755 /app/code && chmod 755 /app/results && chmod 755 /app/data
+USER sandbox
+
+# Default command
+CMD ["/app/entrypoint.sh"]

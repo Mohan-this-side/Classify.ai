@@ -1,0 +1,89 @@
+<context>
+# Overview
+**Product:** Classify AI
+**Mission:** To make machine learning accessible to non-experts by automating the end-to-end classification pipeline through a multi-agent LLM system.
+**Problem Solved:** Building predictive models is complex, requiring expertise in coding, statistics, and machine learning. Classify AI removes these barriers.
+**Target Audience:** Non-technical domain experts, data analysts, and ML engineers looking to automate prototyping.
+**Value Proposition:** Users can upload a dataset, specify a prediction goal, and receive a cleaned dataset, a trained model, a reproducible Jupyter notebook, and a detailed report, all while learning and maintaining control through an interactive, secure, and transparent process.
+
+# Core Features
+- **F1: Simple User Interface:** A clean web UI for file upload, target column specification, and providing a Gemini API key. It will visualize the workflow progress in real-time.
+- **F2: Multi-Agent Workflow Engine:** An orchestration engine (using LangGraph) that manages a sequence of eight specialized AI agents to process the data and build a model.
+- **F3: Human-in-the-Loop Approval Gates:** Key decision points where the workflow pauses and waits for user approval (e.g., after data cleaning, before model training) to ensure user control and build trust.
+- **F4: Secure Sandboxed Code Execution:** All AI-generated code is executed in an isolated Docker container with strict resource limits and no network access to ensure safety.
+- **F5: Automated Data Leakage Prevention:** The system will enforce best practices, such as splitting data before preprocessing, primarily by using `sklearn.pipeline.Pipeline` to prevent the model from having artificially inflated performance metrics.
+- **F6: Comprehensive Deliverables:** The final output will consist of four artifacts: a cleaned dataset, a serialized trained model (`.joblib`), a fully reproducible Jupyter Notebook, and a summary report.
+
+# User Experience
+- **User Personas:**
+  - **Domain Expert (e.g., Marketing Analyst):** Has valuable data but no coding skills. Needs to build a churn prediction model.
+  - **Data Analyst:** Knows SQL and Excel but not Python/scikit-learn. Wants to quickly test hypotheses and build baseline models.
+- **Key User Flow:**
+  1. User visits the web app.
+  2. Uploads a dataset (CSV/Excel) and enters their Gemini API key.
+  3. Specifies the target column to predict (e.g., `is_churned`).
+  4. Initiates the workflow.
+  5. The UI shows the Project Manager agent providing real-time updates as other agents work.
+  6. The system pauses at an "Approval Gate" (e.g., "The Data Cleaning Agent proposes to remove 5 outliers. Approve?").
+  7. User approves the decision.
+  8. The workflow continues, with real-time visualizations (e.g., EDA plots) appearing on the dashboard.
+  9. Upon completion, the user can view a summary of the results and download the four final artifacts.
+</context>
+<PRD>
+# Technical Architecture
+- **Layer 1: Presentation (Frontend):** A Next.js application responsible for all user interactions. Communicates with the backend via REST API for initial setup and WebSockets for real-time updates.
+- **Layer 2: Orchestration (Backend):** A FastAPI application that exposes the API. It uses LangGraph to define and manage the stateful, multi-agent workflow. Workflow state will be checkpointed to a database after each agent's execution.
+- **Layer 3: Infrastructure:**
+  - **Database:** PostgreSQL for storing workflow state, user info, and artifact metadata.
+  - **Cache/Broker:** Redis for managing Celery task queues and caching.
+  - **Sandboxed Execution:** Docker containers for safely running AI-generated code. Each execution will have CPU, memory, and time limits.
+- **State Management:** A single JSON-serializable "state object" will pass through the LangGraph workflow. It will contain user inputs, metadata, and *paths* to large artifacts (like datasets and models), but not the artifacts themselves.
+
+# Development Roadmap
+## Phase 1: MVP - Core Pipeline & Safety
+- **Goal:** A functional, end-to-end pipeline that processes a dataset and produces the four key artifacts, with a focus on security and reliability.
+- **Features:**
+  - **[P1-F1] Foundational Backend:** Set up FastAPI, PostgreSQL, and Redis. Implement the core state management model.
+  - **[P1-F2] Secure Code Execution Sandbox:** Build the Docker-based sandbox service for executing generated Python code with strict security constraints.
+  - **[P1-F3] LangGraph Workflow:** Define the graph for a minimal sequence of agents: Data Cleaning -> Model Builder -> Evaluation -> Reporter.
+  - **[P1-F4] Core Agents:**
+    - **Data Cleaning Agent:** Implements basic cleaning (handling missing values).
+    - **Model Builder Agent:** Trains a single model (e.g., RandomForest) using a `sklearn.pipeline.Pipeline` to prevent data leakage.
+    - **Model Evaluation Agent:** Calculates basic metrics (accuracy, F1-score).
+    - **Technical Reporter Agent:** Generates a basic Jupyter Notebook with the code from the executed agents.
+  - **[P1-F5] Functional Frontend:** A simple UI to upload a file, start the workflow, and download the results upon completion. Real-time updates will be minimal (e.g., "Agent X is running...").
+
+## Phase 2: Enhanced Interactivity & Intelligence
+- **Goal:** Introduce human-in-the-loop control and improve the intelligence of the agents.
+- **Features:**
+  - **[P2-F1] Approval Gates:** Implement the LangGraph `interrupt` mechanism. Add the first approval gate after the Data Cleaning agent.
+  - **[P2-F2] Advanced Agents:**
+    - **EDA Agent:** Enhance the workflow to include an EDA agent that generates and saves plots.
+    - **Feature Engineering Agent:** Add an agent to perform automated feature selection and transformation.
+  - **[P2-F3] Real-Time UI:** Enhance the frontend to display real-time logs from the Project Manager agent and dynamically show plots generated by the EDA agent.
+  - **[P2-F4] Self-Healing Code Generation:** Implement the iterative refinement loop for code generation. If generated code fails, the agent will analyze the error and prompt the LLM to fix it (up to 3 retries).
+
+## Phase 3: Production Readiness & User Experience
+- **Goal:** Polish the system, making it robust, scalable, and more user-friendly.
+- **Features:**
+  - **[P3-F1] Full Agent Suite:** Implement all eight agents as described in the blueprint, including the Data Discovery and Project Manager agents.
+  - **[P3-F2] Comprehensive Reporting:** The Technical Reporter agent will generate highly polished, educational notebooks.
+  - **[P3-F3] Scalable Infrastructure:** Prepare for deployment using Docker Compose and Kubernetes configurations.
+  - **[P3-F4] Polished UI:** Refine the entire user interface for a professional look and feel, with clear educational explanations at every step.
+
+# Logical Dependency Chain
+1.  **Backend & Infrastructure First:** The FastAPI server, database, and Docker sandbox are the foundation. Nothing can be built without them. (P1-F1, P1-F2)
+2.  **Core Agent Workflow:** A simple, linear path of agents must be working to prove the concept. (P1-F3, P1-F4)
+3.  **Basic Frontend:** A user must be able to interact with the core workflow. (P1-F5)
+4.  **Interactivity Layer:** With the core pipeline working, add approval gates and richer real-time updates. (P2-F1, P2-F3)
+5.  **Expand Agent Capabilities:** Once the workflow is interactive, make the agents smarter (EDA, Feature Engineering). (P2-F2)
+6.  **Full Implementation & Polish:** With all core mechanics in place, complete the full suite of agents and prepare for production. (Phase 3)
+
+# Risks and Mitigations
+- **Risk 1: LLM-Generated Code is Unreliable:** The code produced by the LLM might be buggy or insecure.
+  - **Mitigation:** Implement the "Self-Healing Loop" for automated retries. Use multi-layer validation (AST analysis for safety, logical checks for ML best practices) before execution in a secure sandbox.
+- **Risk 2: Data Leakage:** Generated code might not follow best practices, leading to misleadingly high-performance metrics.
+  - **Mitigation:** Programmatically enforce the use of `sklearn.pipeline.Pipeline`. Build an automated checker to scan for preprocessing steps that occur before `train_test_split`.
+- **Risk 3: Scope Creep:** The project is large and complex.
+  - **Mitigation:** Strictly follow the phased development roadmap. Focus on completing a fully-functional, secure, and reliable MVP (Phase 1) before adding advanced features.
+</PRD>
