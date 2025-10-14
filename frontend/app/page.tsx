@@ -13,6 +13,7 @@ import ProgressTracker from '@/components/ProgressTracker'
 import ResultsViewer from '@/components/ResultsViewer'
 import RealtimeInsights from '@/components/RealtimeInsights'
 import PlotViewer from '@/components/PlotViewer'
+import ApiKeySettings from '@/components/ApiKeySettings'
 
 interface WorkflowState {
   id: string
@@ -50,6 +51,7 @@ export default function HomePage() {
   const [file, setFile] = useState<File | null>(null)
   const [targetColumn, setTargetColumn] = useState('')
   const [description, setDescription] = useState('')
+  const [apiKey, setApiKey] = useState('')
   const [workflow, setWorkflow] = useState<WorkflowState | null>(null)
   const [isRunning, setIsRunning] = useState(false)
   const [ws, setWs] = useState<WebSocket | null>(null)
@@ -200,6 +202,11 @@ export default function HomePage() {
       return
     }
 
+    if (!apiKey) {
+      toast.error('Please enter your Gemini API key')
+      return
+    }
+
     setIsRunning(true)
     setWorkflow(null)
 
@@ -208,7 +215,7 @@ export default function HomePage() {
       formData.append('file', file)
       formData.append('target_column', targetColumn)
       formData.append('description', description)
-      formData.append('api_key', 'dummy_key')
+      formData.append('api_key', apiKey)
       formData.append('user_id', 'web_user')
 
       const response = await fetch('http://localhost:8000/api/workflow/start', {
@@ -439,10 +446,19 @@ export default function HomePage() {
                   disabled={isRunning}
                 />
 
+                {/* API Key Settings */}
+                <div className="mt-6">
+                  <ApiKeySettings
+                    onApiKeyChange={setApiKey}
+                    initialApiKey={apiKey}
+                    disabled={isRunning}
+                  />
+                </div>
+
                 <div className="mt-8">
                   <button
                     onClick={startWorkflow}
-                    disabled={isRunning || !file || !targetColumn || !description}
+                    disabled={isRunning || !file || !targetColumn || !description || !apiKey}
                     className="btn-primary w-full text-lg py-4"
                   >
                     {isRunning ? (

@@ -15,7 +15,7 @@ from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.messages import HumanMessage, AIMessage
 
-from ..agents.enhanced_data_cleaning_agent import EnhancedDataCleaningAgent
+from ..agents.Data_Cleaning_Agent.enhanced_data_cleaning_agent import EnhancedDataCleaningAgent
 from ..agents.data_discovery_agent import DataDiscoveryAgent
 from ..agents.eda_agent import EDAAgent
 from ..agents.feature_engineering_agent import FeatureEngineeringAgent

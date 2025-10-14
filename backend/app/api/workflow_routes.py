@@ -15,6 +15,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File, Form, Response
 from fastapi.responses import JSONResponse, FileResponse
 import pandas as pd
+import google.generativeai as genai
 
 from ..workflows.classification_workflow import ClassificationWorkflow
 from ..workflows.state_management import WorkflowStatus
@@ -154,7 +155,8 @@ async def start_workflow(
             target_column,
             description,
             user_id,
-            workflow_id
+            workflow_id,
+            api_key
         )
         
         logger.info(f"Started workflow {workflow_id} for user {user_id}")
@@ -769,7 +771,8 @@ async def execute_workflow_background(
     target_column: str,
     description: str,
     user_id: Optional[str],
-    workflow_id: str
+    workflow_id: str,
+    api_key: str
 ) -> None:
     """
     Execute workflow in background task.
@@ -781,9 +784,17 @@ async def execute_workflow_background(
         description: Task description
         user_id: User identifier
         workflow_id: Workflow identifier
+        api_key: Gemini API key for LLM functionality
     """
     try:
         logger.info(f"Starting background execution of workflow {workflow_id}")
+        
+        # Configure Gemini API with the provided key
+        if api_key and api_key != "dummy_key":
+            genai.configure(api_key=api_key)
+            logger.info("Gemini API configured with user-provided key")
+        else:
+            logger.warning("Using default Gemini API key or no key provided")
         
         # Update status to running
         if workflow_id in workflow_states:
@@ -815,3 +826,59 @@ async def execute_workflow_background(
                 "timestamp": datetime.now().isoformat(),
                 "agent": workflow_states[workflow_id].get("current_agent", "unknown")
             })
+
+
+@router.post("/test-gemini-key")
+async def test_gemini_api_key(request: Dict[str, str]) -> JSONResponse:
+    """
+    Test if a Gemini API key is valid by making a simple request.
+    
+    Args:
+        request: Dictionary containing 'api_key' field
+        
+    Returns:
+        JSONResponse with validation result
+    """
+    try:
+        api_key = request.get("api_key")
+        if not api_key:
+            return JSONResponse(
+                status_code=400,
+                content={"valid": False, "error": "API key is required"}
+            )
+        
+        # Configure Gemini with the provided API key
+        genai.configure(api_key=api_key)
+        
+        # Test the API key by making a simple request
+        model = genai.GenerativeModel('gemini-2.0-flash')
+        
+        # Make a simple test request
+        response = model.generate_content("Hello, this is a test.")
+        
+        if response and response.text:
+            logger.info("Gemini API key validation successful")
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "valid": True,
+                    "message": "API key is valid and working",
+                    "model": "gemini-2.0-flash"
+                }
+            )
+        else:
+            logger.warning("Gemini API key validation failed: Empty response")
+            return JSONResponse(
+                status_code=200,
+                content={"valid": False, "error": "API key returned empty response"}
+            )
+            
+    except Exception as e:
+        logger.error(f"Gemini API key validation failed: {str(e)}")
+        return JSONResponse(
+            status_code=200,
+            content={
+                "valid": False, 
+                "error": f"API key validation failed: {str(e)}"
+            }
+        )
