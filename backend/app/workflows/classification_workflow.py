@@ -15,13 +15,13 @@ from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.messages import HumanMessage, AIMessage
 
-from ..agents.Data_Cleaning_Agent.enhanced_data_cleaning_agent import EnhancedDataCleaningAgent
-from ..agents.data_discovery_agent import DataDiscoveryAgent
-from ..agents.eda_agent import EDAAgent
-from ..agents.feature_engineering_agent import FeatureEngineeringAgent
-from ..agents.ml_builder_agent import MLBuilderAgent
-from ..agents.model_evaluation_agent import ModelEvaluationAgent
-from ..agents.technical_reporter_agent import TechnicalReporterAgent
+from ..agents.data_cleaning.enhanced_data_cleaning_agent import EnhancedDataCleaningAgent
+from ..agents.data_analysis.data_discovery_agent import DataDiscoveryAgent
+from ..agents.data_analysis.eda_agent import EDAAgent
+from ..agents.ml_pipeline.feature_engineering_agent import FeatureEngineeringAgent
+from ..agents.ml_pipeline.ml_builder_agent import MLBuilderAgent
+from ..agents.ml_pipeline.model_evaluation_agent import ModelEvaluationAgent
+from ..agents.reporting.technical_reporter_agent import TechnicalReporterAgent
 from ..workflows.state_management import ClassificationState, WorkflowStatus, AgentStatus, state_manager
 from ..workflows.approval_gates import (
     ApprovalGateManager, 
