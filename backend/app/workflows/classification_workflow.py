@@ -23,6 +23,13 @@ from ..agents.ml_builder_agent import MLBuilderAgent
 from ..agents.model_evaluation_agent import ModelEvaluationAgent
 from ..agents.technical_reporter_agent import TechnicalReporterAgent
 from ..workflows.state_management import ClassificationState, WorkflowStatus, AgentStatus, state_manager
+from ..workflows.approval_gates import (
+    ApprovalGateManager, 
+    ApprovalGateType, 
+    should_trigger_approval_gate,
+    create_approval_proposal,
+    generate_educational_explanation
+)
 from ..config import get_settings
 from ..services import realtime
 
@@ -52,6 +59,9 @@ class ClassificationWorkflow:
         self.ml_builder_agent = MLBuilderAgent()
         self.model_evaluation_agent = ModelEvaluationAgent()
         self.technical_reporter_agent = TechnicalReporterAgent()
+        
+        # Initialize approval gate manager
+        self.approval_manager = ApprovalGateManager()
         # self.data_discovery_agent = DataDiscoveryAgent()
         # self.eda_agent = EDAAgent()
         # self.feature_engineering_agent = FeatureEngineeringAgent()
@@ -209,6 +219,14 @@ class ClassificationWorkflow:
             delta["discovery_results"] = state_after.get("discovery_results")
             
             logger.info("Data discovery phase completed")
+            
+            # Check for approval gates after data discovery
+            state_after_approval = await self._check_approval_gates(state_after, "data_discovery")
+            if state_after_approval.get("workflow_status") == WorkflowStatus.PAUSED:
+                delta["workflow_status"] = WorkflowStatus.PAUSED
+                delta["pending_approval_gate"] = state_after_approval.get("pending_approval_gate")
+                delta["approval_gate_type"] = state_after_approval.get("approval_gate_type")
+            
             await realtime.emit(state.get("session_id"), "agent_update", {
                 "agent": "data_discovery",
                 "status": str(completed_status.get("data_discovery")),
@@ -254,6 +272,14 @@ class ClassificationWorkflow:
             delta["outlier_analysis"] = state_after.get("outlier_analysis")
             
             logger.info("EDA analysis phase completed")
+            
+            # Check for approval gates after EDA analysis
+            state_after_approval = await self._check_approval_gates(state_after, "eda_analysis")
+            if state_after_approval.get("workflow_status") == WorkflowStatus.PAUSED:
+                delta["workflow_status"] = WorkflowStatus.PAUSED
+                delta["pending_approval_gate"] = state_after_approval.get("pending_approval_gate")
+                delta["approval_gate_type"] = state_after_approval.get("approval_gate_type")
+            
             await realtime.emit(state.get("session_id"), "agent_update", {
                 "agent": "eda_analysis",
                 "status": str(completed_status.get("eda_analysis")),
@@ -298,6 +324,14 @@ class ClassificationWorkflow:
             delta["feature_transformations"] = state_after.get("feature_transformations")
             
             logger.info("Feature engineering phase completed")
+            
+            # Check for approval gates after feature engineering
+            state_after_approval = await self._check_approval_gates(state_after, "feature_engineering")
+            if state_after_approval.get("workflow_status") == WorkflowStatus.PAUSED:
+                delta["workflow_status"] = WorkflowStatus.PAUSED
+                delta["pending_approval_gate"] = state_after_approval.get("pending_approval_gate")
+                delta["approval_gate_type"] = state_after_approval.get("approval_gate_type")
+            
             await realtime.emit(state.get("session_id"), "agent_update", {
                 "agent": "feature_engineering",
                 "status": str(completed_status.get("feature_engineering")),
@@ -349,6 +383,14 @@ class ClassificationWorkflow:
             delta["model_explanation"] = state_after.get("model_explanation")
             
             logger.info("ML model building phase completed")
+            
+            # Check for approval gates after ML building
+            state_after_approval = await self._check_approval_gates(state_after, "ml_building")
+            if state_after_approval.get("workflow_status") == WorkflowStatus.PAUSED:
+                delta["workflow_status"] = WorkflowStatus.PAUSED
+                delta["pending_approval_gate"] = state_after_approval.get("pending_approval_gate")
+                delta["approval_gate_type"] = state_after_approval.get("approval_gate_type")
+            
             await realtime.emit(state.get("session_id"), "agent_update", {
                 "agent": "ml_building",
                 "status": str(completed_status.get("ml_building")),
@@ -399,6 +441,14 @@ class ClassificationWorkflow:
             delta["model_performance_analysis"] = state_after.get("model_performance_analysis")
             
             logger.info("Model evaluation phase completed")
+            
+            # Check for approval gates after model evaluation
+            state_after_approval = await self._check_approval_gates(state_after, "model_evaluation")
+            if state_after_approval.get("workflow_status") == WorkflowStatus.PAUSED:
+                delta["workflow_status"] = WorkflowStatus.PAUSED
+                delta["pending_approval_gate"] = state_after_approval.get("pending_approval_gate")
+                delta["approval_gate_type"] = state_after_approval.get("approval_gate_type")
+            
             await realtime.emit(state.get("session_id"), "agent_update", {
                 "agent": "model_evaluation",
                 "status": str(completed_status.get("model_evaluation")),
@@ -619,6 +669,101 @@ class ClassificationWorkflow:
             return node_sequence[current_index + 1]
         except (ValueError, IndexError):
             return "workflow_completion"
+    
+    async def _check_approval_gates(self, state: ClassificationState, current_agent: str) -> ClassificationState:
+        """
+        Check if any approval gates should be triggered and pause workflow if needed.
+        
+        Args:
+            state: Current workflow state
+            current_agent: Current agent being executed
+            
+        Returns:
+            Updated state with approval gate information
+        """
+        try:
+            # Check each approval gate type
+            for gate_type in ApprovalGateType:
+                if should_trigger_approval_gate(current_agent, state, gate_type):
+                    # Create approval proposal
+                    proposal = create_approval_proposal(gate_type, state)
+                    educational_explanation = generate_educational_explanation(gate_type, proposal, state)
+                    
+                    # Get gate definition
+                    from ..workflows.approval_gates import get_approval_gate_definition
+                    gate_definition = get_approval_gate_definition(gate_type)
+                    
+                    # Create the approval gate
+                    gate = self.approval_manager.create_gate(
+                        gate_type=gate_type,
+                        title=gate_definition["title"],
+                        description=gate_definition["description"],
+                        proposal=proposal,
+                        educational_explanation=educational_explanation
+                    )
+                    
+                    # Pause workflow
+                    state["workflow_status"] = WorkflowStatus.PAUSED
+                    state["pending_approval_gate"] = gate["gate_id"]
+                    state["approval_gate_type"] = gate_type.value
+                    
+                    logger.info(f"Workflow paused for approval gate: {gate['gate_id']}")
+                    
+                    # Emit realtime update
+                    await realtime.emit(state.get("session_id"), "approval_gate_created", {
+                        "gate_id": gate["gate_id"],
+                        "gate_type": gate_type.value,
+                        "title": gate["title"],
+                        "workflow_paused": True
+                    })
+                    
+                    return state
+            
+            return state
+            
+        except Exception as e:
+            logger.error(f"Error checking approval gates: {str(e)}")
+            return state
+    
+    async def _resume_after_approval(self, state: ClassificationState) -> ClassificationState:
+        """
+        Resume workflow after approval gate is resolved.
+        
+        Args:
+            state: Current workflow state
+            
+        Returns:
+            Updated state
+        """
+        try:
+            gate_id = state.get("pending_approval_gate")
+            if not gate_id:
+                return state
+            
+            # Check if gate is resolved
+            gate = self.approval_manager.get_gate(gate_id)
+            if not gate or gate["status"].value == "pending":
+                # Still pending, keep workflow paused
+                return state
+            
+            # Gate resolved, resume workflow
+            state["workflow_status"] = WorkflowStatus.RUNNING
+            state["pending_approval_gate"] = None
+            state["approval_gate_type"] = None
+            
+            logger.info(f"Workflow resumed after approval gate: {gate_id}")
+            
+            # Emit realtime update
+            await realtime.emit(state.get("session_id"), "workflow_resumed", {
+                "gate_id": gate_id,
+                "workflow_paused": False
+            })
+            
+            return state
+            
+        except Exception as e:
+            logger.error(f"Error resuming after approval: {str(e)}")
+            return state
     
     async def execute_workflow(
         self, 

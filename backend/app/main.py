@@ -17,6 +17,7 @@ from datetime import datetime
 import logging
 
 from .api.workflow_routes import router as workflow_router
+from .api.approval_routes import router as approval_router
 from .services import realtime
 
 # Configure logging
@@ -81,6 +82,7 @@ class ConnectionManager:
 
 # Include API routers (lazy initialization)
 app.include_router(workflow_router)
+app.include_router(approval_router, prefix="/api/workflow")
 
 # Initialize connection manager
 manager = ConnectionManager()

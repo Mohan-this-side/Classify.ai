@@ -3817,7 +3817,7 @@ probabilities = model.predict_proba(new_data)  # if available
                 limitations.append("Small dataset size may limit model generalization")
             
             # Model limitations
-            model_name = state.get("best_model", "unknown")
+            model_name = str(state.get("best_model", "unknown"))
             if "tree" in model_name.lower():
                 limitations.append("Tree-based models may overfit to training data")
             elif "linear" in model_name.lower():
