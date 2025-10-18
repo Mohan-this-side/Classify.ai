@@ -7,9 +7,9 @@
         "task-master-ai"
       ],
       "env": {
-        "ANTHROPIC_API_KEY": "YOUR_ANTHROPIC_API_KEY_HERE",
-        "OPENAI_API_KEY": "YOUR_OPENAI_API_KEY_HERE",
-        "GOOGLE_API_KEY": "AIzaSyBGtJZtRFMIdoPgkEUG8UQPA6pBxUvmwSg"
+        "ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}",
+        "OPENAI_API_KEY": "${OPENAI_API_KEY}",
+        "GOOGLE_API_KEY": "${GOOGLE_API_KEY}"
       }
     }
   }

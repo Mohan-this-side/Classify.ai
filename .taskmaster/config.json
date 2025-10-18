@@ -1,8 +1,8 @@
 {
   "models": {
     "main": {
-      "provider": "openai",
-      "modelId": "gpt-4o-mini",
+      "provider": "anthropic",
+      "modelId": "claude-3-5-sonnet-20241022",
       "maxTokens": 16384,
       "temperature": 0.2
     },
