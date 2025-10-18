@@ -22,6 +22,7 @@ from ..agents.ml_pipeline.feature_engineering_agent import FeatureEngineeringAge
 from ..agents.ml_pipeline.ml_builder_agent import MLBuilderAgent
 from ..agents.ml_pipeline.model_evaluation_agent import ModelEvaluationAgent
 from ..agents.reporting.technical_reporter_agent import TechnicalReporterAgent
+from ..agents.coordination.project_manager_agent import ProjectManagerAgent
 from ..workflows.state_management import ClassificationState, WorkflowStatus, AgentStatus, state_manager
 from ..workflows.approval_gates import (
     ApprovalGateManager, 
@@ -59,16 +60,10 @@ class ClassificationWorkflow:
         self.ml_builder_agent = MLBuilderAgent()
         self.model_evaluation_agent = ModelEvaluationAgent()
         self.technical_reporter_agent = TechnicalReporterAgent()
+        self.project_manager_agent = ProjectManagerAgent()
         
         # Initialize approval gate manager
         self.approval_manager = ApprovalGateManager()
-        # self.data_discovery_agent = DataDiscoveryAgent()
-        # self.eda_agent = EDAAgent()
-        # self.feature_engineering_agent = FeatureEngineeringAgent()
-        # self.ml_builder_agent = MLBuilderAgent()
-        # self.model_evaluation_agent = ModelEvaluationAgent()
-        # self.technical_reporter_agent = TechnicalReporterAgent()
-        # self.project_manager_agent = ProjectManagerAgent()
         
         # Build the workflow graph
         self.graph = self._build_workflow_graph()
@@ -102,13 +97,19 @@ class ClassificationWorkflow:
         # Define the workflow flow
         workflow.set_entry_point("data_cleaning")
         
-        # Main pipeline flow
-        workflow.add_edge("data_cleaning", "data_discovery")
-        workflow.add_edge("data_discovery", "eda_analysis")
-        workflow.add_edge("eda_analysis", "feature_engineering")
-        workflow.add_edge("feature_engineering", "ml_building")
-        workflow.add_edge("ml_building", "model_evaluation")
-        workflow.add_edge("model_evaluation", "technical_reporting")
+        # Main pipeline flow with project management coordination
+        workflow.add_edge("data_cleaning", "project_management")
+        workflow.add_edge("project_management", "data_discovery")
+        workflow.add_edge("data_discovery", "project_management")
+        workflow.add_edge("project_management", "eda_analysis")
+        workflow.add_edge("eda_analysis", "project_management")
+        workflow.add_edge("project_management", "feature_engineering")
+        workflow.add_edge("feature_engineering", "project_management")
+        workflow.add_edge("project_management", "ml_building")
+        workflow.add_edge("ml_building", "project_management")
+        workflow.add_edge("project_management", "model_evaluation")
+        workflow.add_edge("model_evaluation", "project_management")
+        workflow.add_edge("project_management", "technical_reporting")
         workflow.add_edge("technical_reporting", "workflow_completion")
         
         # Error handling flow
@@ -119,7 +120,18 @@ class ClassificationWorkflow:
             "data_cleaning",
             self._should_continue_after_cleaning,
             {
-                "continue": "data_discovery",
+                "continue": "project_management",
+                "error": "error_recovery",
+                "end": END
+            }
+        )
+        
+        # Add conditional edges for project management
+        workflow.add_conditional_edges(
+            "project_management",
+            self._should_continue_after_project_management,
+            {
+                "continue": self._get_next_node_from_project_management,
                 "error": "error_recovery",
                 "end": END
             }
@@ -132,7 +144,7 @@ class ClassificationWorkflow:
                 node,
                 self._should_continue_workflow,
                 {
-                    "continue": self._get_next_node(node),
+                    "continue": "project_management",
                     "error": "error_recovery",
                     "end": END
                 }
@@ -164,6 +176,10 @@ class ClassificationWorkflow:
             delta["workflow_progress"] = 14.0  # 1/7 * 100
             delta["progress"] = 14.0
             
+            # Check for required data
+            if not state.get("dataset"):
+                raise ValueError("No dataset provided for data cleaning")
+            
             # Execute data cleaning via agent run (handles status updates internally)
             state_after = await self.data_cleaning_agent.run(state)
             
@@ -186,10 +202,12 @@ class ClassificationWorkflow:
             
         except Exception as e:
             logger.error(f"Error in data cleaning: {str(e)}")
-            state["agent_statuses"]["data_cleaning"] = AgentStatus.FAILED
-            state["last_error"] = str(e)
-            state["error_count"] += 1
-            return state
+            delta: Dict[str, Any] = {}
+            delta["agent_statuses"] = {**state["agent_statuses"], "data_cleaning": AgentStatus.FAILED}
+            delta["last_error"] = str(e)
+            delta["error_count"] = state.get("error_count", 0) + 1
+            delta["workflow_status"] = WorkflowStatus.FAILED
+            return delta
     
     async def _data_discovery_node(self, state: ClassificationState) -> ClassificationState:
         """
@@ -526,20 +544,36 @@ class ClassificationWorkflow:
             Updated state after project management
         """
         try:
+            logger.info("Executing Project Management node")
+            
+            # Execute the Project Manager Agent
+            updated_state = await self.project_manager_agent.execute(state)
+            
             # Return only delta updates
             delta: Dict[str, Any] = {}
-            delta["project_updates"] = {
-                "current_status": state["workflow_status"],
-                "progress": state["progress"],
-                "agent_status": state["agent_statuses"],
-                "last_update": datetime.now().isoformat()
-            }
+            if "project_management" in updated_state:
+                delta["project_management"] = updated_state["project_management"]
+            
+            # Update progress based on completed agents
+            completed_agents = updated_state.get("completed_agents", [])
+            total_agents = 8
+            progress = (len(completed_agents) / total_agents) * 100
+            delta["progress"] = progress
+            
+            # Update workflow status if all agents are completed
+            if len(completed_agents) >= total_agents:
+                delta["workflow_status"] = WorkflowStatus.COMPLETED
+            elif updated_state.get("workflow_status") == WorkflowStatus.PAUSED:
+                delta["workflow_status"] = WorkflowStatus.PAUSED
+            
             return delta
             
         except Exception as e:
             logger.error(f"Error in project management: {str(e)}")
-            state["last_error"] = str(e)
-            return state
+            delta: Dict[str, Any] = {}
+            delta["last_error"] = str(e)
+            delta["error_count"] = state.get("error_count", 0) + 1
+            return delta
     
     async def _error_recovery_node(self, state: ClassificationState) -> ClassificationState:
         """
@@ -554,33 +588,62 @@ class ClassificationWorkflow:
         try:
             logger.info("Starting error recovery")
             previous_agent = state.get("current_agent")
+            error_count = state.get("error_count", 0)
+            last_error = state.get("last_error", "Unknown error")
+            
             delta: Dict[str, Any] = {}
             delta["current_agent"] = "error_recovery"
             running_status = state["agent_statuses"].copy()
             running_status["error_recovery"] = AgentStatus.RUNNING
             delta["agent_statuses"] = running_status
             
-            # Implement error recovery logic
-            if state["error_count"] < 3:
+            # Log error details
+            logger.error(f"Error recovery triggered. Agent: {previous_agent}, Count: {error_count}, Error: {last_error}")
+            
+            # Implement comprehensive error recovery logic
+            if error_count < 3:
                 # Retry the failed agent
                 failed_agent = previous_agent
-                logger.info(f"Retrying failed agent: {failed_agent}")
+                logger.info(f"Retrying failed agent: {failed_agent} (attempt {error_count + 1}/3)")
                 
                 # Reset agent status
                 updated_status = delta["agent_statuses"].copy()
                 if failed_agent:
                     updated_status[failed_agent] = AgentStatus.PENDING
+                    # Remove from failed agents list
+                    failed_agents = state.get("failed_agents", [])
+                    if failed_agent in failed_agents:
+                        failed_agents.remove(failed_agent)
+                        delta["failed_agents"] = failed_agents
+                
                 delta["agent_statuses"] = updated_status
                 delta["error_count"] = 0
                 delta["last_error"] = None
                 
+                # Add retry information to state
+                delta["retry_attempts"] = state.get("retry_attempts", 0) + 1
+                delta["recovery_timestamp"] = datetime.now().isoformat()
+                
+                logger.info(f"Agent {failed_agent} reset for retry")
+                
             else:
-                # Max retries exceeded, mark as failed
+                # Max retries exceeded, skip to next agent or fail workflow
+                logger.error(f"Max retries exceeded for agent: {previous_agent}")
+                
+                # Mark agent as permanently failed
+                updated_status = delta["agent_statuses"].copy()
+                if previous_agent:
+                    updated_status[previous_agent] = AgentStatus.FAILED
+                    failed_agents = state.get("failed_agents", [])
+                    if previous_agent not in failed_agents:
+                        failed_agents.append(previous_agent)
+                        delta["failed_agents"] = failed_agents
+                
+                delta["agent_statuses"] = updated_status
                 delta["workflow_status"] = WorkflowStatus.FAILED
-                failed_status = delta["agent_statuses"].copy()
-                failed_status["error_recovery"] = AgentStatus.FAILED
-                delta["agent_statuses"] = failed_status
-                logger.error("Maximum retry attempts exceeded")
+                delta["final_error"] = f"Agent {previous_agent} failed after {error_count} retries: {last_error}"
+                
+                logger.error(f"Workflow marked as failed due to persistent agent failure")
             
             return delta
             
@@ -655,6 +718,37 @@ class ClassificationWorkflow:
             return "error"
         else:
             return "end"
+    
+    def _should_continue_after_project_management(self, state: ClassificationState) -> str:
+        """Determine if workflow should continue after project management."""
+        if state["agent_statuses"]["project_manager"] == AgentStatus.COMPLETED:
+            return "continue"
+        elif state["agent_statuses"]["project_manager"] == AgentStatus.FAILED:
+            return "error"
+        else:
+            return "end"
+    
+    def _get_next_node_from_project_management(self, state: ClassificationState) -> str:
+        """Get the next node after project management based on current progress."""
+        completed_agents = state.get("completed_agents", [])
+        
+        # Determine next agent based on what's been completed
+        if "data_cleaning" not in completed_agents:
+            return "data_discovery"
+        elif "data_discovery" not in completed_agents:
+            return "data_discovery"
+        elif "eda_analysis" not in completed_agents:
+            return "eda_analysis"
+        elif "feature_engineering" not in completed_agents:
+            return "feature_engineering"
+        elif "ml_building" not in completed_agents:
+            return "ml_building"
+        elif "model_evaluation" not in completed_agents:
+            return "model_evaluation"
+        elif "technical_reporter" not in completed_agents:
+            return "technical_reporting"
+        else:
+            return "workflow_completion"
     
     def _get_next_node(self, current_node: str) -> str:
         """Get the next node in the workflow."""

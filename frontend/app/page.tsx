@@ -5,7 +5,7 @@ import { toast } from 'react-hot-toast'
 import { 
   Upload, Brain, BarChart3, Download, FileText, Code, Database, 
   Zap, Bot, TrendingUp, Cpu, Eye, Settings, Lightbulb,
-  ChevronRight, Sparkles, CircuitBoard, Network
+  ChevronRight, Sparkles, CircuitBoard, Network, X
 } from 'lucide-react'
 import FileUpload from '@/components/FileUpload'
 import AgentStatus from '@/components/AgentStatus'

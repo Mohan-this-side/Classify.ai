@@ -21,6 +21,7 @@ from nbformat.v4 import new_notebook, new_code_cell, new_markdown_cell
 
 from ..base_agent import BaseAgent, AgentResult
 from ...workflows.state_management import ClassificationState, AgentStatus
+from ...services.storage import storage_service
 
 
 class TechnicalReporterAgent(BaseAgent):
@@ -99,8 +100,17 @@ class TechnicalReporterAgent(BaseAgent):
                 recommendations, limitations, future_improvements
             )
             
+            # Store report using storage service
+            session_id = state.get("session_id", "unknown")
+            report_path = storage_service.store_report(
+                workflow_id=session_id,
+                report_content=final_report,
+                filename="report.md"
+            )
+            
             # Update state with results
             state["final_report"] = final_report
+            state["report_path"] = report_path
             state["executive_summary"] = executive_summary
             state["technical_documentation"] = technical_documentation
             state["educational_content"] = educational_content
@@ -3747,19 +3757,16 @@ probabilities = model.predict_proba(new_data)  # if available
 """
             nb.cells.append(new_markdown_cell(usage_instructions))
             
-            # Save notebook
+            # Save notebook using storage service
             session_id = state.get("session_id", "unknown")
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            notebook_filename = f"classification_project_{session_id}_{timestamp}.ipynb"
+            notebook_content = nbf.writes(nb)
             
-            # Create notebooks directory
-            notebooks_dir = "notebooks"
-            os.makedirs(notebooks_dir, exist_ok=True)
-            notebook_path = os.path.join(notebooks_dir, notebook_filename)
-            
-            # Write notebook
-            with open(notebook_path, 'w') as f:
-                nbf.write(nb, f)
+            # Store notebook using storage service
+            notebook_path = storage_service.store_notebook(
+                workflow_id=session_id,
+                notebook_content=notebook_content,
+                filename="notebook.ipynb"
+            )
             
             self.logger.info(f"Comprehensive Jupyter notebook saved to: {notebook_path}")
             return notebook_path

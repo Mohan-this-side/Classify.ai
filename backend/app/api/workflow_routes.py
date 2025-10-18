@@ -20,6 +20,7 @@ import google.generativeai as genai
 from ..workflows.classification_workflow import ClassificationWorkflow
 from ..workflows.state_management import WorkflowStatus
 from ..config import get_settings
+from ..services.storage import storage_service
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -389,7 +390,7 @@ async def download_workflow_file(
     
     Args:
         workflow_id: The workflow identifier
-        file_type: Type of file to download (model, notebook, report, plots)
+        file_type: Type of file to download (cleaned_dataset, model, notebook, report, plots)
         
     Returns:
         File response for download
@@ -405,65 +406,56 @@ async def download_workflow_file(
         if state.get("status") != WorkflowStatus.COMPLETED:
             raise HTTPException(status_code=400, detail="Workflow not completed yet")
         
-        file_path = None
-        filename = None
+        # Use storage service to get file path
+        file_path = storage_service.get_file_path(workflow_id, file_type)
+        
+        if not file_path:
+            raise HTTPException(status_code=404, detail=f"{file_type} file not found")
+        
+        # Set appropriate filename and media type
+        filename = f"{file_type}_{workflow_id}"
         media_type = "application/octet-stream"
         
-        if file_type == "model":
-            # Find model file
-            model_files = list(Path("models").glob(f"*{workflow_id}*.joblib"))
-            if model_files:
-                file_path = model_files[0]
-                filename = f"model_{workflow_id}.joblib"
-                media_type = "application/octet-stream"
-            else:
-                raise HTTPException(status_code=404, detail="Model file not found")
-        
+        if file_type == "cleaned_dataset":
+            filename += ".csv"
+            media_type = "text/csv"
+        elif file_type == "model":
+            filename += ".joblib"
+            media_type = "application/octet-stream"
         elif file_type == "notebook":
-            # Find notebook file
-            notebook_files = list(Path("notebooks").glob(f"*{workflow_id}*.ipynb"))
-            if notebook_files:
-                file_path = notebook_files[0]
-                filename = f"notebook_{workflow_id}.ipynb"
-                media_type = "application/x-ipynb+json"
-            else:
-                raise HTTPException(status_code=404, detail="Notebook file not found")
-        
+            filename += ".ipynb"
+            media_type = "application/x-ipynb+json"
         elif file_type == "report":
-            # Create report file
-            report_content = state.get("final_report", "No report available")
-            report_path = Path("reports") / f"report_{workflow_id}.txt"
-            report_path.parent.mkdir(exist_ok=True)
-            
-            with open(report_path, "w", encoding="utf-8") as f:
-                f.write(report_content)
-            
-            file_path = report_path
-            filename = f"report_{workflow_id}.txt"
-            media_type = "text/plain"
-        
+            filename += ".md"
+            media_type = "text/markdown"
         elif file_type == "plots":
-            # Create plots zip file
-            import zipfile
-            plots_dir = Path("plots") / workflow_id
-            if plots_dir.exists():
-                zip_path = Path("reports") / f"plots_{workflow_id}.zip"
-                zip_path.parent.mkdir(exist_ok=True)
+            # For plots, we'll return the first plot or create a zip
+            plots = storage_service.get_workflow_files(workflow_id).get("plots", [])
+            if not plots:
+                raise HTTPException(status_code=404, detail="No plots found")
+            
+            # If multiple plots, create a zip file
+            if len(plots) > 1:
+                import zipfile
+                import tempfile
                 
-                with zipfile.ZipFile(zip_path, 'w') as zipf:
-                    for plot_file in plots_dir.glob("*.png"):
-                        zipf.write(plot_file, plot_file.name)
+                temp_zip = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+                with zipfile.ZipFile(temp_zip.name, 'w') as zipf:
+                    for plot_path in plots:
+                        zipf.write(plot_path, Path(plot_path).name)
                 
-                file_path = zip_path
+                file_path = temp_zip.name
                 filename = f"plots_{workflow_id}.zip"
                 media_type = "application/zip"
             else:
-                raise HTTPException(status_code=404, detail="No plots found")
+                file_path = plots[0]
+                filename = f"plot_{workflow_id}.png"
+                media_type = "image/png"
         
         else:
-            raise HTTPException(status_code=400, detail="Invalid file type. Use: model, notebook, report, plots")
+            raise HTTPException(status_code=400, detail="Invalid file type. Use: cleaned_dataset, model, notebook, report, plots")
         
-        if not file_path or not file_path.exists():
+        if not Path(file_path).exists():
             raise HTTPException(status_code=404, detail="File not found")
         
         return FileResponse(

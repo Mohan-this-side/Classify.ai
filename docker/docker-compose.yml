@@ -8,7 +8,7 @@ services:
     environment:
       POSTGRES_DB: ds_capstone
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: password
     ports:
       - "5432:5432"
     volumes:
@@ -40,8 +40,10 @@ services:
       context: ../backend
       dockerfile: ../docker/Dockerfile.backend
     container_name: ds-capstone-backend
+    env_file:
+      - .env
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/ds_capstone
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/ds_capstone
       - REDIS_URL=redis://redis:6379
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
@@ -69,8 +71,10 @@ services:
       dockerfile: ../docker/Dockerfile.backend
     container_name: ds-capstone-celery-worker
     command: celery -A app.celery_app worker --loglevel=info
+    env_file:
+      - .env
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/ds_capstone
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/ds_capstone
       - REDIS_URL=redis://redis:6379
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
@@ -93,8 +97,10 @@ services:
       dockerfile: ../docker/Dockerfile.backend
     container_name: ds-capstone-celery-beat
     command: celery -A app.celery_app beat --loglevel=info
+    env_file:
+      - .env
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/ds_capstone
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/ds_capstone
       - REDIS_URL=redis://redis:6379
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0

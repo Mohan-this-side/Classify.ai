@@ -5,6 +5,7 @@ from .base_agent import BaseAgent, AgentResult
 from .data_analysis import DataDiscoveryAgent, EDAAgent
 from .ml_pipeline import FeatureEngineeringAgent, MLBuilderAgent, ModelEvaluationAgent
 from .reporting import TechnicalReporterAgent
+from .coordination import ProjectManagerAgent
 
 __all__ = [
     'BaseAgent',
@@ -20,5 +21,6 @@ __all__ = [
     'FeatureEngineeringAgent',
     'MLBuilderAgent',
     'ModelEvaluationAgent',
-    'TechnicalReporterAgent'
+    'TechnicalReporterAgent',
+    'ProjectManagerAgent'
 ]

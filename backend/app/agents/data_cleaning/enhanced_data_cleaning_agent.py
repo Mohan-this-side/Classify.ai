@@ -25,6 +25,7 @@ from .missing_value_imputer import MissingValueImputer
 from .educational_explainer import EducationalExplainer
 from ...workflows.state_management import ClassificationState, AgentStatus, state_manager
 from ...config import settings
+from ...services.storage import storage_service
 
 class EnhancedDataCleaningAgent(BaseAgent):
     """
@@ -211,8 +212,17 @@ class EnhancedDataCleaningAgent(BaseAgent):
         # Store cleaned dataset
         state_manager.store_dataset(state, cleaned_dataset, "cleaned")
         
+        # Also store using storage service for download
+        session_id = state.get("session_id", "unknown")
+        cleaned_dataset_path = storage_service.store_cleaned_dataset(
+            workflow_id=session_id,
+            dataset=cleaned_dataset,
+            filename="cleaned_dataset.csv"
+        )
+        
         # Update state with comprehensive results
         state["cleaned_dataset"] = None  # Stored externally
+        state["cleaned_dataset_path"] = cleaned_dataset_path
         state["cleaning_summary"] = cleaning_report
         state["data_quality_score"] = quality_score
         state["cleaning_issues_found"] = issues_found

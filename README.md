@@ -10,7 +10,7 @@ An AI-powered multi-agent system that automates the entire machine learning clas
 
 ## ✨ Key Features
 
-- 🤖 **7 Specialized AI Agents** working in orchestrated workflow
+- 🤖 **8 Specialized AI Agents** working in orchestrated workflow
 - 🔒 **Secure Sandbox Execution** with Docker for AI-generated code
 - 👥 **Human-in-the-Loop** approval gates for critical decisions
 - 📊 **Real-time Progress Tracking** via WebSocket connections
@@ -47,6 +47,123 @@ Docker Sandbox (Secure Code Execution)
 - **React Hot Toast**: User notifications and feedback
 
 ## 🤖 AI Agents (Domain-Organized)
+
+### Core Agents
+1. **Data Cleaning Agent** (`data_cleaning/`)
+   - Advanced missing value imputation
+   - Outlier detection and handling
+   - Data type validation and conversion
+   - Educational explanations for cleaning actions
+
+2. **Data Discovery Agent** (`data_analysis/`)
+   - Comprehensive data profiling
+   - Automatic data type detection
+   - Feature recommendations
+   - Data quality assessment
+
+3. **EDA Agent** (`data_analysis/`)
+   - Interactive visualizations with Plotly
+   - Advanced statistical analysis
+   - Automated insights generation
+   - Pattern and anomaly detection
+
+4. **Feature Engineering Agent** (`ml_pipeline/`)
+   - Intelligent feature creation
+   - Feature selection optimization
+   - Categorical encoding strategies
+   - Feature scaling and normalization
+
+5. **ML Builder Agent** (`ml_pipeline/`)
+   - Multi-algorithm model training
+   - Hyperparameter optimization
+   - Cross-validation and evaluation
+   - Model persistence and versioning
+
+6. **Model Evaluation Agent** (`ml_pipeline/`)
+   - Comprehensive performance metrics
+   - Confusion matrix analysis
+   - ROC curve generation
+   - Model interpretation and insights
+
+7. **Technical Reporter Agent** (`reporting/`)
+   - Jupyter notebook generation
+   - Comprehensive technical reports
+   - Educational content creation
+   - Documentation and usage instructions
+
+8. **Project Manager Agent** (`coordination/`)
+   - Workflow coordination and progress tracking
+   - User communication and updates
+   - Educational insights generation
+   - Error communication and handling
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Docker and Docker Compose
+- Google Gemini API Key
+- 8GB+ RAM recommended
+
+### 1. Clone and Setup
+```bash
+git clone <repository-url>
+cd ds-capstone-project
+
+# Copy environment template
+cp env.example .env
+
+# Edit .env with your API keys
+nano .env
+```
+
+### 2. Start the System
+```bash
+# Make startup script executable
+chmod +x start_system.sh
+
+# Start all services
+./start_system.sh
+```
+
+### 3. Access the Application
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **API Docs**: http://localhost:8000/docs
+
+### 4. Run a Test
+```bash
+# Run smoke test
+python test_complete_system.py
+```
+
+## 📁 Project Structure
+
+```
+ds-capstone-project/
+├── backend/                    # FastAPI backend
+│   ├── app/
+│   │   ├── agents/            # AI agents (domain-organized)
+│   │   │   ├── data_cleaning/ # Data cleaning agents
+│   │   │   ├── data_analysis/ # Discovery & EDA agents
+│   │   │   ├── ml_pipeline/   # Feature eng, ML, evaluation
+│   │   │   ├── reporting/     # Technical reporter
+│   │   │   └── coordination/  # Project manager
+│   │   ├── api/               # API routes
+│   │   ├── workflows/         # LangGraph workflows
+│   │   ├── services/          # Core services
+│   │   └── utils/             # Utilities
+│   └── tests/                 # Test suite
+├── frontend/                   # Next.js frontend
+│   ├── app/
+│   │   ├── components/        # React components
+│   │   └── page.tsx          # Main page
+│   └── public/               # Static assets
+├── docker/                    # Docker configuration
+├── docs/                      # Documentation
+├── test_data/                 # Sample datasets
+├── start_system.sh           # Startup script
+└── test_complete_system.py   # Smoke test
+```
 
 ### 🧹 Data Cleaning Domain
 - **Enhanced Data Cleaning Agent**: Main orchestrator with intelligent prompt engineering

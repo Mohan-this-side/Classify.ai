@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     debug: bool = Field(default=False, env="DEBUG")
     
     # API Keys
+    gemini_api_key: Optional[str] = Field(default=None, env="GEMINI_API_KEY")
     google_api_key: Optional[str] = Field(default=None, env="GOOGLE_API_KEY")
     langsmith_api_key: Optional[str] = Field(default=None, env="LANGSMITH_API_KEY")
     openai_api_key: Optional[str] = Field(default=None, env="OPENAI_API_KEY")
@@ -236,6 +237,7 @@ def validate_api_keys() -> Dict[str, bool]:
     """Validate that required API keys are present"""
     s = get_settings()
     return {
+        "gemini_api_key": bool(s.gemini_api_key),
         "google_api_key": bool(s.google_api_key),
         "langsmith_api_key": bool(s.langsmith_api_key),
         "openai_api_key": bool(s.openai_api_key)

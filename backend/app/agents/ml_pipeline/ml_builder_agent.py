@@ -42,6 +42,7 @@ from ..base_agent import BaseAgent
 from ...workflows.state_management import AgentStatus, ClassificationState, state_manager
 from ...config import settings
 from ...services.sandbox_executor import SandboxExecutor
+from ...services.storage import storage_service
 
 
 class MLBuilderAgent(BaseAgent):
@@ -880,14 +881,14 @@ y_test = pd.read_csv('y_test.csv').iloc[:, 0]   # First column
         }
 
     def _save_model(self, model: Any, session_id: Optional[str]) -> str:
-        """Save trained model"""
+        """Save trained model using storage service"""
         try:
-            models_dir = "models"
-            os.makedirs(models_dir, exist_ok=True)
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            sid = session_id or "session"
-            path = os.path.join(models_dir, f"model_{sid}_{ts}.joblib")
-            joblib.dump(model, path)
+            # Use storage service to save model
+            path = storage_service.store_model(
+                workflow_id=session_id or "session",
+                model=model,
+                filename="model.joblib"
+            )
             self.logger.info(f"Model saved to: {path}")
             return path
         except Exception as e:
