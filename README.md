@@ -665,7 +665,7 @@ SOFTWARE.
 
 ## Contact
 
-- **Project Repository**: [https://github.com/Mohan-this-side/classify-ai]((https://github.com/Mohan-this-side/Classify.ai))
+- **Project Repository**: [https://github.com/Mohan-this-side/classify-ai](https://github.com/Mohan-this-side/Classify.ai)
 - **Documentation**: [https://classify-ai.readthedocs.io](https://classify-ai.readthedocs.io) [WIP]
 - **Issues**: [https://github.com/Mohan-this-side/classify-ai/issues](https://github.com/Mohan-this-side/classify-ai/issues)
 
