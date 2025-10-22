@@ -19,21 +19,30 @@ if ! command -v docker-compose > /dev/null 2>&1; then
     exit 1
 fi
 
-# Navigate to docker directory
-cd docker
-
-# Check if .env file exists
+# Check if .env file exists in root directory
 if [ ! -f .env ]; then
-    echo "⚠️  .env file not found. Creating from example..."
-    if [ -f ../docker.env.example ]; then
-        cp ../docker.env.example .env
-        echo "📝 Please edit docker/.env file with your API keys before continuing."
+    echo "⚠️  .env file not found in root directory. Creating from example..."
+    if [ -f env.example ]; then
+        cp env.example .env
+        echo "📝 Please edit .env file with your API keys before continuing."
         echo "   Required: GEMINI_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY"
         read -p "Press Enter to continue after editing .env file..."
     else
-        echo "❌ docker.env.example not found. Please create docker/.env file manually."
+        echo "❌ env.example not found. Please create .env file manually."
         exit 1
     fi
+fi
+
+# Navigate to docker directory
+cd docker
+
+# Copy .env from root to docker directory for docker-compose
+if [ -f ../.env ]; then
+    echo "📋 Copying .env file to docker directory..."
+    cp ../.env .env
+else
+    echo "❌ .env file not found in root directory."
+    exit 1
 fi
 
 # Create necessary directories

@@ -2,7 +2,7 @@
   "master": {
     "tasks": [
       {
-        "id": 1,
+        "id": "1",
         "title": "Set up FastAPI backend with PostgreSQL and Redis",
         "description": "Initialize the FastAPI backend, configure PostgreSQL for state persistence, and Redis for caching and task queuing. Establish basic API endpoints for frontend communication.",
         "details": "1.  Create a new FastAPI project.\n2.  Install necessary dependencies: `pip install fastapi uvicorn psycopg2-binary redis langgraph`.\n3.  Configure PostgreSQL connection using environment variables.\n4.  Configure Redis connection using environment variables.\n5.  Define API endpoints for file upload and workflow initiation.\n6.  Implement basic error handling and logging.\n7.  Create database models for storing workflow state.\n\nFastAPI app initialized with proper structure, CORS middleware configured, WebSocket connection manager implemented, API routes structure exists (workflow_routes.py), configuration system with PostgreSQL and Redis settings, and requirements.txt with all necessary dependencies.",
@@ -64,7 +64,7 @@
         "expansionPrompt": "Decompose the task into subtasks for setting up FastAPI, configuring PostgreSQL, configuring Redis, and defining API endpoints."
       },
       {
-        "id": 2,
+        "id": "2",
         "title": "Implement Secure Code Execution Sandbox using Docker",
         "description": "Set up a Docker-based sandbox environment for executing AI-generated code. Configure resource limits (CPU, memory, execution time) and restrict network access.",
         "details": "1.  Create a Dockerfile with a Python environment.\n2.  Install necessary ML libraries (scikit-learn, pandas, etc.) inside the Docker image.\n3.  Implement resource limits using Docker's `--cpus`, `--memory`, and `--runtime` flags.\n4.  Disable network access using `--network=none`.\n5.  Implement a mechanism to transfer code to the container, execute it, and retrieve the results.\n\nDocker Compose configuration exists, Backend Dockerfile implemented, PostgreSQL and Redis services configured, and basic containerization setup.",
@@ -127,7 +127,7 @@
         "expansionPrompt": "Break down the task into subtasks for creating the Dockerfile, implementing resource limits, disabling network access, and implementing code transfer and execution."
       },
       {
-        "id": 3,
+        "id": "3",
         "title": "Implement LangGraph Workflow Engine",
         "description": "Integrate LangGraph to orchestrate the multi-agent workflow. Define the workflow graph, manage state persistence, and implement error recovery mechanisms.",
         "details": "1.  Define the LangGraph workflow graph with nodes representing agents and edges representing transitions.\n2.  Implement state management using PostgreSQL to persist the workflow state after each agent execution.\n3.  Implement error handling and retry mechanisms for agent failures.\n4.  Implement checkpointing to allow resuming workflows from the last known state.\n\nClassificationWorkflow class implemented, state management system with ClassificationState TypedDict, workflow graph structure defined with all agent nodes, state persistence and management utilities, and error handling and recovery mechanisms.",
@@ -207,7 +207,7 @@
         "expansionPrompt": "Divide the task into subtasks for defining the workflow graph, implementing state management, implementing error handling, implementing checkpointing, and testing the workflow."
       },
       {
-        "id": 4,
+        "id": "4",
         "title": "Develop Data Cleaning Agent",
         "description": "Implement the Data Cleaning Agent to handle missing values, data type validation, and outlier detection. Include educational explanations for each cleaning step.",
         "details": "1.  Implement missing value analysis using pandas.\n2.  Implement missing value imputation strategies (mean, median, mode, etc.).\n3.  Implement data type validation using pandas.\n4.  Implement outlier detection using IQR or Z-score methods.\n5.  Generate educational explanations for each cleaning step.\n\nBaseAgent abstract class implemented. EnhancedDataCleaningAgent class exists with proper structure and agent interfaces and dependencies defined.",
@@ -339,7 +339,7 @@
         "expansionPrompt": "Decompose the task into subtasks for missing value analysis, missing value imputation, data type validation, outlier detection, and generating educational explanations."
       },
       {
-        "id": 5,
+        "id": "5",
         "title": "Develop Model Builder Agent",
         "description": "Implement the Model Builder Agent to train classification models while preventing data leakage. Enforce the use of sklearn.pipeline.Pipeline and train/test split before preprocessing.",
         "details": "1.  Enforce the use of sklearn.pipeline.Pipeline.\n2.  Implement train/test split before any preprocessing steps.\n3.  Implement multiple classification algorithm options (Logistic Regression, Random Forest, etc.).\n4.  Implement hyperparameter optimization using GridSearchCV or RandomizedSearchCV.\n\nBaseAgent abstract class implemented. MLBuilderAgent class exists with proper structure and agent interfaces and dependencies defined.",
@@ -411,7 +411,7 @@
         "expansionPrompt": "Break down the task into subtasks for enforcing the use of sklearn.pipeline.Pipeline, implementing train/test split, implementing multiple classification algorithm options, implementing hyperparameter optimization, and testing the agent."
       },
       {
-        "id": 6,
+        "id": "6",
         "title": "Develop Model Evaluation Agent",
         "description": "Implement the Model Evaluation Agent to calculate and report model performance metrics (accuracy, F1, precision, recall, ROC-AUC). Generate confusion matrix and ROC curve visualizations.",
         "details": "1.  Calculate accuracy, F1, precision, recall, and ROC-AUC.\n2.  Generate confusion matrix.\n3.  Generate ROC curve plot.\n4.  Provide performance interpretation.\n\nBaseAgent abstract class implemented. ModelEvaluationAgent class exists with proper structure and agent interfaces and dependencies defined.",
@@ -478,7 +478,7 @@
         "expansionPrompt": "Divide the task into subtasks for calculating performance metrics, generating the confusion matrix, generating the ROC curve plot, and providing performance interpretation."
       },
       {
-        "id": 7,
+        "id": "7",
         "title": "Develop Technical Reporter Agent",
         "description": "Implement the Technical Reporter Agent to generate a comprehensive Jupyter notebook and technical report. Include code compilation, educational content, and usage instructions.",
         "details": "1.  Compile and organize code from all agents.\n2.  Generate educational content explaining the ML pipeline.\n3.  Generate Markdown explanations for each step.\n4.  Include usage instructions for the generated model and notebook.\n\nBaseAgent abstract class implemented. TechnicalReporterAgent class exists with proper structure and agent interfaces and dependencies defined.",
@@ -550,7 +550,7 @@
         "expansionPrompt": "Decompose the task into subtasks for compiling code, generating educational content, generating Markdown explanations, including usage instructions, and testing the generated report."
       },
       {
-        "id": 8,
+        "id": "8",
         "title": "Develop Basic Frontend with File Upload and Progress Display",
         "description": "Implement a basic frontend using Next.js and React. Include a file upload component, a progress tracker, and a results download interface.",
         "status": "done",
@@ -566,7 +566,8 @@
             "dependencies": [],
             "details": "Ensure the backend is running and accessible. Verify that the necessary APIs are available and functioning correctly. Check for any compatibility issues between the frontend and backend.",
             "status": "done",
-            "testStrategy": "Send test requests to the backend and verify the responses. Check the backend logs for any errors."
+            "testStrategy": "Send test requests to the backend and verify the responses. Check the backend logs for any errors.",
+            "parentId": "undefined"
           },
           {
             "id": 1,
@@ -614,10 +615,13 @@
             "testStrategy": "Verify the download interface allows users to download the generated deliverables. Test with different file types and sizes. Verify error handling for download failures.",
             "parentId": "undefined"
           }
-        ]
+        ],
+        "complexity": 6,
+        "recommendedSubtasks": 4,
+        "expansionPrompt": "Break down the task into subtasks for setting up the Next.js project, implementing the file upload component, implementing the progress tracker, and implementing the results download interface."
       },
       {
-        "id": 9,
+        "id": "9",
         "title": "Implement Human-in-the-Loop Approval Gates",
         "description": "Implement approval gates at key decision points in the workflow. Allow users to approve, modify, or reject proposals with educational explanations.",
         "details": "1.  Define key decision points in the workflow where user approval is required.\n2.  Implement a UI for users to approve, modify, or reject proposals.\n3.  Provide educational explanations for each proposal.\n4.  Implement logic to pause the workflow and wait for user input.",
@@ -691,7 +695,7 @@
         "expansionPrompt": "Divide the task into subtasks for defining decision points, implementing the UI for approval, providing educational explanations, implementing workflow pausing logic, and testing the approval gates."
       },
       {
-        "id": 10,
+        "id": "10",
         "title": "Integrate Gemini API for LLM functionality",
         "description": "Integrate the Gemini API for code generation and educational content creation. Securely store and manage the API key.",
         "details": "1.  Implement API key input in the frontend.\n2.  Securely store the API key in the backend (encryption).\n3.  Use the Gemini API for code generation in the agents.\n4.  Use the Gemini API for educational content creation in the Technical Reporter Agent.",
@@ -709,7 +713,7 @@
         "expansionPrompt": "Decompose the task into subtasks for implementing API key input, securely storing the API key, using the Gemini API for code generation, using the Gemini API for educational content creation, and testing the integration."
       },
       {
-        "id": 11,
+        "id": "11",
         "title": "Enhance Data Discovery Agent",
         "description": "Improve the Data Discovery Agent with advanced data profiling, automatic data type detection, and intelligent feature recommendations.",
         "details": "1.  Implement comprehensive data profiling including statistical summaries, data quality metrics, and pattern detection.\n2.  Add automatic data type detection and validation.\n3.  Implement intelligent feature recommendations based on data characteristics.\n4.  Add data visualization capabilities for better understanding.\n5.  Integrate with the enhanced data cleaning agent for seamless workflow.",
@@ -833,7 +837,7 @@
         ]
       },
       {
-        "id": 12,
+        "id": "12",
         "title": "Enhance EDA Agent",
         "description": "Improve the EDA Agent with advanced statistical analysis, interactive visualizations, and automated insights generation.",
         "details": "1.  Implement advanced statistical analysis including correlation analysis, distribution analysis, and hypothesis testing.\n2.  Add interactive visualization capabilities with plotly and other advanced plotting libraries.\n3.  Implement automated insights generation using LLM integration.\n4.  Add support for different data types and analysis techniques.\n5.  Integrate with the enhanced data discovery and cleaning agents.",
@@ -959,19 +963,372 @@
             "parentId": "undefined"
           }
         ]
+      },
+      {
+        "id": "13",
+        "title": "Implement MCP Integration Testing Suite",
+        "description": "Create a comprehensive testing suite to verify the Multi-agent Collaborative Platform (MCP) functionality, including integration tests between all agents and the frontend interface.",
+        "details": "1. Set up a testing environment with Jest and React Testing Library\n2. Implement end-to-end tests using Cypress or Playwright to verify:\n   - File upload and processing workflow\n   - Inter-agent communication and data passing\n   - Frontend-backend integration\n   - WebSocket real-time updates\n3. Create integration tests for:\n   - EDA Agent statistical analysis and visualization outputs\n   - Data Discovery Agent profiling and recommendations\n   - Gemini API integration for code generation\n   - Human-in-the-loop approval gates\n4. Implement mock services for external dependencies\n5. Set up CI/CD pipeline integration for automated test execution\n6. Create test data fixtures representing various use cases\n7. Implement performance and load testing scenarios\n8. Add error handling and edge case testing\n9. Document test coverage and maintenance procedures",
+        "testStrategy": "1. Execute the full test suite in a controlled environment\n2. Verify all agent interactions work as expected:\n   - Test data flow between EDA and Data Discovery agents\n   - Validate Gemini API response handling\n   - Check approval gate functionality\n3. Perform cross-browser testing on the frontend\n4. Validate WebSocket connections and real-time updates\n5. Run load tests with multiple simultaneous users\n6. Verify error handling and recovery procedures\n7. Generate and review test coverage reports\n8. Conduct user acceptance testing with stakeholders\n9. Document all test results and findings",
+        "status": "pending",
+        "dependencies": [
+          "8",
+          "9",
+          "10",
+          "11",
+          "12"
+        ],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": "14",
+        "title": "Implement Layer 1 Hardcoded Analysis Framework",
+        "description": "Create a standardized Layer 1 analysis framework that implements comprehensive hardcoded analysis functions for all agents, generating structured statistical insights and pattern detection with robust error handling.",
+        "details": "1. Create a base Layer1Analysis abstract class with:\n   - Abstract methods for data quality checks\n   - Statistical analysis interfaces\n   - Pattern detection methods\n   - Error handling protocols\n\n2. Implement concrete Layer1Analyzer classes for each agent type:\n   ```python\n   class DataCleaningLayer1(Layer1Analysis):\n       def analyze_missing_values(self):\n           # Statistical analysis of missing data patterns\n       def analyze_data_types(self):\n           # Type consistency checks and statistics\n   ```\n\n3. Define standardized output schemas using Pydantic:\n   ```python\n   class Layer1Result(BaseModel):\n       quality_metrics: Dict[str, float]\n       statistical_summary: Dict[str, Any]\n       detected_patterns: List[Pattern]\n       validation_results: ValidationReport\n   ```\n\n4. Implement comprehensive error handling:\n   - Input validation checks\n   - Data quality thresholds\n   - Exception handling with detailed error messages\n   - Fallback analysis methods\n\n5. Add logging and monitoring:\n   - Performance metrics collection\n   - Analysis duration tracking\n   - Memory usage monitoring\n   - Error rate tracking\n\n6. Create utility functions for common statistical operations:\n   - Distribution analysis\n   - Correlation detection\n   - Outlier identification\n   - Pattern recognition\n\n7. Implement data quality metrics:\n   - Completeness scores\n   - Consistency metrics\n   - Validity checks\n   - Format validation",
+        "testStrategy": "1. Unit Testing:\n   - Test each Layer1Analyzer implementation with various data scenarios\n   - Verify error handling for edge cases\n   - Validate output schema compliance\n   - Check statistical accuracy against known datasets\n\n2. Integration Testing:\n   - Verify integration with existing agent infrastructure\n   - Test performance under different data loads\n   - Validate logging and monitoring functionality\n   - Check memory usage patterns\n\n3. Quality Metrics Validation:\n   - Compare statistical results against established libraries\n   - Verify pattern detection accuracy\n   - Validate data quality metrics\n   - Test threshold handling\n\n4. Performance Testing:\n   - Measure analysis execution time\n   - Monitor memory consumption\n   - Test concurrent analysis capabilities\n   - Verify resource utilization\n\n5. Error Handling Verification:\n   - Test recovery from various error conditions\n   - Validate error message clarity\n   - Check fallback mechanism functionality\n   - Verify logging of error conditions",
+        "status": "pending",
+        "dependencies": [
+          "2",
+          "3",
+          "4"
+        ],
+        "priority": "high",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement Base Layer1Analysis Abstract Class",
+            "description": "Create the foundational abstract class with core interfaces for data quality, statistics, and pattern detection",
+            "dependencies": [],
+            "details": "Implement Layer1Analysis abstract class with abstract methods for data quality checks, statistical analysis interfaces, pattern detection methods, and error handling protocols. Include type hints and docstrings for all abstract methods.",
+            "status": "pending",
+            "testStrategy": "Unit test abstract class implementation, verify method signatures, and test basic inheritance patterns",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Develop Concrete Layer1Analyzer Classes",
+            "description": "Implement specific analyzer classes for different agent types with concrete implementations of abstract methods",
+            "dependencies": [
+              1
+            ],
+            "details": "Create DataCleaningLayer1, ModelingLayer1, and ValidationLayer1 classes inheriting from Layer1Analysis. Implement all required methods with proper statistical analysis, type checking, and pattern detection logic for each agent type.",
+            "status": "pending",
+            "testStrategy": "Unit test each analyzer class with sample data, verify correct statistical calculations, and test error handling",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Create Standardized Output Schema",
+            "description": "Implement Pydantic models for structured analysis results and validation reports",
+            "dependencies": [
+              1
+            ],
+            "details": "Define Layer1Result, QualityMetrics, StatisticalSummary, and ValidationReport Pydantic models. Include comprehensive field definitions, validators, and proper typing for all components of the analysis output.",
+            "status": "pending",
+            "testStrategy": "Test schema validation, serialization/deserialization, and edge cases for all model fields",
+            "parentId": "undefined"
+          },
+          {
+            "id": 4,
+            "title": "Implement Statistical Utility Functions",
+            "description": "Create a comprehensive set of statistical analysis and pattern detection utility functions",
+            "dependencies": [
+              1,
+              3
+            ],
+            "details": "Develop utility functions for distribution analysis, correlation detection, outlier identification, and pattern recognition. Include optimization for large datasets and proper error handling for edge cases.",
+            "status": "pending",
+            "testStrategy": "Unit test each utility function with various data distributions and verify statistical accuracy",
+            "parentId": "undefined"
+          },
+          {
+            "id": 5,
+            "title": "Add Logging and Monitoring System",
+            "description": "Implement comprehensive logging and performance monitoring infrastructure",
+            "dependencies": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "details": "Create logging system for performance metrics, analysis duration, memory usage, and error rates. Implement custom metrics collectors, logging handlers, and monitoring dashboards. Include configuration options for different logging levels.",
+            "status": "pending",
+            "testStrategy": "Test logging output, verify metric collection accuracy, and validate monitoring system integration",
+            "parentId": "undefined"
+          }
+        ]
+      },
+      {
+        "id": "15",
+        "title": "Implement Layer 2 LLM Code Generation Framework",
+        "description": "Create a robust Layer 2 framework that uses multiple LLM providers (Gemini/OpenAI/Anthropic) to generate secure, validated Python code based on Layer 1 analysis results, with execution in Docker sandboxes.",
+        "details": "1. Create LLMServiceFactory and provider-specific implementations:\n```python\nclass LLMServiceFactory:\n    @staticmethod\n    def create_service(provider: str) -> BaseLLMService:\n        if provider == \"gemini\":\n            return GeminiService()\n        elif provider == \"openai\":\n            return OpenAIService()\n```\n\n2. Implement code generation prompt template system:\n```python\nclass CodeGenerationPrompt:\n    def build_prompt(self, layer1_analysis: Dict, agent_type: str) -> str:\n        return f\"\"\"\n        Based on the following Layer 1 analysis:\n        {json.dumps(layer1_analysis, indent=2)}\n        Generate Python code for {agent_type} that:\n        1. Follows PEP 8 standards\n        2. Includes error handling\n        3. Implements logging\n        \"\"\"\n```\n\n3. Create security validation pipeline:\n- Implement static code analysis using Bandit\n- Add dependency vulnerability scanning\n- Create allowlist for permitted imports\n- Implement runtime resource monitoring\n\n4. Develop context-aware generation system:\n- Create AgentMemory class for storing previous interactions\n- Implement context window management\n- Add template-based code generation strategies\n\n5. Implement code quality validation:\n- Integration with pylint for style checking\n- Unit test template generation\n- Type hint validation\n- Complexity metrics analysis\n\n6. Create fallback and retry mechanism:\n- Implement exponential backoff for API retries\n- Add alternative provider failover\n- Cache successful generations for reuse\n\n7. Set up audit logging system:\n- Log all API requests and responses\n- Track generation attempts and success rates\n- Monitor resource usage and performance\n\n8. Implement agent-specific strategies:\n- Create strategy pattern for different agent types\n- Configure custom validation rules per agent\n- Implement specialized prompt templates",
+        "testStrategy": "1. Unit Testing:\n- Test each LLM service implementation\n- Verify prompt generation for different agent types\n- Validate security scanning functionality\n- Test code quality validation\n- Verify fallback mechanisms\n- Check audit logging functionality\n\n2. Integration Testing:\n- Verify end-to-end code generation pipeline\n- Test interaction with Docker sandbox\n- Validate Layer 1 analysis integration\n- Check multi-provider failover\n- Test memory context management\n\n3. Security Testing:\n- Attempt to generate malicious code\n- Verify resource limits enforcement\n- Test network access restrictions\n- Validate import restrictions\n\n4. Performance Testing:\n- Measure generation latency\n- Test concurrent generation requests\n- Verify memory usage under load\n- Monitor API rate limit handling\n\n5. Validation Testing:\n- Compare generated code quality metrics\n- Verify code execution results\n- Test error handling scenarios\n- Validate logging and audit trail",
+        "status": "pending",
+        "dependencies": [
+          "2",
+          "14"
+        ],
+        "priority": "high",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement LLM Service Factory and Provider Integrations",
+            "description": "Create a factory class and implement provider-specific services for Gemini, OpenAI, and Anthropic with standardized interfaces",
+            "dependencies": [],
+            "details": "Implement LLMServiceFactory class with provider selection logic. Create BaseLLMService abstract class and concrete implementations for each provider (GeminiService, OpenAIService, AnthropicService). Include API key management, rate limiting, and error handling for each service. Implement common interface methods like generate_code(), validate_response(), and handle_errors().",
+            "status": "pending",
+            "testStrategy": "Unit tests for factory pattern implementation, mock API responses, test error handling scenarios, verify rate limiting functionality",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Develop Code Generation and Prompt Management System",
+            "description": "Create a robust prompt template system with context management for generating secure Python code",
+            "dependencies": [
+              1
+            ],
+            "details": "Implement CodeGenerationPrompt class with template management. Create AgentMemory class for context storage. Build prompt optimization system with template variables. Implement context window management for handling conversation history. Add specialized prompt templates for different agent types. Include code style and security requirements in prompts.",
+            "status": "pending",
+            "testStrategy": "Test prompt generation with various inputs, verify context management, validate template rendering, check memory management",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Implement Security Validation Pipeline",
+            "description": "Create a comprehensive security validation system for generated code using static analysis and runtime monitoring",
+            "dependencies": [
+              2
+            ],
+            "details": "Integrate Bandit for static code analysis. Implement dependency vulnerability scanning using safety. Create allowlist system for permitted Python imports. Add runtime resource monitoring using Docker stats API. Implement security policy enforcement. Create validation pipeline that runs all security checks sequentially.",
+            "status": "pending",
+            "testStrategy": "Test with known vulnerable code samples, verify import restrictions, validate resource monitoring, check policy enforcement",
+            "parentId": "undefined"
+          },
+          {
+            "id": 4,
+            "title": "Create Code Quality and Testing Framework",
+            "description": "Implement comprehensive code quality checks and automated test generation system",
+            "dependencies": [
+              2,
+              3
+            ],
+            "details": "Integrate pylint for style checking with custom ruleset. Implement unit test template generation system. Add type hint validation using mypy. Create complexity metrics analysis using radon. Implement code review checklist automation. Generate documentation templates. Add performance benchmarking tools.",
+            "status": "pending",
+            "testStrategy": "Verify style checking with various code samples, test the test generator, validate type checking system, measure complexity metrics accuracy",
+            "parentId": "undefined"
+          },
+          {
+            "id": 5,
+            "title": "Implement Resilience and Monitoring Systems",
+            "description": "Create robust fallback mechanisms and comprehensive monitoring system for the framework",
+            "dependencies": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "details": "Implement exponential backoff retry mechanism for API calls. Create provider failover system. Build caching layer for successful generations. Implement comprehensive audit logging system for all operations. Add performance monitoring and metrics collection. Create dashboard for monitoring generation success rates and resource usage.",
+            "status": "pending",
+            "testStrategy": "Test retry mechanism with simulated failures, verify failover functionality, validate logging system, check metrics accuracy",
+            "parentId": "undefined"
+          }
+        ]
+      },
+      {
+        "id": "16",
+        "title": "Enhance Docker Sandbox Execution Pipeline",
+        "description": "Enhance the existing SandboxExecutor with a double-layer architecture, comprehensive resource management, and local testing capabilities. Implement secure execution of LLM-generated code with proper isolation, monitoring, and error handling.",
+        "details": "1. Implement double-layer sandbox architecture:\n   - Outer container for resource management and monitoring\n   - Inner container for actual code execution\n   - IPC mechanism between layers\n\n2. Create ML-ready Docker image:\n   - Base image with Python 3.9+\n   - Install required ML libraries: scikit-learn, pandas, numpy, tensorflow-cpu\n   - Configure library versions for compatibility\n   - Implement layer caching for faster builds\n\n3. Implement resource management:\n   - CPU limits using cgroups\n   - Memory limits with OOM protection\n   - Disk space quotas\n   - Execution timeouts with graceful termination\n\n4. Configure volume management:\n   - Read-only mounting of input datasets\n   - Temporary volume for output results\n   - Secure data transfer between host and containers\n\n5. Enhance security measures:\n   - Implement seccomp profiles\n   - Configure AppArmor/SELinux policies\n   - Add code validation and sanitization\n   - Block all network access\n   - Implement rootless container execution\n\n6. Add monitoring and logging:\n   - Resource usage metrics collection\n   - Execution status monitoring\n   - Error logging and aggregation\n   - Audit trail generation\n\n7. Implement environment management:\n   - Environment-specific configurations\n   - Local development setup\n   - Production deployment settings\n   - Testing environment configuration\n\n8. Error handling and recovery:\n   - Graceful container cleanup\n   - Resource deallocation\n   - Failure recovery mechanisms\n   - Automatic retry logic",
+        "testStrategy": "1. Unit Testing:\n   - Test resource limit enforcement\n   - Verify security configurations\n   - Validate error handling mechanisms\n   - Check monitoring system accuracy\n\n2. Integration Testing:\n   - Test end-to-end code execution pipeline\n   - Verify data transfer between containers\n   - Validate monitoring and logging integration\n   - Test environment-specific configurations\n\n3. Security Testing:\n   - Attempt privilege escalation\n   - Test network access restrictions\n   - Verify resource isolation\n   - Validate code injection prevention\n\n4. Performance Testing:\n   - Measure container startup time\n   - Monitor resource usage under load\n   - Test concurrent execution capabilities\n   - Verify cleanup efficiency\n\n5. Failure Recovery Testing:\n   - Simulate various failure scenarios\n   - Test automatic retry mechanisms\n   - Verify resource cleanup\n   - Validate audit trail accuracy",
+        "status": "pending",
+        "dependencies": [
+          "2"
+        ],
+        "priority": "high",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement Double-Layer Docker Architecture",
+            "description": "Set up the double-layer sandbox architecture with outer container for monitoring and inner container for code execution",
+            "dependencies": [],
+            "details": "Create Docker Compose configuration for double-layer setup, implement IPC mechanism between containers using Unix domain sockets or named pipes, configure container networking and isolation, set up health checks for both containers",
+            "status": "pending",
+            "testStrategy": "Test container communication, verify isolation between layers, validate health check mechanisms, ensure proper container startup and shutdown sequence",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Build ML-Ready Base Docker Image",
+            "description": "Create and configure the base Docker image with Python 3.9+ and required ML libraries",
+            "dependencies": [
+              1
+            ],
+            "details": "Create Dockerfile with Python 3.9+, install and configure ML libraries (scikit-learn, pandas, numpy, tensorflow-cpu), implement layer caching, set up version pinning for dependencies, optimize image size using multi-stage builds",
+            "status": "pending",
+            "testStrategy": "Verify library installations, test ML functionality, validate image size and build performance, check compatibility between libraries",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Implement Resource Management and Monitoring",
+            "description": "Set up comprehensive resource management with CPU, memory, and disk quotas, plus monitoring system",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Configure cgroups for CPU and memory limits, implement disk quotas, set up resource monitoring and metrics collection, create logging system for resource usage, implement OOM protection and graceful termination",
+            "status": "pending",
+            "testStrategy": "Test resource limits enforcement, validate monitoring accuracy, verify logging system, test overflow scenarios and termination handling",
+            "parentId": "undefined"
+          },
+          {
+            "id": 4,
+            "title": "Configure Security Measures and Volume Management",
+            "description": "Implement security configurations including seccomp, AppArmor/SELinux, and secure volume management",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Set up seccomp profiles, configure AppArmor/SELinux policies, implement secure volume mounting for input/output, configure rootless container execution, implement network access restrictions",
+            "status": "pending",
+            "testStrategy": "Verify security configurations, test volume access permissions, validate network restrictions, check rootless execution",
+            "parentId": "undefined"
+          },
+          {
+            "id": 5,
+            "title": "Implement Error Handling and Recovery System",
+            "description": "Create comprehensive error handling system with recovery mechanisms and cleanup procedures",
+            "dependencies": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "details": "Implement container cleanup procedures, create resource deallocation system, develop failure recovery mechanisms, implement automatic retry logic, create audit trail generation system, set up error logging and aggregation",
+            "status": "pending",
+            "testStrategy": "Test error recovery scenarios, verify cleanup procedures, validate audit trail generation, check retry mechanism effectiveness",
+            "parentId": "undefined"
+          }
+        ]
+      },
+      {
+        "id": "17",
+        "title": "Enhance Project Manager Agent with Real-Time Educational Features",
+        "description": "Upgrade the existing ProjectManagerAgent to provide real-time educational explanations, code analysis, and interactive user communication features, including live updates and contextual learning content.",
+        "details": "1. Implement Real-Time Code Analysis System:\n```python\nclass CodeAnalysisManager:\n    def analyze_agent_output(self, agent_code: str) -> Dict[str, Any]:\n        return {\n            'complexity_metrics': self._calculate_complexity(),\n            'patterns_detected': self._identify_patterns(),\n            'educational_points': self._extract_learning_opportunities()\n        }\n```\n\n2. Create Educational Content Generator:\n```python\nclass EducationalContentGenerator:\n    def __init__(self, llm_service: BaseLLMService):\n        self.llm = llm_service\n        \n    def generate_explanation(self, technical_concept: str) -> str:\n        prompt = self._build_educational_prompt(technical_concept)\n        return self.llm.generate_explanation(prompt)\n```\n\n3. Implement WebSocket-based Real-Time Communication:\n```python\nclass ProjectManagerWebSocket:\n    async def broadcast_update(self, update_type: str, content: Dict):\n        await self.send_json({\n            'type': update_type,\n            'content': content,\n            'timestamp': datetime.now().isoformat()\n        })\n```\n\n4. Develop Context Management System:\n- Implement memory store using Redis for agent action history\n- Create context aggregator for maintaining conversation state\n- Build decision history tracker for educational purposes\n\n5. Integration Points:\n- Connect to Layer 1 Analysis framework for code insights\n- Interface with LangGraph workflow for agent coordination\n- Integrate with frontend WebSocket handlers\n- Implement educational content caching system\n\n6. Educational Features Implementation:\n- Create templates for common data science concepts\n- Implement progressive disclosure of complex topics\n- Build interactive code snippet generator\n- Develop user skill level assessment system\n\n7. Error Handling and User Guidance:\n- Implement error classification system\n- Create contextual help generator\n- Build interactive troubleshooting flows\n- Develop user guidance pathways",
+        "testStrategy": "1. Unit Testing:\n- Test code analysis functionality with various agent outputs\n- Verify educational content generation accuracy\n- Validate WebSocket communication reliability\n- Test context management system persistence\n- Verify error handling and guidance systems\n\n2. Integration Testing:\n- Verify real-time updates through WebSocket connections\n- Test interaction with Layer 1 Analysis framework\n- Validate educational content delivery pipeline\n- Check context awareness across multiple sessions\n\n3. User Experience Testing:\n- Conduct usability testing of interactive features\n- Verify educational content clarity and progression\n- Test Q&A functionality response accuracy\n- Validate real-time update performance\n\n4. System Testing:\n- Load testing of concurrent user interactions\n- Performance testing of real-time analysis features\n- Memory usage monitoring for context management\n- End-to-end workflow validation\n\n5. Acceptance Testing:\n- Verify all PRD requirements are met\n- Validate educational effectiveness with test users\n- Confirm real-time performance meets specifications\n- Test cross-browser compatibility",
+        "status": "pending",
+        "dependencies": [
+          "3",
+          "14",
+          "15"
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": "18",
+        "title": "Fix Critical System Issues and Technical Debt",
+        "description": "Resolve critical system issues including syntax errors, missing directories, backend failures, and workflow execution problems to establish a stable foundation for the double-layer architecture implementation.",
+        "details": "1. Code Fixes:\n- Fix IndentationError in classification_workflow.py line 130\n- Review and correct all Python syntax errors\n- Implement proper import error handling\n- Add missing type hints and docstrings\n\n2. Directory and Path Management:\n- Create results/ directory with proper permissions\n- Implement automated directory verification on startup\n- Add configuration validation for model paths\n- Create path resolution utility class\n\n3. Backend Infrastructure:\n```python\nclass SystemHealthCheck:\n    def __init__(self):\n        self.checks = {\n            'directories': self._verify_directories,\n            'model_paths': self._verify_model_paths,\n            'storage': self._verify_storage_service,\n            'workflow': self._verify_workflow_execution\n        }\n    \n    def run_all_checks(self) -> Dict[str, bool]:\n        return {name: check() for name, check in self.checks.items()}\n```\n\n4. Storage Service Enhancement:\n- Configure proper storage service endpoints\n- Implement retry mechanism for failed storage operations\n- Add proper error handling for notebook/report storage\n- Create storage service health monitoring\n\n5. Workflow Optimization:\n- Implement configurable timeout settings\n- Add workflow state recovery mechanism\n- Create workflow monitoring dashboard\n- Add performance logging and metrics\n\n6. Docker Environment:\n- Fix Dockerfile syntax and dependencies\n- Implement proper container health checks\n- Add volume mounting validation\n- Configure proper networking",
+        "testStrategy": "1. Automated Testing:\n- Run comprehensive pytest suite covering all fixed components\n- Execute end-to-end workflow tests with timeout monitoring\n- Verify directory creation and permissions\n- Test storage service with large files and concurrent access\n\n2. Infrastructure Validation:\n- Verify backend startup sequence\n- Test all API endpoints with error conditions\n- Monitor workflow execution times\n- Validate Docker container builds and deployments\n\n3. System Health Verification:\n- Run SystemHealthCheck suite in all environments\n- Verify proper error logging and reporting\n- Test recovery mechanisms\n- Monitor resource usage during operations\n\n4. Regression Testing:\n- Ensure all agents execute without errors\n- Verify frontend compilation and functionality\n- Test all storage service operations\n- Validate workflow state management",
+        "status": "done",
+        "dependencies": [
+          "3",
+          "4",
+          "16"
+        ],
+        "priority": "high",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Fix Python Code Syntax and Structure Issues",
+            "description": "Address all syntax errors, implement proper error handling, and improve code quality with type hints and docstrings",
+            "dependencies": [],
+            "details": "Fix IndentationError in classification_workflow.py line 130, implement comprehensive import error handling system, add missing type hints and docstrings to all functions, review and correct all Python syntax errors across the codebase. Create utility functions for common error handling patterns.",
+            "status": "pending",
+            "testStrategy": "Run pylint and mypy for static code analysis, execute comprehensive pytest suite to verify syntax fixes, validate import error handling with mock imports, verify type hint correctness",
+            "parentId": "undefined"
+          },
+          {
+            "id": 2,
+            "title": "Implement Directory and Path Management System",
+            "description": "Create robust directory management system with automated verification and proper permissions handling",
+            "dependencies": [
+              1
+            ],
+            "details": "Create results/ directory with proper permissions, implement automated directory verification on startup, develop path resolution utility class, add configuration validation for model paths, implement directory health checks, create automated cleanup for temporary directories",
+            "status": "pending",
+            "testStrategy": "Test directory creation with various permission scenarios, verify path resolution across different OS environments, validate configuration handling with mock filesystem",
+            "parentId": "undefined"
+          },
+          {
+            "id": 3,
+            "title": "Enhance Storage Service and Backend Infrastructure",
+            "description": "Improve storage service reliability and implement comprehensive system health monitoring",
+            "dependencies": [
+              2
+            ],
+            "details": "Configure proper storage service endpoints, implement retry mechanism for failed operations, enhance error handling for notebook/report storage, create storage service health monitoring, implement SystemHealthCheck class with all verification methods, add proper logging for backend operations",
+            "status": "pending",
+            "testStrategy": "Test storage operations under various failure conditions, verify retry mechanism effectiveness, validate health check system with simulated failures",
+            "parentId": "undefined"
+          },
+          {
+            "id": 4,
+            "title": "Optimize Workflow Execution System",
+            "description": "Implement workflow management improvements including timeout handling and state recovery",
+            "dependencies": [
+              3
+            ],
+            "details": "Implement configurable timeout settings for all workflow operations, create workflow state recovery mechanism for handling failures, develop workflow monitoring dashboard, add comprehensive performance logging and metrics collection, implement workflow validation checks",
+            "status": "pending",
+            "testStrategy": "Test workflow recovery with simulated failures, verify timeout handling in various scenarios, validate metrics collection accuracy",
+            "parentId": "undefined"
+          },
+          {
+            "id": 5,
+            "title": "Configure Docker Environment and Health Checks",
+            "description": "Improve Docker configuration and implement container health monitoring",
+            "dependencies": [
+              4
+            ],
+            "details": "Fix Dockerfile syntax and dependency issues, implement comprehensive container health checks, add volume mounting validation, configure proper networking between containers, implement logging aggregation, create container restart policies, optimize Docker build process",
+            "status": "pending",
+            "testStrategy": "Verify Docker builds in clean environment, test container health checks under various conditions, validate networking between services",
+            "parentId": "undefined"
+          }
+        ],
+        "updatedAt": "2025-10-19T00:04:36.554Z"
+      },
+      {
+        "id": "19",
+        "title": "Implement Comprehensive Local Testing Framework",
+        "description": "Create an extensive testing framework that validates the double-layer agentic workflow with Docker sandbox execution, including end-to-end tests, integration tests, and performance monitoring for local development.",
+        "details": "1. Set up PyTest Framework with Custom Fixtures:\n```python\n@pytest.fixture\ndef docker_sandbox():\n    sandbox = SandboxExecutor()\n    yield sandbox\n    sandbox.cleanup()\n\n@pytest.fixture\ndef mock_llm_service():\n    return MockLLMService()\n```\n\n2. Implement End-to-End Workflow Tests:\n- Create TestWorkflowExecutor class for orchestrating full pipeline tests\n- Implement test data generators for various scenarios\n- Add timing and resource monitoring decorators\n\n3. Layer-Specific Test Suites:\n```python\nclass TestLayer1Analysis:\n    def test_hardcoded_analysis(self, test_data):\n        analyzer = Layer1Analyzer()\n        results = analyzer.analyze(test_data)\n        assert_analysis_schema(results)\n\nclass TestLayer2Generation:\n    def test_code_generation(self, mock_llm_service):\n        generator = Layer2Generator(mock_llm_service)\n        code = generator.generate(analysis_results)\n        validate_generated_code(code)\n```\n\n4. Docker Sandbox Integration Tests:\n- Test resource limits and isolation\n- Verify code execution pipeline\n- Monitor performance metrics\n- Test error handling and cleanup\n\n5. Mock LLM Services:\n```python\nclass MockLLMService:\n    def generate_code(self, prompt):\n        return predefined_responses[prompt_hash]\n```\n\n6. Performance Testing Suite:\n- Implement timing benchmarks\n- Add memory usage monitoring\n- Create load testing scenarios\n- Generate performance reports\n\n7. Security Test Cases:\n- Test sandbox escape attempts\n- Verify resource restrictions\n- Validate code security scanning\n- Test access control mechanisms\n\n8. Automated Test Runner:\n```python\nclass TestRunner:\n    def run_local_suite(self):\n        self.setup_environment()\n        self.run_unit_tests()\n        self.run_integration_tests()\n        self.run_performance_tests()\n        self.generate_reports()\n```",
+        "testStrategy": "1. Unit Testing:\n- Execute all unit tests for Layer 1 and Layer 2 components\n- Verify mock LLM services function correctly\n- Test Docker sandbox initialization and cleanup\n- Validate test data generators\n\n2. Integration Testing:\n- Run full workflow tests with sample datasets\n- Verify Docker sandbox resource limits\n- Test Layer 1 to Layer 2 data flow\n- Validate end-to-end pipeline execution\n\n3. Performance Testing:\n- Execute benchmark suite for sandbox operations\n- Measure memory usage across different workloads\n- Time full workflow execution\n- Generate performance reports\n\n4. Security Testing:\n- Attempt sandbox escape scenarios\n- Verify resource limit enforcement\n- Test code injection prevention\n- Validate access controls\n\n5. Coverage Analysis:\n- Generate coverage reports\n- Identify untested code paths\n- Verify critical path coverage\n- Document test gaps\n\n6. Continuous Testing:\n- Run automated test suite on git push\n- Execute nightly performance tests\n- Generate trending reports\n- Monitor test stability",
+        "status": "done",
+        "dependencies": [
+          "2",
+          "14",
+          "15",
+          "16"
+        ],
+        "priority": "medium",
+        "subtasks": [],
+        "updatedAt": "2025-10-21T18:18:31.562Z"
       }
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2025-10-14T05:16:10.902Z",
-      "taskCount": 12,
-      "completedCount": 5,
+      "lastModified": "2025-10-21T18:18:31.572Z",
+      "taskCount": 19,
+      "completedCount": 14,
       "tags": [
         "master"
-      ],
-      "created": "2025-10-14T05:16:30.025Z",
-      "description": "Tasks for master context",
-      "updated": "2025-10-14T06:33:36.368Z"
+      ]
     }
   }
 }

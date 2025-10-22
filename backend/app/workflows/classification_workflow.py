@@ -131,7 +131,7 @@ class ClassificationWorkflow:
             "project_management",
             self._should_continue_after_project_management,
             {
-                "continue": self._get_next_node_from_project_management,
+                "continue": "data_discovery",
                 "error": "error_recovery",
                 "end": END
             }

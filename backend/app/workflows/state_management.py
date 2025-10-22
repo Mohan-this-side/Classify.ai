@@ -435,5 +435,15 @@ class StateManager:
             "requires_human_input": state["requires_human_input"]
         }
 
-# Global state manager instance
-state_manager = StateManager()
+# Global state manager instance (singleton)
+_state_manager_instance = None
+
+def get_state_manager() -> StateManager:
+    """Get the global state manager instance (singleton pattern)"""
+    global _state_manager_instance
+    if _state_manager_instance is None:
+        _state_manager_instance = StateManager()
+    return _state_manager_instance
+
+# For backward compatibility
+state_manager = get_state_manager()

@@ -142,6 +142,7 @@ async def start_workflow(
                 "technical_reporter": "pending"
             },
             "completed_agents": [],
+            "failed_agents": [],
             "errors": []
         }
         
@@ -567,13 +568,13 @@ async def execute_workflow_with_progress(
     """
     try:
         # Actually execute workflow with real agents
-        from ..agents.enhanced_data_cleaning_agent import EnhancedDataCleaningAgent
-        from ..agents.data_discovery_agent import DataDiscoveryAgent
-        from ..agents.eda_agent import EDAAgent
-        from ..agents.feature_engineering_agent import FeatureEngineeringAgent
-        from ..agents.ml_builder_agent import MLBuilderAgent
-        from ..agents.model_evaluation_agent import ModelEvaluationAgent
-        from ..agents.technical_reporter_agent import TechnicalReporterAgent
+        from ..agents.data_cleaning.enhanced_data_cleaning_agent import EnhancedDataCleaningAgent
+        from ..agents.data_analysis.data_discovery_agent import DataDiscoveryAgent
+        from ..agents.data_analysis.eda_agent import EDAAgent
+        from ..agents.ml_pipeline.feature_engineering_agent import FeatureEngineeringAgent
+        from ..agents.ml_pipeline.ml_builder_agent import MLBuilderAgent
+        from ..agents.ml_pipeline.model_evaluation_agent import ModelEvaluationAgent
+        from ..agents.reporting.technical_reporter_agent import TechnicalReporterAgent
         
         # Initialize agents
         agents = {

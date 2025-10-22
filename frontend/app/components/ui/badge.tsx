@@ -3,7 +3,7 @@
 import React from 'react'
 
 interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
-  variant?: 'default' | 'success' | 'warning' | 'error' | 'info'
+  variant?: 'default' | 'success' | 'warning' | 'error' | 'info' | 'outline'
   children: React.ReactNode
 }
 
@@ -15,7 +15,8 @@ export function Badge({ variant = 'default', className = '', children, ...props 
     success: 'bg-green-600 text-white',
     warning: 'bg-yellow-600 text-white',
     error: 'bg-red-600 text-white',
-    info: 'bg-blue-600 text-white'
+    info: 'bg-blue-600 text-white',
+    outline: 'border border-current bg-transparent'
   }
   
   const classes = `${baseClasses} ${variantClasses[variant]} ${className}`

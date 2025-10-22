@@ -69,7 +69,7 @@ class ResultsStorageService:
             Path to the stored file
         """
         try:
-            workflow_dir = self.base_results_dir / workflow_id
+            workflow_dir = self.create_workflow_directory(workflow_id)
             file_path = workflow_dir / filename
             
             # Handle pandas DataFrame
@@ -102,7 +102,7 @@ class ResultsStorageService:
         try:
             import joblib
             
-            workflow_dir = self.base_results_dir / workflow_id
+            workflow_dir = self.create_workflow_directory(workflow_id)
             file_path = workflow_dir / filename
             
             joblib.dump(model, file_path)
@@ -127,7 +127,7 @@ class ResultsStorageService:
             Path to the stored file
         """
         try:
-            workflow_dir = self.base_results_dir / workflow_id
+            workflow_dir = self.create_workflow_directory(workflow_id)
             file_path = workflow_dir / filename
             
             with open(file_path, 'w', encoding='utf-8') as f:
@@ -153,7 +153,7 @@ class ResultsStorageService:
             Path to the stored file
         """
         try:
-            workflow_dir = self.base_results_dir / workflow_id
+            workflow_dir = self.create_workflow_directory(workflow_id)
             file_path = workflow_dir / filename
             
             with open(file_path, 'w', encoding='utf-8') as f:
@@ -179,7 +179,7 @@ class ResultsStorageService:
             Path to the stored file
         """
         try:
-            workflow_dir = self.base_results_dir / workflow_id
+            workflow_dir = self.create_workflow_directory(workflow_id)
             plots_dir = workflow_dir / "plots"
             file_path = plots_dir / filename
             
@@ -205,7 +205,7 @@ class ResultsStorageService:
             Path to the stored metadata file
         """
         try:
-            workflow_dir = self.base_results_dir / workflow_id
+            workflow_dir = self.create_workflow_directory(workflow_id)
             file_path = workflow_dir / "metadata.json"
             
             # Add timestamp
