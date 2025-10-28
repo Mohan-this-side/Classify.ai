@@ -1493,3 +1493,140 @@ else:
         ]
         
         return insights
+
+    async def perform_layer1_analysis(self, state: ClassificationState) -> Dict[str, Any]:
+        """
+        LAYER 1: Analyze model performance with hardcoded metrics.
+        
+        Args:
+            state: Current workflow state
+            
+        Returns:
+            Dictionary containing Layer 1 evaluation results
+        """
+        self.logger.info("🔍 LAYER 1: Analyzing model performance")
+        
+        # Get model path
+        model_path = state.get("model_selection_results", {}).get("model_path")
+        if not model_path or not os.path.exists(model_path):
+            raise ValueError("No trained model available for evaluation")
+        
+        # Load model
+        model = joblib.load(model_path)
+        
+        # Get cleaned dataset
+        cleaned_df = state_manager.get_dataset(state, "cleaned")
+        if cleaned_df is None:
+            cleaned_df = state_manager.get_dataset(state, "original")
+        if cleaned_df is None:
+            raise ValueError("No dataset available")
+        
+        target_column = state.get("target_column")
+        if not target_column:
+            raise ValueError("No target column specified")
+        
+        # Prepare data
+        X, y = self._prepare_data(cleaned_df, target_column)
+        
+        # Split data
+        from sklearn.model_selection import train_test_split
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42, stratify=y
+        )
+        
+        # Generate predictions
+        y_pred = model.predict(X_test)
+        y_pred_proba = model.predict_proba(X_test) if hasattr(model, 'predict_proba') else None
+        
+        # Calculate metrics
+        metrics = self._calculate_comprehensive_metrics(y_test, y_pred, y_pred_proba)
+        
+        analysis_results = {
+            "metrics": metrics,
+            "model_type": type(model).__name__,
+            "test_size": len(X_test),
+            "has_probability": y_pred_proba is not None,
+        }
+        
+        self.logger.info("✅ LAYER 1: Model evaluation analysis complete")
+        return analysis_results
+    
+    def generate_layer2_code(self, layer1_results: Dict[str, Any], state: ClassificationState) -> str:
+        """
+        LAYER 2: Generate prompt for LLM to create advanced evaluation code.
+        
+        Args:
+            layer1_results: Results from Layer 1 analysis
+            state: Current workflow state
+            
+        Returns:
+            Prompt string for LLM code generation
+        """
+        self.logger.info("🔧 LAYER 2: Generating LLM code generation prompt for model evaluation")
+        
+        metrics = layer1_results.get("metrics", {})
+        model_type = layer1_results.get("model_type", "unknown")
+        
+        prompt = f"""Generate advanced Python code for comprehensive model evaluation based on the following analysis:
+
+## Current Model:
+- Type: {model_type}
+- Test Size: {layer1_results.get('test_size', 0)}
+- Has Probability: {layer1_results.get('has_probability', False)}
+
+## Baseline Metrics:
+{metrics}
+
+## Requirements for Generated Code:
+1. Generate advanced visualizations (confusion matrix, ROC curve, feature importance)
+2. Perform statistical significance testing
+3. Create comprehensive performance reports
+4. Analyze model calibration and probability distributions
+5. Detect potential overfitting or underfitting
+6. Generate actionable insights and recommendations
+7. Use only: sklearn, matplotlib, seaborn, numpy, pandas
+8. Add clear comments explaining each evaluation
+9. Return structured evaluation results dictionary
+
+Generate comprehensive, production-ready Python code:"""
+        
+        return prompt
+    
+    def process_sandbox_results(
+        self,
+        sandbox_output: Dict[str, Any],
+        layer1_results: Dict[str, Any],
+        state: ClassificationState
+    ) -> Dict[str, Any]:
+        """
+        LAYER 2: Process and validate sandbox execution results for model evaluation.
+        
+        Args:
+            sandbox_output: Raw output from sandbox execution
+            layer1_results: Results from Layer 1 (for comparison)
+            state: Current workflow state
+            
+        Returns:
+            Processed and validated evaluation results
+        """
+        self.logger.info("🔍 LAYER 2: Processing sandbox results for model evaluation")
+        
+        # Validate sandbox execution was successful
+        if sandbox_output.get("status") != "SUCCESS":
+            raise ValueError(f"Sandbox execution failed: {sandbox_output.get('error', 'Unknown error')}")
+        
+        # Extract evaluation results from sandbox output
+        evaluation_data = sandbox_output.get("output", {})
+        
+        # Validate the output structure
+        if not isinstance(evaluation_data, dict):
+            raise ValueError("Sandbox output should contain evaluation results")
+        
+        result = {
+            "advanced_evaluation": evaluation_data,
+            "layer2_success": True,
+            "sandbox_execution_time": sandbox_output.get("execution_time", 0)
+        }
+        
+        self.logger.info("✅ LAYER 2: Sandbox results processed and validated")
+        return result

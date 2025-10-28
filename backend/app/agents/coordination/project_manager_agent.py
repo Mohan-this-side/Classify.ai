@@ -360,3 +360,97 @@ class ProjectManagerAgent(BaseAgent):
         except Exception as e:
             self.logger.error(f"Error getting workflow summary: {str(e)}")
             return {"error": f"Failed to get workflow summary: {str(e)}"}
+    
+    async def perform_layer1_analysis(self, state: ClassificationState) -> Dict[str, Any]:
+        """
+        LAYER 1: Analyze workflow progress and generate basic insights.
+        
+        Args:
+            state: Current workflow state
+            
+        Returns:
+            Dictionary containing Layer 1 analysis results
+        """
+        self.logger.info("🔍 LAYER 1: Analyzing workflow progress")
+        
+        analysis_results = {
+            "completed_agents": state.get("completed_agents", []),
+            "current_agent": state.get("current_agent", ""),
+            "agent_statuses": state.get("agent_statuses", {}),
+            "errors_count": len(state.get("errors", [])),
+            "progress": state.get("progress", 0.0),
+        }
+        
+        self.logger.info("✅ LAYER 1: Workflow analysis complete")
+        return analysis_results
+    
+    def generate_layer2_code(self, layer1_results: Dict[str, Any], state: ClassificationState) -> str:
+        """
+        LAYER 2: Generate prompt for LLM to create advanced workflow insights.
+        
+        Args:
+            layer1_results: Results from Layer 1 analysis
+            state: Current workflow state
+            
+        Returns:
+            Prompt string for LLM code generation
+        """
+        self.logger.info("🔧 LAYER 2: Generating LLM prompt for project management")
+        
+        prompt = f"""Generate advanced insights for project management based on the following analysis:
+
+## Current Progress:
+- Completed Agents: {layer1_results.get('completed_agents', [])}
+- Current Agent: {layer1_results.get('current_agent', 'unknown')}
+- Errors: {layer1_results.get('errors_count', 0)}
+- Progress: {layer1_results.get('progress', 0):.1%}
+
+## Requirements for Generated Code:
+1. Generate advanced educational explanations
+2. Create progress visualizations
+3. Provide actionable recommendations
+4. Identify potential bottlenecks
+5. Generate user-friendly status updates
+6. Use only: text-based reporting, no external libraries
+7. Add clear explanations
+8. Return structured insights dictionary
+
+Generate comprehensive, production-ready insights:"""
+        
+        return prompt
+    
+    def process_sandbox_results(
+        self,
+        sandbox_output: Dict[str, Any],
+        layer1_results: Dict[str, Any],
+        state: ClassificationState
+    ) -> Dict[str, Any]:
+        """
+        LAYER 2: Process sandbox execution results for project management.
+        
+        Args:
+            sandbox_output: Raw output from sandbox execution
+            layer1_results: Results from Layer 1 (for comparison)
+            state: Current workflow state
+            
+        Returns:
+            Processed and validated management results
+        """
+        self.logger.info("🔍 LAYER 2: Processing sandbox results for project management")
+        
+        if sandbox_output.get("status") != "SUCCESS":
+            raise ValueError(f"Sandbox execution failed: {sandbox_output.get('error', 'Unknown error')}")
+        
+        insights = sandbox_output.get("output", {})
+        
+        if not isinstance(insights, dict):
+            raise ValueError("Sandbox output should contain insights")
+        
+        result = {
+            "advanced_insights": insights,
+            "layer2_success": True,
+            "sandbox_execution_time": sandbox_output.get("execution_time", 0)
+        }
+        
+        self.logger.info("✅ LAYER 2: Sandbox results processed and validated")
+        return result

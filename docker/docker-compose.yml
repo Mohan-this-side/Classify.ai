@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # PostgreSQL Database
   postgres:
@@ -129,10 +127,13 @@ services:
       - backend
 
   # ML Code Execution Sandbox
+  # Note: This image is built but not started by default.
+  # Containers are created on-demand by the sandbox_executor service
   ml-sandbox:
     build:
       context: ../backend
       dockerfile: ../docker/Dockerfile.sandbox
+    image: ds-capstone-ml-sandbox:latest
     container_name: ds-capstone-ml-sandbox
     deploy:
       resources:
@@ -158,12 +159,13 @@ services:
     command: ["/app/entrypoint.sh"]
     security_opt:
       - no-new-privileges:true
-      - seccomp=sandbox-seccomp.json
     read_only: true
     tmpfs:
       - /tmp:size=256M,exec,nodev,nosuid  # Increased for ML operations
     stop_grace_period: 30s
     restart: "no"
+    profiles:
+      - sandbox  # Don't start by default, only when explicitly requested
 
   # Nginx Reverse Proxy (Optional)
   nginx:

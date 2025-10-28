@@ -72,7 +72,7 @@ class LLMService:
         if genai and settings.google_api_key:
             try:
                 genai.configure(api_key=settings.google_api_key)
-                self.clients[LLMProvider.GEMINI] = genai.GenerativeModel('gemini-pro')
+                self.clients[LLMProvider.GEMINI] = genai.GenerativeModel('models/gemini-flash-latest')
                 self.logger.info("Gemini client initialized")
             except Exception as e:
                 self.logger.warning(f"Failed to initialize Gemini: {e}")
@@ -162,18 +162,29 @@ class LLMService:
     
     async def _generate_with_gemini(self, prompt: str) -> Dict[str, Any]:
         """Generate code using Google Gemini"""
-        model = self.clients[LLMProvider.GEMINI]
-        response = model.generate_content(prompt)
+        import asyncio
         
-        code = self._extract_code_from_response(response.text)
+        model = self.clients[LLMProvider.GEMINI]
+        
+        # Run blocking operation in executor to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(None, model.generate_content, prompt)
+        
+        # Check for blockers
+        if response.prompt_feedback.block_reason:
+            raise Exception(f"Content blocked: {response.prompt_feedback.block_reason}")
+        
+        # Get text safely
+        text = response.text if hasattr(response, 'text') else str(response)
+        code = self._extract_code_from_response(text)
         
         return {
             "code": code,
             "provider": "gemini",
-            "raw_response": response.text,
+            "raw_response": text,
             "metadata": {
-                "model": "gemini-pro",
-                "tokens": len(response.text.split())
+                "model": "gemini-flash-latest",
+                "tokens": len(text.split())
             }
         }
     
@@ -250,7 +261,7 @@ class LLMService:
 {base_prompt}
 
 ## Analysis Context (Layer 1 Results):
-{json.dumps(context, indent=2)}
+{json.dumps(context, indent=2, default=str)}
 
 ## Code Generation Guidelines:
 1. Generate clean, well-documented Python code
@@ -311,7 +322,7 @@ Generate the code now:
 ```
 
 ## Context:
-{json.dumps(context, indent=2)}
+{json.dumps(context, indent=2, default=str)}
 
 Provide a clear, step-by-step explanation of:
 1. What the code does

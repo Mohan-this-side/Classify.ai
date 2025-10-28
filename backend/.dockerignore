@@ -1,0 +1,50 @@
+# Exclude virtual environment
+venv/
+env/
+ENV/
+
+# Exclude Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Exclude IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Exclude OS files
+.DS_Store
+Thumbs.db
+
+# Exclude git
+.git/
+.gitignore
+
+# Exclude test files
+tests/
+test_*.py
+*_test.py
+
+# Exclude logs
+*.log
+logs/
+
+# Exclude documentation
+docs/
+*.md
+
+# Exclude results
+results/
+uploads/
+temp/
+
+# Exclude local config
+.env.local
+.env.*.local
+
+

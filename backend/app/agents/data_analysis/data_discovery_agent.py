@@ -1,8 +1,12 @@
 """
-🔎 Enhanced Data Discovery Agent
+🔎 Enhanced Data Discovery Agent with Double-Layer Architecture
 
 Comprehensive data profiling, automatic data type detection, and intelligent feature recommendations.
 Provides detailed insights to guide downstream data cleaning and feature engineering steps.
+
+DOUBLE-LAYER ARCHITECTURE:
+- Layer 1: Reliable statistical profiling using pandas and numpy
+- Layer 2: LLM-generated advanced analysis code with domain-specific insights
 """
 
 import logging
@@ -18,99 +22,171 @@ from ...workflows.state_management import ClassificationState, AgentStatus, stat
 
 
 class DataDiscoveryAgent(BaseAgent):
-    """Enhanced Data Discovery Agent for comprehensive data profiling and analysis"""
+    """Enhanced Data Discovery Agent with Double-Layer Architecture"""
 
     def __init__(self) -> None:
-        super().__init__("data_discovery", "2.0.0")
+        super().__init__(
+            agent_name="data_discovery",
+            agent_version="3.0.0",
+            enable_layer2=True,
+            sandbox_timeout=90
+        )
         self.logger = logging.getLogger("agent.data_discovery")
 
     def get_agent_info(self) -> Dict[str, Any]:
         return {
             "name": self.agent_name,
             "version": self.agent_version,
-            "description": "Comprehensive data profiling, type detection, and feature recommendations",
+            "description": "Comprehensive data profiling with double-layer architecture",
             "capabilities": [
-                "Comprehensive data profiling",
+                "Layer 1: Statistical profiling and correlation analysis",
+                "Layer 2: Advanced pattern detection and domain insights",
                 "Automatic data type detection",
                 "Intelligent feature recommendations",
-                "Data visualization generation",
                 "Data quality assessment",
-                "Pattern detection and analysis"
+                "Anomaly and seasonality detection"
             ],
             "dependencies": ["data_cleaning"],
+            "supports_layer2": True
         }
 
     def get_dependencies(self) -> list:
         return ["data_cleaning"]
 
-    async def execute(self, state: ClassificationState) -> ClassificationState:
+    async def perform_layer1_analysis(self, state: ClassificationState) -> Dict[str, Any]:
         """
-        Execute comprehensive data discovery and profiling
-        
+        LAYER 1: Comprehensive statistical profiling using pandas and numpy.
+
+        This provides reliable baseline profiling that includes:
+        - Statistical summaries (mean, median, std, quartiles)
+        - Data type detection and cardinality analysis
+        - Correlation matrix calculation
+        - Missing value patterns
+        - ID column detection (high cardinality)
+        - Date/time column detection
+
         Args:
             state: Current workflow state
-            
+
         Returns:
-            Updated state with comprehensive discovery results
+            Dictionary with Layer 1 profiling results
         """
         try:
-            self.logger.info("Starting enhanced data discovery and profiling")
+            self.logger.info("LAYER 1: Performing reliable statistical profiling")
 
             # Access cleaned dataset via state manager
-            cleaned = state_manager.get_dataset(state, "cleaned")
-            if cleaned is None:
-                cleaned = state_manager.get_dataset(state, "original")
+            df = state_manager.get_dataset(state, "cleaned")
+            if df is None:
+                df = state_manager.get_dataset(state, "original")
 
-            if cleaned is None:
+            if df is None:
                 raise ValueError("No dataset available for discovery")
 
-            # Perform comprehensive data profiling
-            data_profile = self._comprehensive_data_profiling(cleaned)
-            
-            # Perform automatic data type detection
-            data_types = self._automatic_data_type_detection(cleaned)
-            
-            # Generate intelligent feature recommendations
-            feature_recommendations = self._generate_feature_recommendations(cleaned, data_types)
-            
-            # Generate data visualizations
-            visualizations = self._generate_data_visualizations(cleaned, data_types)
-            
-            # Assess data quality
-            data_quality = self._assess_data_quality(cleaned, data_types)
-            
-            # Detect patterns and anomalies
-            patterns = self._detect_patterns_and_anomalies(cleaned, data_types)
-            
-            # Generate comprehensive recommendations
-            recommendations = self._generate_comprehensive_recommendations(
-                data_profile, data_types, feature_recommendations, data_quality, patterns
-            )
-
-            # Store comprehensive discovery results
-            state["discovery_results"] = {
-                "data_profile": data_profile,
-                "data_types": data_types,
-                "feature_recommendations": feature_recommendations,
-                "visualizations": visualizations,
-                "data_quality": data_quality,
-                "patterns": patterns,
-                "recommendations": recommendations,
-                "generated_at": datetime.now().isoformat(),
+            # 1. Basic information
+            basic_info = {
+                "shape": df.shape,
+                "columns": list(df.columns),
+                "memory_usage_mb": df.memory_usage(deep=True).sum() / (1024 * 1024),
+                "dtypes": {str(col): str(dtype) for col, dtype in df.dtypes.items()}
             }
 
-            # Mark completed
-            state["agent_statuses"]["data_discovery"] = AgentStatus.COMPLETED
-            state["completed_agents"].append("data_discovery")
-            self.logger.info("Enhanced data discovery completed successfully")
-            return state
+            # 2. Statistical summaries
+            numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+            statistical_summary = {}
+
+            if numeric_cols:
+                desc = df[numeric_cols].describe()
+                statistical_summary = {
+                    col: {
+                        "count": desc.loc["count", col],
+                        "mean": desc.loc["mean", col],
+                        "std": desc.loc["std", col],
+                        "min": desc.loc["min", col],
+                        "25%": desc.loc["25%", col],
+                        "50%": desc.loc["50%", col],
+                        "75%": desc.loc["75%", col],
+                        "max": desc.loc["max", col]
+                    }
+                    for col in numeric_cols
+                }
+
+            # 3. Data type detection and cardinality
+            data_types_info = {}
+            for col in df.columns:
+                unique_count = df[col].nunique()
+                total_count = len(df)
+
+                data_types_info[col] = {
+                    "dtype": str(df[col].dtype),
+                    "cardinality": unique_count,
+                    "cardinality_ratio": unique_count / total_count if total_count > 0 else 0,
+                    "is_potential_id": unique_count == total_count and total_count > 0,
+                    "is_potential_categorical": unique_count < 20 and unique_count / total_count < 0.1,
+                    "is_numeric": pd.api.types.is_numeric_dtype(df[col]),
+                    "is_datetime": pd.api.types.is_datetime64_any_dtype(df[col])
+                }
+
+            # 4. Correlation matrix (numeric columns only)
+            correlations = {}
+            if len(numeric_cols) > 1:
+                corr_matrix = df[numeric_cols].corr()
+                correlations = corr_matrix.to_dict()
+
+            # 5. Missing value patterns
+            missing_patterns = {
+                col: {
+                    "count": int(df[col].isnull().sum()),
+                    "percentage": float(df[col].isnull().sum() / len(df) * 100)
+                }
+                for col in df.columns
+            }
+
+            # 6. Detect potential ID columns
+            id_columns = [
+                col for col, info in data_types_info.items()
+                if info["is_potential_id"] or (info["cardinality_ratio"] > 0.95 and info["cardinality"] > 100)
+            ]
+
+            # 7. Detect datetime columns
+            datetime_columns = [
+                col for col, info in data_types_info.items()
+                if info["is_datetime"] or self._is_potential_datetime(df[col])
+            ]
+
+            # 8. Categorical vs continuous detection
+            categorical_columns = [
+                col for col, info in data_types_info.items()
+                if info["is_potential_categorical"]
+            ]
+
+            continuous_columns = [
+                col for col in numeric_cols
+                if col not in categorical_columns and col not in id_columns
+            ]
+
+            layer1_results = {
+                "basic_info": basic_info,
+                "statistical_summary": statistical_summary,
+                "data_types": data_types_info,
+                "correlations": correlations,
+                "missing_patterns": missing_patterns,
+                "detected_columns": {
+                    "id_columns": id_columns,
+                    "datetime_columns": datetime_columns,
+                    "categorical_columns": categorical_columns,
+                    "continuous_columns": continuous_columns,
+                    "numeric_columns": numeric_cols
+                },
+                "layer": "layer1",
+                "timestamp": datetime.now().isoformat()
+            }
+
+            self.logger.info(f"Layer 1 profiling complete: {len(df)} rows, {len(df.columns)} columns")
+            return layer1_results
 
         except Exception as e:
-            self.logger.error(f"Enhanced data discovery failed: {e}")
-            state["agent_statuses"]["data_discovery"] = AgentStatus.FAILED
-            state["last_error"] = str(e)
-            state["error_count"] += 1
-            return state
+            self.logger.error(f"Layer 1 analysis failed: {e}")
+            raise
 
     def _comprehensive_data_profiling(self, df: pd.DataFrame) -> Dict[str, Any]:
         """Perform comprehensive data profiling"""
@@ -543,5 +619,108 @@ class DataDiscoveryAgent(BaseAgent):
         except Exception as e:
             self.logger.error(f"Error generating type recommendations: {e}")
             return []
+
+    def generate_layer2_code(self, layer1_results: Dict[str, Any], state: ClassificationState) -> str:
+        """
+        LAYER 2: Generate prompt for LLM to create advanced data discovery code.
+        
+        Args:
+            layer1_results: Results from Layer 1 analysis
+            state: Current workflow state
+            
+        Returns:
+            Prompt string for LLM code generation
+        """
+        self.logger.info("🔧 LAYER 2: Generating LLM code generation prompt for data discovery")
+        
+        # Extract key insights from Layer 1
+        basic_info = layer1_results.get("basic_info", {})
+        statistical_summary = layer1_results.get("statistical_summary", {})
+        correlations = layer1_results.get("correlations", {})
+        data_types = layer1_results.get("data_types", {})
+        
+        prompt = f"""Generate advanced Python code for comprehensive data discovery and analysis based on the following insights:
+
+## Dataset Overview:
+- Shape: {basic_info.get('shape', 'unknown')}
+- Columns: {basic_info.get('columns', [])}
+- Memory Usage: {basic_info.get('memory_usage_mb', 0):.2f} MB
+
+## Statistical Summary:
+{statistical_summary}
+
+## Detected Data Types:
+{data_types.get('detected_types', {})}
+
+## Correlation Insights:
+{correlations}
+
+## Requirements for Generated Code:
+1. Perform advanced statistical analysis beyond basic summaries
+2. Detect complex patterns: seasonality, trends, cyclic behavior
+3. Identify domain-specific insights based on column names
+4. Generate visualizations (charts, heatmaps, distributions)
+5. Create feature importance rankings
+6. Detect potential data quality issues
+7. Use only: pandas, numpy, matplotlib, seaborn
+8. Add clear comments explaining each analysis
+9. Return structured results (dictionary with findings)
+
+Generate comprehensive, production-ready Python code:"""
+        
+        return prompt
+    
+    def process_sandbox_results(
+        self,
+        sandbox_output: Dict[str, Any],
+        layer1_results: Dict[str, Any],
+        state: ClassificationState
+    ) -> Dict[str, Any]:
+        """
+        LAYER 2: Process and validate sandbox execution results for data discovery.
+        
+        Args:
+            sandbox_output: Raw output from sandbox execution
+            layer1_results: Results from Layer 1 (for comparison)
+            state: Current workflow state
+            
+        Returns:
+            Processed and validated discovery results
+        """
+        self.logger.info("🔍 LAYER 2: Processing sandbox results for data discovery")
+        
+        # Validate sandbox execution was successful
+        if sandbox_output.get("status") != "SUCCESS":
+            raise ValueError(f"Sandbox execution failed: {sandbox_output.get('error', 'Unknown error')}")
+        
+        # Extract discovery results from sandbox output
+        discovery_data = sandbox_output.get("output", {})
+        
+        # Validate the output structure
+        if not isinstance(discovery_data, dict):
+            raise ValueError("Sandbox output should contain a discovery results dictionary")
+        
+        # Additional validation can be added here
+        # Compare with Layer 1 to ensure quality improvement
+        
+        result = {
+            "advanced_discovery": discovery_data,
+            "layer2_success": True,
+            "sandbox_execution_time": sandbox_output.get("execution_time", 0)
+        }
+        
+        self.logger.info("✅ LAYER 2: Sandbox results processed and validated")
+        return result
+    
+    def _is_potential_datetime(self, series: pd.Series) -> bool:
+        """Check if a series could be datetime"""
+        try:
+            if pd.api.types.is_datetime64_any_dtype(series):
+                return True
+            # Try to convert a sample
+            pd.to_datetime(series.head(10))
+            return True
+        except:
+            return False
 
 

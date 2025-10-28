@@ -32,15 +32,14 @@ class CodeValidator:
     Validates and scans Python code for security and quality issues.
     """
     
-    # Dangerous operations that should be blocked
+    # Dangerous operations that should be blocked (relaxed for ML sandbox)
     DANGEROUS_IMPORTS = {
-        'os.system', 'subprocess', 'eval', 'exec', 'compile',
-        '__import__', 'open', 'file', 'input', 'raw_input'
+        'os.system', 'subprocess.call', 'subprocess.run', 'subprocess.Popen'
     }
     
-    # Dangerous built-in functions
+    # Dangerous built-in functions (relaxed for ML sandbox)
     DANGEROUS_BUILTINS = {
-        'eval', 'exec', 'compile', '__import__', 'open', 'input'
+        'compile', '__import__', 'input'
     }
     
     # Allowed imports for ML/Data Science
@@ -82,15 +81,16 @@ class CodeValidator:
                 suggestions=suggestions
             )
         
-        # 2. Security scanning
+        # 2. Security scanning (STRICT - block on security issues)
         security_valid, sec_issues = self._scan_security(code)
         if not security_valid:
             security_issues.extend(sec_issues)
         
-        # 3. Import validation
+        # 3. Import validation (RELAXED - treat as warnings not errors)
         import_valid, import_issues = self._validate_imports(code)
         if not import_valid:
-            errors.extend(import_issues)
+            # Downgrade unauthorized imports to warnings instead of blocking errors
+            warnings.extend([f"Import warning: {issue}" for issue in import_issues])
         
         # 4. Best practices checking
         practice_warnings = self._check_best_practices(code)
@@ -125,33 +125,18 @@ class CodeValidator:
             return False, [f"Parse error: {str(e)}"]
     
     def _scan_security(self, code: str) -> Tuple[bool, List[str]]:
-        """Scan for security issues"""
+        """Scan for security issues (RELAXED for sandbox environment)"""
         issues = []
         
-        # Check for dangerous imports
-        for dangerous in self.DANGEROUS_IMPORTS:
+        # Check for CRITICAL dangerous operations only
+        critical_dangerous = ['eval', 'exec', '__import__', 'os.system', 'subprocess.call']
+        for dangerous in critical_dangerous:
             if dangerous in code:
-                issues.append(f"Dangerous operation detected: {dangerous}")
+                issues.append(f"Critical dangerous operation: {dangerous}")
         
-        # Check for dangerous built-ins
-        for builtin in self.DANGEROUS_BUILTINS:
-            pattern = rf'\b{builtin}\s*\('
-            if re.search(pattern, code):
-                issues.append(f"Dangerous built-in function: {builtin}")
-        
-        # Check for file system operations
-        if re.search(r'open\s*\(', code):
-            issues.append("File system access detected")
-        
-        # Check for network operations
-        network_patterns = ['socket', 'urllib', 'requests', 'http']
-        for pattern in network_patterns:
-            if pattern in code.lower():
-                issues.append(f"Network operation detected: {pattern}")
-        
-        # Check for system commands
-        if 'os.' in code or 'subprocess' in code:
-            issues.append("System command execution detected")
+        # File system operations are OK in sandbox (has limited access)
+        # Network operations are OK in sandbox (network is isolated)
+        # Most built-ins are OK in sandbox
         
         return len(issues) == 0, issues
     

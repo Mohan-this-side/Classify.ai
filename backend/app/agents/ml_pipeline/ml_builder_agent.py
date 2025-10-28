@@ -763,6 +763,24 @@ y_test = pd.read_csv('y_test.csv').iloc[:, 0]   # First column
             # Train model
             best_model.fit(X_train, y_train)
             
+            # Extract feature importance (if model supports it)
+            feature_importance = {}
+            try:
+                if hasattr(best_model, 'feature_importances_'):
+                    # Tree-based models (RandomForest, XGBoost, etc.)
+                    importances = best_model.feature_importances_
+                    feature_importance = dict(zip(X_train.columns, importances.tolist()))
+                    self.logger.info(f"✅ Extracted feature importance from {best_model_name}")
+                elif hasattr(best_model, 'coef_'):
+                    # Linear models
+                    importances = np.abs(best_model.coef_[0] if len(best_model.coef_.shape) > 1 else best_model.coef_)
+                    feature_importance = dict(zip(X_train.columns, importances.tolist()))
+                    self.logger.info(f"✅ Extracted feature coefficients from {best_model_name}")
+                else:
+                    self.logger.warning(f"Model {best_model_name} doesn't support feature importance extraction")
+            except Exception as e:
+                self.logger.warning(f"Failed to extract feature importance: {e}")
+            
             # Evaluate
             train_score = best_model.score(X_train, y_train)
             test_score = best_model.score(X_test, y_test)
@@ -790,6 +808,7 @@ y_test = pd.read_csv('y_test.csv').iloc[:, 0]   # First column
                     "cv_std": float(cv_scores.std()),
                 },
                 "evaluation_metrics": metrics,
+                "feature_importance": feature_importance,  # ✅ ADD THIS!
                 "model_explanation": self._generate_model_explanation(best_model_name, best_params, metrics),
                 "fallback_used": True
             })
@@ -905,5 +924,77 @@ y_test = pd.read_csv('y_test.csv').iloc[:, 0]   # First column
             f"Recall: {metrics.get('recall', 0):.4f}, "
             f"F1: {metrics.get('f1_score', 0):.4f}"
         )
+
+    async def perform_layer1_analysis(self, state: ClassificationState) -> Dict[str, Any]:
+        """
+        LAYER 1: Analyze data characteristics for model building.
+        
+        This agent uses execute() for its full flow, but we implement this
+        to satisfy the abstract method requirement.
+        """
+        self.logger.info("🔍 LAYER 1: Analyzing data characteristics for model building")
+        
+        cleaned_df = state_manager.get_dataset(state, "cleaned")
+        if cleaned_df is None:
+            raise ValueError("No cleaned dataset available")
+        
+        target_column = state.get("target_column")
+        if not target_column:
+            raise ValueError("No target column specified")
+        
+        # Analyze data for model selection
+        analysis = self._analyze_data_for_model_selection(cleaned_df, target_column)
+        
+        return analysis
+    
+    def generate_layer2_code(self, layer1_results: Dict[str, Any], state: ClassificationState) -> str:
+        """
+        LAYER 2: Generate prompt for LLM to create model training code.
+        
+        This agent already generates code in execute(), this is for compatibility.
+        """
+        self.logger.info("🔧 LAYER 2: Generating LLM prompt for model training")
+        
+        prompt = f"""Generate Python code for machine learning model training based on the following analysis:
+
+## Data Analysis:
+{layer1_results}
+
+## Requirements:
+1. Implement model training pipeline
+2. Handle train/test split
+3. Apply preprocessing
+3. Train multiple model candidates
+4. Evaluate and select best model
+5. Save model with joblib
+6. Use only: sklearn, xgboost, lightgbm, pandas, numpy
+7. Add clear comments
+8. Return model metrics and best model name
+
+Generate comprehensive, production-ready Python code:"""
+        
+        return prompt
+    
+    def process_sandbox_results(
+        self,
+        sandbox_output: Dict[str, Any],
+        layer1_results: Dict[str, Any],
+        state: ClassificationState
+    ) -> Dict[str, Any]:
+        """
+        LAYER 2: Process sandbox execution results for model building.
+        """
+        self.logger.info("🔍 LAYER 2: Processing sandbox results for model building")
+        
+        if sandbox_output.get("status") != "SUCCESS":
+            raise ValueError(f"Sandbox execution failed: {sandbox_output.get('error', 'Unknown error')}")
+        
+        result = {
+            "model_data": sandbox_output.get("output", {}),
+            "layer2_success": True,
+            "sandbox_execution_time": sandbox_output.get("execution_time", 0)
+        }
+        
+        return result
 
 
