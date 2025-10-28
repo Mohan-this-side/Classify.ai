@@ -4,23 +4,23 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com/)
 [![Next.js](https://img.shields.io/badge/Next.js-14+-black.svg)](https://nextjs.org/)
-[![Status: Production Ready](https://img.shields.io/badge/Status-Production%20Ready-green.svg)](https://github.com/yourusername/classify-ai)
+[![Status: Production Ready](https://img.shields.io/badge/Status-Production%20Ready-green.svg)](https://github.com/Mohan-this-side/Classify.ai)
 
-## 🎯 Overview
+## Overview
 
 **Classify AI** is an intelligent, end-to-end machine learning automation system that transforms raw datasets into production-ready classification models through a sophisticated multi-agent architecture. The system automates the entire ML pipeline—from data cleaning to model deployment—while maintaining transparency, security, and educational value throughout the process.
 
-### ✨ Key Value Proposition
+### Key Value Proposition
 
-- **🤖 Automated Pipeline**: Upload a dataset, receive a trained model, cleaned data, Jupyter notebook, and comprehensive technical report
-- **🔄 Double-Layer Architecture**: Combines reliable hardcoded analysis with adaptive LLM-generated code for optimal results
-- **📚 Educational Transparency**: Real-time explanations of every decision and transformation through an interactive Project Manager
-- **🚀 Production Ready**: Generates deployment-ready models with complete documentation
-- **🔒 Secure Execution**: All LLM-generated code runs in isolated Docker sandboxes with comprehensive monitoring
+- **Automated Pipeline**: Upload a dataset, receive a trained model, cleaned data, Jupyter notebook, and comprehensive technical report
+- **Double-Layer Architecture**: Combines reliable hardcoded analysis with adaptive LLM-generated code for optimal results
+- **Educational Transparency**: Real-time explanations of every decision and transformation through an interactive Project Manager
+- **Production Ready**: Generates deployment-ready models with complete documentation
+- **Secure Execution**: All LLM-generated code runs in isolated Docker sandboxes with comprehensive monitoring
 
 ---
 
-## 🖼️ User Interface
+## User Interface
 
 ### Upload Page
 The clean, intuitive interface makes it easy to get started with your machine learning project:
@@ -39,15 +39,15 @@ Real-time monitoring of your ML pipeline with interactive Project Manager:
 ![Workflow Page](https://via.placeholder.com/1200x800/10B981/FFFFFF?text=Workflow+Page+with+Project+Manager)
 
 **Features:**
-- **📊 Real-time Progress**: Live tracking of all 8 agents with execution times and Layer 1/Layer 2 indicators
-- **💬 Interactive Project Manager**: Educational chat interface with Q&A capabilities
-- **⏸️ Approval Gates**: Human-in-the-loop decision points with educational context
-- **📈 Sandbox Monitoring**: Real-time CPU, memory, and execution time monitoring
-- **🎯 Agent Status**: Detailed status for each agent with completion indicators
+- **Real-time Progress**: Live tracking of all 8 agents with execution times and Layer 1/Layer 2 indicators
+- **Interactive Project Manager**: Educational chat interface with Q&A capabilities
+- **Approval Gates**: Human-in-the-loop decision points with educational context
+- **Sandbox Monitoring**: Real-time CPU, memory, and execution time monitoring
+- **Agent Status**: Detailed status for each agent with completion indicators
 
 ---
 
-## 🏗️ System Architecture
+## System Architecture
 
 ### Multi-Agent Workflow System
 
@@ -56,14 +56,14 @@ Our system employs **8 specialized AI agents** working in concert to handle diff
 ```mermaid
 graph TB
     subgraph "Agent Workflow"
-        DD[Data Discovery Agent<br/>📊 Dataset Profiling]
-        EDA[EDA Agent<br/>📈 Exploratory Analysis]
-        DC[Data Cleaning Agent<br/>🧹 Quality Improvement]
-        FE[Feature Engineering Agent<br/>⚙️ Feature Creation]
-        ML[ML Builder Agent<br/>🤖 Model Training]
-        ME[Model Evaluation Agent<br/>📋 Performance Analysis]
-        TR[Technical Reporter Agent<br/>📝 Documentation]
-        PM[Project Manager Agent<br/>💬 Education & Guidance]
+        DD[Data Discovery Agent<br/>Dataset Profiling]
+        EDA[EDA Agent<br/>Exploratory Analysis]
+        DC[Data Cleaning Agent<br/>Quality Improvement]
+        FE[Feature Engineering Agent<br/>Feature Creation]
+        ML[ML Builder Agent<br/>Model Training]
+        ME[Model Evaluation Agent<br/>Performance Analysis]
+        TR[Technical Reporter Agent<br/>Documentation]
+        PM[Project Manager Agent<br/>Education & Guidance]
     end
     
     DD --> EDA
@@ -99,14 +99,14 @@ Each agent employs a sophisticated two-layer approach:
 
 ---
 
-## 🚀 Core Features
+## Core Features
 
 ### 1. Interactive Project Manager
 A dedicated AI assistant that provides:
-- **📚 Educational Messages**: Real-time explanations of each processing step
-- **❓ Q&A System**: Ask questions about the workflow and get intelligent answers
-- **⏸️ Approval Gates**: Interactive decision points with educational context
-- **📊 Progress Updates**: Detailed status updates and completion notifications
+- **Educational Messages**: Real-time explanations of each processing step
+- **Q&A System**: Ask questions about the workflow and get intelligent answers
+- **Approval Gates**: Interactive decision points with educational context
+- **Progress Updates**: Detailed status updates and completion notifications
 
 ### 2. Human-in-the-Loop Control
 Critical decision points where the workflow pauses for user approval:
@@ -117,23 +117,23 @@ Critical decision points where the workflow pauses for user approval:
 
 ### 3. Secure Code Execution
 All LLM-generated code runs in isolated Docker containers with:
-- **🔒 No Network Access**: Complete isolation from external systems
-- **⚡ Resource Limits**: CPU, memory, and execution time constraints
-- **📝 Complete Audit Trail**: Full logging of all operations
-- **🛡️ Security Validation**: Multi-layer code validation and security scanning
+- **No Network Access**: Complete isolation from external systems
+- **Resource Limits**: CPU, memory, and execution time constraints
+- **Complete Audit Trail**: Full logging of all operations
+- **Security Validation**: Multi-layer code validation and security scanning
 
 ### 4. Comprehensive Deliverables
 Every workflow generates:
-- **📄 Cleaned Dataset**: Processed CSV with quality improvements
-- **🤖 Trained Model**: Serialized `.joblib` model file
-- **📓 Jupyter Notebook**: Reproducible analysis notebook
-- **📊 Technical Report**: Comprehensive documentation and insights
-- **📈 Visualizations**: EDA plots, performance charts, and feature importance
-- **📋 Execution Logs**: Complete audit trail of all operations
+- **Cleaned Dataset**: Processed CSV with quality improvements
+- **Trained Model**: Serialized `.joblib` model file
+- **Jupyter Notebook**: Reproducible analysis notebook
+- **Technical Report**: Comprehensive documentation and insights
+- **Visualizations**: EDA plots, performance charts, and feature importance
+- **Execution Logs**: Complete audit trail of all operations
 
 ---
 
-## 🛠️ Technology Stack
+## Technology Stack
 
 ### Backend
 - **Framework**: FastAPI (Python 3.9+)
@@ -160,7 +160,7 @@ Every workflow generates:
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - Python 3.9 or higher
@@ -172,8 +172,8 @@ Every workflow generates:
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/yourusername/classify-ai.git
-cd classify-ai
+git clone https://github.com/Mohan-this-side/Classify.ai.git
+cd Classify.ai
 ```
 
 2. **Set up environment variables**
@@ -217,7 +217,7 @@ npm run dev
 
 ---
 
-## 📖 Usage Guide
+## Usage Guide
 
 ### Basic Workflow
 
@@ -258,7 +258,7 @@ npm run dev
 
 ---
 
-## 📊 Performance Metrics
+## Performance Metrics
 
 Based on comprehensive testing with real-world datasets:
 
@@ -277,7 +277,7 @@ Based on comprehensive testing with real-world datasets:
 
 ---
 
-## 🔒 Security Features
+## Security Features
 
 ### Code Validation
 - **AST Parsing**: Syntax validation for all generated code
@@ -300,7 +300,7 @@ Based on comprehensive testing with real-world datasets:
 
 ---
 
-## 🧪 Testing
+## Testing
 
 ### Run Backend Tests
 ```bash
@@ -322,7 +322,7 @@ python test_complete_workflow.py
 
 ---
 
-## 🚀 Deployment
+## Deployment
 
 ### Docker Deployment (Recommended)
 ```bash
@@ -339,36 +339,36 @@ For production deployment, see our detailed guides:
 
 ---
 
-## 🗺️ Roadmap
+## Roadmap
 
-### Current Features (v1.0) ✅
-- ✅ Multi-agent classification pipeline
-- ✅ Real-time progress tracking with Project Manager
-- ✅ Interactive approval gates with educational context
-- ✅ Q&A system with LLM integration
-- ✅ Automated model training and evaluation
-- ✅ Comprehensive deliverables generation
-- ✅ Secure sandboxed code execution
-- ✅ Double-layer architecture (Layer 1 + Layer 2)
+### Current Features (v1.0)
+- Multi-agent classification pipeline
+- Real-time progress tracking with Project Manager
+- Interactive approval gates with educational context
+- Q&A system with LLM integration
+- Automated model training and evaluation
+- Comprehensive deliverables generation
+- Secure sandboxed code execution
+- Double-layer architecture (Layer 1 + Layer 2)
 
 ### Upcoming Features (v2.0)
-- 🔄 Regression support
-- 🔄 Time series forecasting
-- 🔄 Multi-class classification enhancements
-- 🔄 Advanced feature engineering
-- 🔄 Model ensemble techniques
-- 🔄 A/B testing framework
+- Regression support
+- Time series forecasting
+- Multi-class classification enhancements
+- Advanced feature engineering
+- Model ensemble techniques
+- A/B testing framework
 
 ### Future Enhancements
-- 🔮 Custom agent creation
-- 🔮 Advanced approval gate workflows
-- 🔮 Integration with MLOps platforms
-- 🔮 Model monitoring and drift detection
-- 🔮 Automated retraining pipelines
+- Custom agent creation
+- Advanced approval gate workflows
+- Integration with MLOps platforms
+- Model monitoring and drift detection
+- Automated retraining pipelines
 
 ---
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
@@ -407,7 +407,7 @@ docker-compose -f docker/docker-compose.yml up --build
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! Please see our contributing guidelines:
 
@@ -426,7 +426,7 @@ We welcome contributions! Please see our contributing guidelines:
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
@@ -456,7 +456,7 @@ SOFTWARE.
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - **FastAPI** for the excellent web framework
 - **LangChain/LangGraph** for workflow orchestration
@@ -467,16 +467,16 @@ SOFTWARE.
 
 ---
 
-## 📞 Contact
+## Contact
 
-- **Project Repository**: [https://github.com/yourusername/classify-ai](https://github.com/yourusername/classify-ai)
+- **Project Repository**: [https://github.com/Mohan-this-side/Classify.ai](https://github.com/Mohan-this-side/Classify.ai)
 - **Documentation**: [https://classify-ai.readthedocs.io](https://classify-ai.readthedocs.io)
-- **Issues**: [https://github.com/yourusername/classify-ai/issues](https://github.com/yourusername/classify-ai/issues)
-- **Discussions**: [https://github.com/yourusername/classify-ai/discussions](https://github.com/yourusername/classify-ai/discussions)
+- **Issues**: [https://github.com/Mohan-this-side/Classify.ai/issues](https://github.com/Mohan-this-side/Classify.ai/issues)
+- **Discussions**: [https://github.com/Mohan-this-side/Classify.ai/discussions](https://github.com/Mohan-this-side/Classify.ai/discussions)
 
 ---
 
-## 📚 Citation
+## Citation
 
 If you use Classify AI in your research or project, please cite:
 
@@ -485,25 +485,25 @@ If you use Classify AI in your research or project, please cite:
   title={Classify AI: Automated ML Pipeline with Real-Time Education},
   author={Classify AI Team},
   year={2025},
-  url={https://github.com/yourusername/classify-ai},
+  url={https://github.com/Mohan-this-side/Classify.ai},
   note={Production-ready automated machine learning system with educational transparency}
 }
 ```
 
 ---
 
-## 🎯 Project Status
+## Project Status
 
-**Current Status**: ✅ **Production Ready**
+**Current Status**: **Production Ready**
 
-- ✅ Complete multi-agent workflow implementation
-- ✅ Interactive Project Manager with Q&A
-- ✅ Secure sandboxed code execution
-- ✅ Real-time progress tracking
-- ✅ Educational transparency and guidance
-- ✅ Comprehensive testing and validation
-- ✅ Production-ready deployment configuration
+- Complete multi-agent workflow implementation
+- Interactive Project Manager with Q&A
+- Secure sandboxed code execution
+- Real-time progress tracking
+- Educational transparency and guidance
+- Comprehensive testing and validation
+- Production-ready deployment configuration
 
 ---
 
-**Built with passion for making machine learning accessible to everyone while maintaining transparency and educational value.** 🚀
+**Built with passion for making machine learning accessible to everyone while maintaining transparency and educational value.**
