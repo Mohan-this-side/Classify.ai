@@ -25,7 +25,7 @@
 ### Upload Page
 The clean, intuitive interface makes it easy to get started with your machine learning project:
 
-![Upload Page](https://via.placeholder.com/800x600/4F46E5/FFFFFF?text=Upload+Page+Interface)
+![Upload Page Interface](docs/images/upload-page.png)
 
 **Features:**
 - **Drag & Drop Upload**: Simply drag your CSV or Excel file into the upload zone
@@ -36,7 +36,7 @@ The clean, intuitive interface makes it easy to get started with your machine le
 ### Workflow Page
 Real-time monitoring of your ML pipeline with interactive Project Manager:
 
-![Workflow Page](https://via.placeholder.com/1200x800/10B981/FFFFFF?text=Workflow+Page+with+Project+Manager)
+![Workflow Page with Project Manager](docs/images/workflow-page.png)
 
 **Features:**
 - **Real-time Progress**: Live tracking of all 8 agents with execution times and Layer 1/Layer 2 indicators
@@ -85,17 +85,138 @@ graph TB
 
 Each agent employs a sophisticated two-layer approach:
 
-**Layer 1 - Hardcoded Analysis** ⚡
+**Layer 1 - Hardcoded Analysis**
 - Pre-written, battle-tested Python functions
 - Comprehensive data quality assessment
 - Statistical profiling and pattern detection
 - Reliable baseline analysis that never fails
 
-**Layer 2 - LLM Code Generation** 🐳
+**Layer 2 - LLM Code Generation**
 - Custom code tailored to specific dataset characteristics
 - Adaptive processing based on Layer 1 insights
 - Validated and executed in secure Docker sandboxes
 - Enhanced analysis with dataset-specific optimizations
+
+### High-Level Architecture
+
+```mermaid
+graph TB
+    subgraph "Frontend Layer"
+        UI[Web Interface<br/>Next.js + React]
+        PM[Project Manager<br/>Window]
+    end
+    
+    subgraph "Orchestration Layer"
+        API[FastAPI<br/>REST API]
+        WS[WebSocket<br/>Real-time Updates]
+        LG[LangGraph<br/>Workflow Engine]
+    end
+    
+    subgraph "Agent Layer"
+        DC[Data Cleaning<br/>Agent]
+        DD[Data Discovery<br/>Agent]
+        EDA[EDA<br/>Agent]
+        FE[Feature Engineering<br/>Agent]
+        ML[ML Builder<br/>Agent]
+        ME[Model Evaluation<br/>Agent]
+        TR[Technical Reporter<br/>Agent]
+        PMA[Project Manager<br/>Agent]
+    end
+    
+    subgraph "Service Layer"
+        LLM[LLM Service<br/>Gemini/OpenAI/Anthropic]
+        VAL[Code Validator<br/>Security Scanner]
+        SAND[Docker Sandbox<br/>Secure Execution]
+        STOR[Storage Service<br/>Results Management]
+    end
+    
+    subgraph "Data Layer"
+        DB[(PostgreSQL<br/>Metadata)]
+        REDIS[(Redis<br/>Cache)]
+        FS[File System<br/>Results & Models]
+    end
+    
+    UI --> API
+    UI --> WS
+    PM --> WS
+    API --> LG
+    WS --> LG
+    
+    LG --> DC
+    LG --> DD
+    LG --> EDA
+    LG --> FE
+    LG --> ML
+    LG --> ME
+    LG --> TR
+    LG --> PMA
+    
+    DC --> LLM
+    DD --> LLM
+    EDA --> LLM
+    FE --> LLM
+    ML --> LLM
+    ME --> LLM
+    TR --> LLM
+    PMA --> LLM
+    
+    LLM --> VAL
+    VAL --> SAND
+    
+    DC --> STOR
+    ML --> STOR
+    ME --> STOR
+    TR --> STOR
+    
+    STOR --> FS
+    LG --> DB
+    LG --> REDIS
+```
+
+### Workflow Sequence
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant API
+    participant Workflow
+    participant Agents
+    participant LLM
+    participant Sandbox
+    participant Storage
+    
+    User->>Frontend: Upload Dataset
+    Frontend->>API: POST /workflow/start
+    API->>Workflow: Initialize Pipeline
+    
+    loop For Each Agent
+        Workflow->>Agents: Execute Agent
+        
+        Note over Agents: Layer 1: Hardcoded Analysis
+        Agents->>Agents: Data Profiling
+        Agents->>Agents: Statistical Analysis
+        Agents->>Agents: Quality Assessment
+        
+        Note over Agents,LLM: Layer 2: LLM Generation
+        Agents->>LLM: Generate Custom Code
+        LLM->>Agents: Python Code
+        
+        Agents->>Agents: Validate Code
+        Agents->>Sandbox: Execute in Docker
+        Sandbox->>Agents: Results
+        
+        Agents->>Storage: Save Outputs
+        Agents->>Workflow: Update State
+        Workflow->>Frontend: Progress Update
+        Frontend->>User: Real-time Status
+    end
+    
+    Workflow->>Storage: Save Final Results
+    Storage->>API: Results Ready
+    API->>Frontend: Workflow Complete
+    Frontend->>User: Download Links
+```
 
 ---
 
