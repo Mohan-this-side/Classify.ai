@@ -68,30 +68,37 @@ class LLMService:
         """Initialize LLM clients for all available providers"""
         self.clients = {}
         
-        # Initialize Gemini
-        if genai and settings.google_api_key:
-            try:
-                genai.configure(api_key=settings.google_api_key)
-                self.clients[LLMProvider.GEMINI] = genai.GenerativeModel('models/gemini-flash-latest')
-                self.logger.info("Gemini client initialized")
-            except Exception as e:
-                self.logger.warning(f"Failed to initialize Gemini: {e}")
+        # Initialize Gemini - check settings first, then environment variables
+        if genai:
+            # Try settings first, then fallback to environment variables
+            google_api_key = settings.google_api_key or os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
+            if google_api_key:
+                try:
+                    genai.configure(api_key=google_api_key)
+                    self.clients[LLMProvider.GEMINI] = genai.GenerativeModel('models/gemini-flash-latest')
+                    self.logger.info("Gemini client initialized")
+                except Exception as e:
+                    self.logger.warning(f"Failed to initialize Gemini: {e}")
         
-        # Initialize OpenAI
-        if OpenAI and settings.openai_api_key:
-            try:
-                self.clients[LLMProvider.OPENAI] = OpenAI(api_key=settings.openai_api_key)
-                self.logger.info("OpenAI client initialized")
-            except Exception as e:
-                self.logger.warning(f"Failed to initialize OpenAI: {e}")
+        # Initialize OpenAI - check settings first, then environment variables
+        if OpenAI:
+            openai_api_key = settings.openai_api_key or os.getenv('OPENAI_API_KEY')
+            if openai_api_key:
+                try:
+                    self.clients[LLMProvider.OPENAI] = OpenAI(api_key=openai_api_key)
+                    self.logger.info("OpenAI client initialized")
+                except Exception as e:
+                    self.logger.warning(f"Failed to initialize OpenAI: {e}")
         
-        # Initialize Anthropic
-        if Anthropic and settings.anthropic_api_key:
-            try:
-                self.clients[LLMProvider.ANTHROPIC] = Anthropic(api_key=settings.anthropic_api_key)
-                self.logger.info("Anthropic client initialized")
-            except Exception as e:
-                self.logger.warning(f"Failed to initialize Anthropic: {e}")
+        # Initialize Anthropic - check settings first, then environment variables
+        if Anthropic:
+            anthropic_api_key = settings.anthropic_api_key or os.getenv('ANTHROPIC_API_KEY')
+            if anthropic_api_key:
+                try:
+                    self.clients[LLMProvider.ANTHROPIC] = Anthropic(api_key=anthropic_api_key)
+                    self.logger.info("Anthropic client initialized")
+                except Exception as e:
+                    self.logger.warning(f"Failed to initialize Anthropic: {e}")
     
     async def generate_code(
         self,
@@ -282,22 +289,43 @@ Generate the code now:
         return prompt
     
     def _extract_code_from_response(self, response: str) -> str:
-        """Extract Python code from LLM response"""
+        """Extract Python code from LLM response and wrap with logger setup"""
         # Try to find code blocks
         if "```python" in response:
             start = response.find("```python") + 9
             end = response.find("```", start)
             if end != -1:
-                return response[start:end].strip()
-        
+                code = response[start:end].strip()
+            else:
+                code = response[start:].strip()
         elif "```" in response:
             start = response.find("```") + 3
             end = response.find("```", start)
             if end != -1:
-                return response[start:end].strip()
+                code = response[start:end].strip()
+            else:
+                code = response[start:].strip()
+        else:
+            # If no code blocks, return entire response
+            code = response.strip()
         
-        # If no code blocks, return entire response
-        return response.strip()
+        # Wrap code with logger setup for sandbox execution
+        logger_setup = """import logging
+import sys
+
+# Setup logger for sandbox execution
+logger = logging.getLogger('sandbox_execution')
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
+# Generated code starts here:
+"""
+        
+        return logger_setup + code
     
     async def generate_explanation(
         self,
@@ -341,14 +369,25 @@ Keep the explanation accessible and educational.
             self.logger.error(f"Failed to generate explanation: {e}")
         
         return "Explanation generation failed."
+    
+    def reinitialize_clients(self):
+        """Reinitialize clients from environment variables - useful when env vars are set after import"""
+        self.logger.info("Reinitializing LLM clients from environment variables")
+        self._init_clients()
 
 
 # Global LLM service instance
 _llm_service = None
 
 
-def get_llm_service(provider: LLMProvider = LLMProvider.GEMINI) -> LLMService:
-    """Get or create global LLM service instance"""
+def get_llm_service(provider: LLMProvider = LLMProvider.GEMINI, force_reinit: bool = False) -> LLMService:
+    """
+    Get or create global LLM service instance
+    
+    Args:
+        provider: LLM provider to use
+        force_reinit: If True, force reinitialization even if service already exists
+    """
     global _llm_service
     if _llm_service is None:
         _llm_service = LLMService(provider)

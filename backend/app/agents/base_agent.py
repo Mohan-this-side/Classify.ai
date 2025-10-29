@@ -323,6 +323,9 @@ class BaseAgent(ABC):
                 context=layer1_results,
                 code_type=self.agent_name
             )
+            
+            # Store generated code for debugging
+            self._last_generated_code = llm_response
 
             generated_code = llm_response.get("code")
             if not generated_code:
@@ -392,7 +395,16 @@ warnings.filterwarnings('ignore', category=UserWarning)
             return layer2_results
 
         except Exception as e:
-            self.logger.error(f"Layer 2 execution failed: {e}")
+            error_msg = str(e)
+            self.logger.error(f"Layer 2 execution failed: {error_msg}")
+            
+            # Check if this is a logger-related error
+            if "logger" in error_msg.lower():
+                self.logger.error("This appears to be a logger-related error. Checking generated code...")
+                # Log the generated code for debugging
+                if hasattr(self, '_last_generated_code'):
+                    self.logger.error(f"Generated code preview: {self._last_generated_code[:500]}...")
+            
             raise
 
     async def execute_layer2_in_sandbox(
@@ -447,7 +459,7 @@ warnings.filterwarnings('ignore', category=UserWarning)
             "execution_time": result.get("execution_time", 0),
             "status": result.get("status")
         }
-        logger.info(f"📊 Sandbox metrics: CPU={result.get('cpu_usage')}, Memory={result.get('memory_usage')}, Time={result.get('execution_time')}s")
+        self.logger.info(f"📊 Sandbox metrics: CPU={result.get('cpu_usage')}, Memory={result.get('memory_usage')}, Time={result.get('execution_time')}s")
 
         if result.get("status") == "TIMEOUT":
             raise TimeoutError(f"Sandbox execution timed out after {self.sandbox_executor.timeout}s")

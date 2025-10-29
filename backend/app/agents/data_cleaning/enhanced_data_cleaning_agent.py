@@ -9,6 +9,7 @@ import pandas as pd
 import numpy as np
 from typing import Dict, Any, Optional, Tuple, List
 import logging
+import json
 from datetime import datetime
 import re
 from sklearn.preprocessing import LabelEncoder, StandardScaler
@@ -1017,7 +1018,8 @@ Outlier pattern: {outlier_detection.get('outlier_summary', {}).get('columns_with
 6. Return a cleaned DataFrame
 7. Use only these libraries: pandas, numpy, sklearn
 8. Add comments explaining each step
-9. Ensure the code is safe and doesn't use dangerous operations
+9. **DO NOT use 'logger' - use print() statements instead for output**  
+10. Ensure the code is safe and doesn't use dangerous operations
 
 Generate clean, production-ready Python code:"""
         
@@ -1042,26 +1044,55 @@ Generate clean, production-ready Python code:"""
         """
         self.logger.info("🔍 LAYER 2: Processing sandbox results for data cleaning")
         
-        # Validate sandbox execution was successful
-        if sandbox_output.get("status") != "SUCCESS":
-            raise ValueError(f"Sandbox execution failed: {sandbox_output.get('error', 'Unknown error')}")
-        
-        # Extract cleaned dataset from sandbox output
-        # The output should contain a cleaned DataFrame
-        cleaned_data = sandbox_output.get("output", {})
-        
-        # Validate the output structure
-        if not isinstance(cleaned_data, dict):
-            raise ValueError("Sandbox output should contain a cleaned DataFrame")
-        
-        # Additional validation can be added here
-        # Compare with Layer 1 to ensure quality improvement
-        
-        result = {
-            "cleaned_data": cleaned_data,
-            "layer2_success": True,
-            "sandbox_execution_time": sandbox_output.get("execution_time", 0)
-        }
-        
-        self.logger.info("✅ LAYER 2: Sandbox results processed and validated")
-        return result
+        try:
+            # Validate sandbox execution was successful
+            if sandbox_output.get("status") != "SUCCESS":
+                error_msg = sandbox_output.get('error', 'Unknown error')
+                self.logger.warning(f"Sandbox execution status: {sandbox_output.get('status')}, error: {error_msg}")
+                raise ValueError(f"Sandbox execution failed: {error_msg}")
+            
+            # Extract output from sandbox (it's a string from stdout)
+            output_str = sandbox_output.get("output", "")
+            error_str = sandbox_output.get("error", "")
+            
+            # Log both output and error for debugging
+            if output_str:
+                output_preview = output_str[:500] if len(output_str) > 500 else output_str
+                self.logger.info(f"Sandbox output preview: {output_preview}")
+            
+            if error_str:
+                error_preview = error_str[:500] if len(error_str) > 500 else error_str
+                self.logger.warning(f"Sandbox error output: {error_preview}")
+            
+            # Check if there were any logger-related errors
+            if error_str and "logger" in error_str.lower():
+                self.logger.warning("Sandbox output contains logger-related errors in stderr - this may indicate the generated code had logger issues")
+            
+            # Try to parse output as JSON if it looks like JSON
+            cleaned_data = {}
+            try:
+                if output_str.strip().startswith("{") or output_str.strip().startswith("["):
+                    cleaned_data = json.loads(output_str)
+                else:
+                    # If not JSON, treat as plain output
+                    cleaned_data = {"output": output_str, "raw_output": True}
+            except (json.JSONDecodeError, ValueError) as e:
+                # If JSON parsing fails, treat as plain output
+                self.logger.warning(f"Could not parse sandbox output as JSON: {e}")
+                cleaned_data = {"output": output_str, "raw_output": True}
+            
+            result = {
+                "cleaned_data": cleaned_data,
+                "layer2_success": True,
+                "sandbox_execution_time": sandbox_output.get("execution_time", 0)
+            }
+            
+            self.logger.info("✅ LAYER 2: Sandbox results processed and validated")
+            return result
+            
+        except Exception as e:
+            # Wrap any processing errors to provide better context
+            error_msg = f"Error processing sandbox results: {str(e)}"
+            self.logger.error(error_msg)
+            self.logger.error(f"Sandbox output keys: {list(sandbox_output.keys())}")
+            raise ValueError(error_msg) from e

@@ -93,9 +93,32 @@ class SandboxExecutor:
         temp_file_path = None
         
         try:
-            # Write code to a temporary file
+            # Write code to a temporary file with logger setup prepended
             with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as temp_file:
                 temp_file_path = temp_file.name
+                
+                # Prepend logger setup to the code
+                logger_setup = """
+            import logging
+            import sys
+
+            # Setup basic logger for sandbox execution
+            logging.basicConfig(
+                level=logging.INFO,
+                format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                handlers=[logging.StreamHandler(sys.stdout)]
+            )
+            logger = logging.getLogger(__name__)
+
+            # Make logger available globally
+            import builtins
+            builtins.logger = logger
+
+            """
+                
+                # Write logger setup + user code
+                temp_file.write(logger_setup)
+                temp_file.write("\n# User-generated code below:\n")
                 temp_file.write(code)
             
             # Copy code to the sandbox volume
@@ -153,6 +176,16 @@ class SandboxExecutor:
                     "execution_time": self.timeout,
                     "memory_usage": self._get_container_memory_usage(container_name),
                     "cpu_usage": self._get_container_cpu_usage(container_name)
+                }
+            
+            # Check if execution actually completed successfully
+            if not self._is_execution_complete():
+                logger.error("Sandbox execution did not complete successfully")
+                self._stop_sandbox(container_name)
+                return {
+                    "status": "FAILED",
+                    "output": "",
+                    "error": "Execution did not complete successfully"
                 }
             
             # Calculate execution time
@@ -314,6 +347,11 @@ class SandboxExecutor:
             if os.path.exists(status_code_path):
                 with open(status_code_path, "r") as f:
                     status = f.read().strip()
+            
+            # Debug: Log what we found
+            logger.info(f"Sandbox results: status={status}, output_len={len(output)}, error_len={len(error)}")
+            if error:
+                logger.warning(f"Sandbox error content: {error[:200]}...")
             
             return {
                 "status": status,
