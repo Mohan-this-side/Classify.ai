@@ -18,6 +18,7 @@ export default function ClassifyAI() {
   // Upload state
   const [file, setFile] = useState<File | null>(null)
   const [targetColumn, setTargetColumn] = useState('')
+  const [description, setDescription] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [columnOptions, setColumnOptions] = useState<string[]>([])
   
@@ -28,6 +29,7 @@ export default function ClassifyAI() {
   const [pmMessages, setPmMessages] = useState<any[]>([])
   const [sandboxMetrics, setSandboxMetrics] = useState({ cpu: 0, memory: 0, time: 0 })
   const [results, setResults] = useState<any>(null)
+  const [workflowCompletedNotified, setWorkflowCompletedNotified] = useState(false) // ✅ FIX: Track if completion notification shown
 
   const parseCSVHeaders = async (file: File) => {
     return new Promise<string[]>((resolve, reject) => {
@@ -61,33 +63,61 @@ export default function ClassifyAI() {
   }
 
   const startWorkflow = async () => {
-    if (!file || !targetColumn || !apiKey) {
-      toast.error('Please fill in all fields')
+    // Validate all required fields
+    const missingFields = []
+    if (!file) missingFields.push('file')
+    if (!targetColumn) missingFields.push('target column')
+    if (!description || description.trim() === '') missingFields.push('description')
+    if (!apiKey || apiKey.trim() === '') missingFields.push('API key')
+    
+    if (missingFields.length > 0) {
+      toast.error(`Please fill in: ${missingFields.join(', ')}`)
+      console.error('Missing fields:', missingFields)
       return
     }
 
     try {
+      console.log('Starting workflow with:', {
+        fileName: file?.name,
+        targetColumn,
+        descriptionLength: description.length,
+        apiKeyLength: apiKey.length
+      })
+
       // Create FormData for file upload
       const formData = new FormData()
-      formData.append('file', file)
+      formData.append('file', file!)
       formData.append('target_column', targetColumn)
-      formData.append('description', `Classification task for ${targetColumn}`)
+      formData.append('description', description)
       formData.append('api_key', apiKey)
       formData.append('user_id', 'web_user')
 
+      console.log('Sending request to backend...')
+      
       // Send to backend
       const response = await fetch('http://localhost:8000/api/workflow/start', {
         method: 'POST',
         body: formData
       })
 
+      console.log('Response status:', response.status, response.statusText)
+
       if (!response.ok) {
-        throw new Error('Failed to start workflow')
+        const errorText = await response.text()
+        console.error('Backend error:', errorText)
+        throw new Error(`Failed to start workflow: ${response.status} ${response.statusText}`)
       }
 
       const data = await response.json()
+      console.log('Workflow started:', data)
+      
+      if (!data.workflow_id) {
+        throw new Error('No workflow_id returned from backend')
+      }
+
       setWorkflowId(data.workflow_id)
       setWorkflowStatus('running')
+      setWorkflowCompletedNotified(false) // ✅ FIX: Reset completion notification flag
       
       // Initialize agents status
       setAgents([
@@ -107,13 +137,17 @@ export default function ClassifyAI() {
 
       // Start polling for status
       pollWorkflowStatus(data.workflow_id)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error starting workflow:', error)
-      toast.error('Failed to start workflow')
+      const errorMessage = error.message || 'Failed to start workflow. Please check console for details.'
+      toast.error(errorMessage)
     }
   }
 
   const pollWorkflowStatus = async (wfId: string) => {
+    let intervalId: NodeJS.Timeout | null = null
+    let hasCompleted = false // ✅ FIX: Track if workflow has completed to prevent duplicate notifications
+    
     const interval = setInterval(async () => {
       try {
         const response = await fetch(`http://localhost:8000/api/workflow/status/${wfId}`)
@@ -142,12 +176,15 @@ export default function ClassifyAI() {
             
             if (backendAgentName && data.agent_status[backendAgentName]) {
               const status = data.agent_status[backendAgentName]
-              const layer = data.layer_usage?.[backendAgentName] || 'Layer 1'
-              const layerEmoji = layer.includes('2') ? '🐳' : '⚡'
+              const layer = data.layer_usage?.[backendAgentName] || 'layer1'
+              // Standardize layer naming: always "Layer 1" or "Layer 2"
+              const layerName = layer.toLowerCase().includes('layer2') || layer.toLowerCase().includes('2') ? 'Layer 2' : 'Layer 1'
+              const layerEmoji = layerName === 'Layer 2' ? '🐳' : '⚡'
               return { 
                 ...agent, 
                 status: status === 'running' ? 'active' : status === 'completed' ? 'complete' : status,
-                time: status === 'completed' ? `${layerEmoji} ${layer}` : (status === 'running' ? `${layerEmoji} Running...` : '')
+                time: status === 'completed' ? `${layerEmoji} ${layerName}` : (status === 'running' ? `${layerEmoji} ${layerName}...` : ''),
+                layer: layerName
               }
             }
             return agent
@@ -169,27 +206,104 @@ export default function ClassifyAI() {
         // ✅ Update sandbox metrics from backend
         if (data.sandbox_metrics) {
           const metrics = data.sandbox_metrics
+          // Parse CPU and Memory percentages correctly
+          const cpuValue = typeof metrics.cpu === 'number' ? metrics.cpu : parseFloat(String(metrics.cpu || '0').replace('%', '')) || 0
+          const memoryValue = typeof metrics.memory === 'number' ? metrics.memory : parseFloat(String(metrics.memory || '0').replace('%', '')) || 0
+          const timeValue = typeof metrics.time === 'number' ? metrics.time : parseInt(String(metrics.time || '0')) || 0
+          
           setSandboxMetrics({
-            cpu: Math.round(metrics.cpu || 0),
-            memory: Math.round(metrics.memory || 0),
-            time: Math.max(0, Math.round(120 - (metrics.time || 0)))  // Time remaining out of 120s
+            cpu: Math.min(100, Math.max(0, Math.round(cpuValue))),
+            memory: Math.min(100, Math.max(0, Math.round(memoryValue))),
+            time: Math.max(0, Math.round(120 - timeValue))  // Time remaining out of 120s
           })
+        } else {
+          // Reset metrics when no active sandbox execution
+          setSandboxMetrics({ cpu: 0, memory: 0, time: 0 })
         }
 
-        // Check if workflow is complete
-        if (data.status === 'completed') {
+        // ✅ FIX: Check if workflow is complete (only once)
+        if (data.status === 'completed' && !hasCompleted) {
+          hasCompleted = true
           clearInterval(interval)
+          intervalId = null
           // Reset sandbox metrics
           setSandboxMetrics({ cpu: 0, memory: 0, time: 0 })
-          fetchResults(wfId)
-        } else if (data.status === 'failed') {
+          // Fetch results (this will show the single completion notification)
+          await fetchResults(wfId)
+        } else if (data.status === 'failed' && !hasCompleted) {
+          hasCompleted = true
           clearInterval(interval)
+          intervalId = null
           toast.error('Workflow failed')
         }
       } catch (error) {
         console.error('Error polling status:', error)
       }
     }, 2000) // Poll every 2 seconds
+  }
+
+  // ✅ Fetch workflow results when complete
+  const fetchResults = async (wfId: string) => {
+    try {
+      const response = await fetch(`http://localhost:8000/api/workflow/results/${wfId}`)
+      if (!response.ok) {
+        throw new Error('Failed to fetch results')
+      }
+      
+      const data = await response.json()
+      console.log('Fetched results:', data) // Debug
+      
+      // ✅ FIX: Structure results for display - check multiple locations for each field
+      const structuredResults = {
+        // Model evaluation metrics - check top-level first, then nested
+        model_evaluation: {
+          evaluation_metrics: data.evaluation_metrics || data.results?.model_evaluation?.evaluation_metrics || data.results?.evaluation_metrics || {}
+        },
+        // EDA plots - check multiple locations
+        eda_analysis: {
+          plots: data.results?.eda_analysis?.plots || data.results?.eda_plots || data.results?.plots || data.eda_plots || []
+        },
+        // Feature importance - check multiple locations
+        feature_importance: data.feature_importance_model || data.results?.feature_importance_model || data.results?.model_evaluation?.feature_importance || data.results?.feature_importance || {},
+        // Dataset info
+        dataset_info: data.results?.dataset_info || data.dataset_info || {},
+        // Downloadable files - check top-level first, then nested
+        downloadable_files: data.downloadable_files || data.results?.downloadable_files || data.downloads?.downloadable_files || [],
+        // Execution info for notification
+        execution_info: data.execution_info || {}
+      }
+      
+      console.log('Structured results:', structuredResults) // Debug
+      
+      setResults(structuredResults)
+      setActiveView('results')
+      
+      // ✅ FIX: Show single, informative completion notification (only once)
+      if (!workflowCompletedNotified) {
+        setWorkflowCompletedNotified(true)
+        const completedAgentsCount = data.execution_info?.completed_agents?.length || 7
+        const metrics = data.evaluation_metrics || data.results?.model_evaluation?.evaluation_metrics || {}
+        const accuracy = metrics.accuracy ? `${(metrics.accuracy * 100).toFixed(1)}%` : 'N/A'
+        
+        toast.success(
+          `🎉 Analysis Complete! ${completedAgentsCount} agents finished successfully. Model accuracy: ${accuracy}`,
+          {
+            duration: 5000,
+            icon: '🎉',
+            style: {
+              background: '#10b981',
+              color: '#fff',
+              fontSize: '14px',
+              padding: '16px',
+              borderRadius: '8px',
+            }
+          }
+        )
+      }
+    } catch (error) {
+      console.error('Error fetching results:', error)
+      toast.error('Failed to fetch results')
+    }
   }
 
   // ✅ Handle approval gate responses
@@ -292,6 +406,8 @@ export default function ClassifyAI() {
           columnOptions={columnOptions}
           apiKey={apiKey}
           setApiKey={setApiKey}
+          description={description}
+          setDescription={setDescription}
           onStart={startWorkflow}
         />
       )}
@@ -305,6 +421,7 @@ export default function ClassifyAI() {
           setPendingApproval={setPendingApproval}
           pmMessages={pmMessages}
           sandboxMetrics={sandboxMetrics}
+          workflowStatus={workflowStatus}
           onApprovalResponse={handleApprovalResponse}
           onPMQuestion={handlePMQuestion}
         />
@@ -332,7 +449,7 @@ function NavButton({ active, onClick, children }: any) {
   )
 }
 
-function UploadView({ file, handleFileChange, targetColumn, setTargetColumn, columnOptions, apiKey, setApiKey, onStart }: any) {
+function UploadView({ file, handleFileChange, targetColumn, setTargetColumn, description, setDescription, columnOptions, apiKey, setApiKey, onStart }: any) {
   return (
     <div className="flex-1 flex items-center justify-center p-8">
       <div className="max-w-2xl w-full space-y-6">
@@ -383,6 +500,23 @@ function UploadView({ file, handleFileChange, targetColumn, setTargetColumn, col
           </select>
         </div>
 
+        {/* Dataset Description */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Dataset Description
+          </label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Describe your dataset and what you want to predict (e.g., 'Customer churn prediction dataset with demographic and usage features')"
+            rows={3}
+            className="w-full border border-gray-300 rounded-lg px-4 py-3 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all resize-none"
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            This description helps the AI understand your dataset better and generate more accurate analysis.
+          </p>
+        </div>
+
         {/* API Key */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -399,20 +533,36 @@ function UploadView({ file, handleFileChange, targetColumn, setTargetColumn, col
 
         {/* Start Button */}
         <button
-          onClick={onStart}
-          disabled={!file || !targetColumn || !apiKey}
+          onClick={(e) => {
+            e.preventDefault()
+            console.log('Button clicked!', {
+              file: !!file,
+              targetColumn: !!targetColumn,
+              description: !!description && description.trim() !== '',
+              apiKey: !!apiKey && apiKey.trim() !== ''
+            })
+            onStart()
+          }}
+          disabled={!file || !targetColumn || !description || !description.trim() || !apiKey || !apiKey.trim()}
           className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-4 rounded-lg font-semibold text-lg hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl flex items-center justify-center space-x-2"
         >
           <Play className="w-6 h-6" />
           <span>Start Analysis</span>
         </button>
+        
+        {/* Debug info */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="text-xs text-gray-400 mt-2">
+            Debug: File={file ? '✓' : '✗'} | Target={targetColumn ? '✓' : '✗'} | Desc={description?.trim() ? '✓' : '✗'} | API={apiKey?.trim() ? '✓' : '✗'}
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-function WorkflowView({ agents, pmExpanded, setPmExpanded, pendingApproval, setPendingApproval, pmMessages, sandboxMetrics, onApprovalResponse, onPMQuestion }: any) {
-  // Map agent IDs to icons
+function WorkflowView({ agents, pmExpanded, setPmExpanded, pendingApproval, setPendingApproval, pmMessages, sandboxMetrics, workflowStatus, onApprovalResponse, onPMQuestion }: any) {
+  // Map agent IDs to icons and labels
   const iconMap: any = {
     discovery: TrendingUp,
     eda: Eye,
@@ -423,12 +573,36 @@ function WorkflowView({ agents, pmExpanded, setPmExpanded, pendingApproval, setP
     report: FileText,
     pm: MessageSquare
   }
+  
+  const agentLabels: any = {
+    discovery: 'Data Discovery',
+    eda: 'EDA Analysis',
+    cleaning: 'Data Cleaning',
+    feature: 'Feature Engineering',
+    model: 'Model Building',
+    eval: 'Model Evaluation',
+    report: 'Technical Reporting',
+    pm: 'Project Manager'
+  }
 
   // Add icons to agents
   const agentsWithIcons = agents.map((agent: any) => ({
     ...agent,
-    icon: iconMap[agent.id] || Circle
+    icon: iconMap[agent.id] || Circle,
+    label: agentLabels[agent.id] || agent.label
   }))
+  
+  // Find active agent
+  const activeAgent = agentsWithIcons.find((a: any) => a.status === 'active' || a.status === 'running')
+  const completedAgents = agentsWithIcons.filter((a: any) => a.status === 'complete' || a.status === 'completed')
+  
+  // Auto-scroll PM chat to bottom
+  const pmMessagesEndRef = React.useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (pmMessagesEndRef.current) {
+      pmMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [pmMessages])
 
   return (
     <div className="flex-1 flex overflow-hidden">
@@ -441,7 +615,7 @@ function WorkflowView({ agents, pmExpanded, setPmExpanded, pendingApproval, setP
               <React.Fragment key={agent.id}>
                 <AgentStep {...agent} />
                 {idx < agentsWithIcons.length - 1 && (
-                  <div className={`w-12 h-1 ${agent.status === 'completed' ? 'bg-blue-600' : 'bg-gray-300'}`} />
+                  <div className={`w-12 h-1 ${agent.status === 'complete' || agent.status === 'completed' ? 'bg-blue-600' : 'bg-gray-300'}`} />
                 )}
               </React.Fragment>
             ))}
@@ -451,74 +625,49 @@ function WorkflowView({ agents, pmExpanded, setPmExpanded, pendingApproval, setP
         {/* Agent Activity */}
         <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
           <div className="max-w-5xl mx-auto space-y-6">
-            {/* Active Agent Card */}
-            <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center space-x-4">
-                  <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                    <Zap className="w-7 h-7 text-blue-600" />
-                  </div>
+            {/* Active Agent Card - Dynamic */}
+            {activeAgent ? (
+              <ActiveAgentCard agent={activeAgent} sandboxMetrics={sandboxMetrics} />
+            ) : workflowStatus === 'completed' ? (
+              <div className="bg-green-50 rounded-xl shadow-md border border-green-200 p-6">
+                <div className="flex items-center space-x-3">
+                  <CheckCircle className="w-8 h-8 text-green-600" />
                   <div>
-                    <h3 className="text-xl font-bold text-gray-900">Model Builder Agent</h3>
-                    <p className="text-sm text-gray-600">Training classification models with sklearn.Pipeline</p>
-                  </div>
-                </div>
-                <span className="px-4 py-2 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold flex items-center space-x-2">
-                  <Loader className="w-4 h-4 animate-spin" />
-                  <span>Running</span>
-                </span>
-              </div>
-
-              {/* Layer 1 */}
-              <div className="space-y-4">
-                <div className="bg-green-50 rounded-lg p-4 border border-green-200">
-                  <div className="flex items-center space-x-2 mb-3">
-                    <CheckCircle className="w-5 h-5 text-green-600" />
-                    <span className="font-semibold text-green-900">Layer 1: Analysis Complete</span>
-                  </div>
-                  <ul className="text-sm text-gray-700 space-y-1 ml-7">
-                    <li>• Dataset shape: 150 rows, 8 features (4 original + 4 engineered)</li>
-                    <li>• Target distribution: Balanced (50/50/50)</li>
-                    <li>• No data leakage detected</li>
-                    <li>• Recommended: RandomForest (handles non-linear relationships)</li>
-                  </ul>
-                </div>
-
-                {/* Layer 2 */}
-                <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-                  <div className="flex items-center space-x-2 mb-3">
-                    <Loader className="w-5 h-5 text-blue-600 animate-spin" />
-                    <span className="font-semibold text-blue-900">Layer 2: Generating Training Code</span>
-                  </div>
-                  <div className="ml-7">
-                    <div className="w-full bg-blue-200 rounded-full h-3 overflow-hidden">
-                      <div className="bg-gradient-to-r from-blue-600 to-blue-500 h-3 rounded-full transition-all" style={{width: '65%'}} />
-                    </div>
-                    <p className="text-xs text-gray-600 mt-2">Building sklearn.Pipeline with preprocessing...</p>
+                    <h3 className="text-xl font-bold text-green-900">Workflow Completed!</h3>
+                    <p className="text-sm text-green-700">All agents have finished successfully. Check the Results tab.</p>
                   </div>
                 </div>
               </div>
-            </div>
+            ) : null}
 
-            {/* Sandbox Monitor */}
-            <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
-              <h4 className="font-bold text-gray-900 mb-4 flex items-center space-x-2">
-                <Code className="w-5 h-5 text-gray-700" />
-                <span>Sandbox Execution Monitor</span>
-              </h4>
-              <div className="grid grid-cols-3 gap-6">
-                <MetricBar label="CPU Usage" value={sandboxMetrics.cpu} color="green" />
-                <MetricBar label="Memory" value={sandboxMetrics.memory} color="blue" />
-                <div>
-                  <p className="text-xs text-gray-500 mb-2">Time Remaining</p>
-                  <p className="text-lg font-bold text-gray-900">~{sandboxMetrics.time}s</p>
+            {/* Sandbox Monitor - Only show when active */}
+            {(activeAgent && (sandboxMetrics.cpu > 0 || sandboxMetrics.memory > 0 || sandboxMetrics.time > 0)) && (
+              <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
+                <h4 className="font-bold text-gray-900 mb-4 flex items-center space-x-2">
+                  <Code className="w-5 h-5 text-gray-700" />
+                  <span>Sandbox Execution Monitor</span>
+                </h4>
+                <div className="grid grid-cols-3 gap-6">
+                  <MetricBar label="CPU Usage" value={Math.min(100, Math.max(0, sandboxMetrics.cpu))} color="green" />
+                  <MetricBar label="Memory" value={Math.min(100, Math.max(0, sandboxMetrics.memory))} color="blue" />
+                  <div>
+                    <p className="text-xs text-gray-500 mb-2">Time Remaining</p>
+                    <p className="text-lg font-bold text-gray-900">~{Math.max(0, sandboxMetrics.time)}s</p>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Completed Agents */}
-            <CompletedAgent icon={Wrench} name="Feature Engineering Agent" time="1m 45s" />
-            <CompletedAgent icon={FileSpreadsheet} name="Data Cleaning Agent" time="2m 34s" />
+            {completedAgents.map((agent: any) => (
+              <CompletedAgent 
+                key={agent.id}
+                icon={agent.icon} 
+                name={agent.label || agent.name} 
+                time={agent.time || 'Completed'}
+                agentId={agent.id}
+              />
+            ))}
           </div>
         </div>
       </div>
@@ -538,15 +687,25 @@ function WorkflowView({ agents, pmExpanded, setPmExpanded, pendingApproval, setP
 
           <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-gray-50">
             {/* ✅ Dynamic PM Messages from Backend */}
-            {pmMessages.map((message: any, index: number) => (
-              <PMMessage 
-                key={index}
-                agent={message.agent || 'System'} 
-                time={new Date(message.timestamp).toLocaleTimeString()} 
-                message={message.content}
-                type={message.type}
-              />
-            ))}
+            {pmMessages.length === 0 ? (
+              <div className="text-center text-gray-500 py-8">
+                <MessageSquare className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                <p className="text-sm">No messages yet. Ask me anything!</p>
+              </div>
+            ) : (
+              <>
+                {pmMessages.map((message: any, index: number) => (
+                  <PMMessage 
+                    key={index}
+                    agent={message.agent || 'System'} 
+                    time={new Date(message.timestamp).toLocaleTimeString()} 
+                    message={message.content}
+                    type={message.type}
+                  />
+                ))}
+                <div ref={pmMessagesEndRef} />
+              </>
+            )}
 
             {/* ✅ Dynamic Approval Gate from Backend */}
             {pendingApproval && (
@@ -595,30 +754,38 @@ function ResultsView({ results }: any) {
           </button>
         </div>
 
-        {/* Metrics */}
+        {/* Metrics - ✅ FIX: Check multiple locations for evaluation_metrics */}
         <div className="grid grid-cols-4 gap-6">
           <MetricCard 
             label="Accuracy" 
-            value={results?.model_evaluation?.evaluation_metrics?.accuracy ? 
-              `${(results.model_evaluation.evaluation_metrics.accuracy * 100).toFixed(1)}%` : 'N/A'} 
+            value={(() => {
+              const metrics = results?.model_evaluation?.evaluation_metrics || results?.evaluation_metrics || {}
+              return metrics.accuracy ? `${(metrics.accuracy * 100).toFixed(1)}%` : 'N/A'
+            })()} 
             gradient="from-blue-500 to-blue-600" 
           />
           <MetricCard 
             label="F1 Score" 
-            value={results?.model_evaluation?.evaluation_metrics?.f1_weighted ? 
-              results.model_evaluation.evaluation_metrics.f1_weighted.toFixed(3) : 'N/A'} 
+            value={(() => {
+              const metrics = results?.model_evaluation?.evaluation_metrics || results?.evaluation_metrics || {}
+              return metrics.f1_weighted ? metrics.f1_weighted.toFixed(3) : 'N/A'
+            })()} 
             gradient="from-green-500 to-green-600" 
           />
           <MetricCard 
             label="Precision" 
-            value={results?.model_evaluation?.evaluation_metrics?.precision_weighted ? 
-              `${(results.model_evaluation.evaluation_metrics.precision_weighted * 100).toFixed(1)}%` : 'N/A'} 
+            value={(() => {
+              const metrics = results?.model_evaluation?.evaluation_metrics || results?.evaluation_metrics || {}
+              return metrics.precision_weighted ? `${(metrics.precision_weighted * 100).toFixed(1)}%` : 'N/A'
+            })()} 
             gradient="from-purple-500 to-purple-600" 
           />
           <MetricCard 
             label="Recall" 
-            value={results?.model_evaluation?.evaluation_metrics?.recall_weighted ? 
-              `${(results.model_evaluation.evaluation_metrics.recall_weighted * 100).toFixed(1)}%` : 'N/A'} 
+            value={(() => {
+              const metrics = results?.model_evaluation?.evaluation_metrics || results?.evaluation_metrics || {}
+              return metrics.recall_weighted ? `${(metrics.recall_weighted * 100).toFixed(1)}%` : 'N/A'
+            })()} 
             gradient="from-orange-500 to-orange-600" 
           />
         </div>
@@ -656,7 +823,7 @@ function ResultsView({ results }: any) {
         <div className="bg-white rounded-xl shadow-md border border-gray-200 p-8">
           <h3 className="text-2xl font-bold text-gray-900 mb-6">Feature Importance</h3>
           <div className="space-y-4">
-            {results?.feature_importance ? (
+            {results?.feature_importance && Object.keys(results.feature_importance).length > 0 ? (
               Object.entries(results.feature_importance)
                 .sort(([, a]: any, [, b]: any) => b - a)
                 .slice(0, 10)
@@ -664,7 +831,7 @@ function ResultsView({ results }: any) {
                   <FeatureBar 
                     key={feature} 
                     label={feature} 
-                    value={Math.round(importance * 100)} 
+                    value={Math.round((importance || 0) * 100)} 
                   />
                 ))
             ) : (
@@ -680,9 +847,23 @@ function ResultsView({ results }: any) {
             <span>Your Deliverables</span>
           </h3>
           <div className="space-y-3">
-            <DeliverableItem name="cleaned_dataset.csv" size="2.3 MB" />
-            <DeliverableItem name="trained_model.joblib" size="156 KB" />
-            <DeliverableItem name="analysis_notebook.ipynb" size="487 KB" />
+            {results?.downloadable_files && results.downloadable_files.length > 0 ? (
+              results.downloadable_files.map((file: any, idx: number) => (
+                <DeliverableItem 
+                  key={idx}
+                  name={file.name || `file_${idx + 1}`} 
+                  size={file.size || 'Unknown'} 
+                  downloadUrl={file.path || file.url}
+                  workflowId={workflowId}
+                />
+              ))
+            ) : (
+              <>
+                <DeliverableItem name="cleaned_dataset.csv" size="Processing..." workflowId={workflowId} />
+                <DeliverableItem name="trained_model.joblib" size="Processing..." workflowId={workflowId} />
+                <DeliverableItem name="analysis_notebook.ipynb" size="Processing..." workflowId={workflowId} />
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -731,7 +912,9 @@ function MetricBar({ label, value, color }: any) {
   )
 }
 
-function CompletedAgent({ icon: Icon, name, time }: any) {
+function CompletedAgent({ icon: Icon, name, time, agentId }: any) {
+  const [showDetails, setShowDetails] = useState(false)
+  
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:shadow-md transition-all">
       <div className="flex items-center justify-between">
@@ -739,10 +922,76 @@ function CompletedAgent({ icon: Icon, name, time }: any) {
           <Icon className="w-6 h-6 text-green-600" />
           <div>
             <h4 className="font-semibold text-gray-900">{name}</h4>
-            <p className="text-sm text-gray-500">Completed in {time}</p>
+            <p className="text-sm text-gray-500">{time}</p>
           </div>
         </div>
-        <button className="text-sm text-blue-600 hover:text-blue-700 font-medium">View Details</button>
+        <button 
+          onClick={() => setShowDetails(!showDetails)}
+          className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
+        >
+          {showDetails ? 'Hide Details' : 'View Details'}
+        </button>
+      </div>
+      {showDetails && (
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          <p className="text-sm text-gray-600">
+            Agent execution completed successfully. Details will be available in the final report.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Active Agent Card Component
+function ActiveAgentCard({ agent, sandboxMetrics }: any) {
+  const hasLayer2 = agent.layer === 'Layer 2' || agent.time?.includes('Layer 2')
+  
+  return (
+    <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center space-x-4">
+          <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+            <agent.icon className="w-7 h-7 text-blue-600" />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-gray-900">{agent.label || agent.name}</h3>
+            <p className="text-sm text-gray-600">Processing your dataset...</p>
+          </div>
+        </div>
+        <span className="px-4 py-2 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold flex items-center space-x-2">
+          <Loader className="w-4 h-4 animate-spin" />
+          <span>Running</span>
+        </span>
+      </div>
+
+      <div className="space-y-4">
+        {/* Layer 1 - Always shown */}
+        <div className="bg-green-50 rounded-lg p-4 border border-green-200">
+          <div className="flex items-center space-x-2 mb-3">
+            <CheckCircle className="w-5 h-5 text-green-600" />
+            <span className="font-semibold text-green-900">Layer 1: Analysis Complete</span>
+          </div>
+          <p className="text-sm text-gray-700 ml-7">
+            Hardcoded analysis completed. Reliable baseline results generated.
+          </p>
+        </div>
+
+        {/* Layer 2 - Show if agent is using Layer 2 */}
+        {hasLayer2 && (
+          <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+            <div className="flex items-center space-x-2 mb-3">
+              <Loader className="w-5 h-5 text-blue-600 animate-spin" />
+              <span className="font-semibold text-blue-900">Layer 2: LLM Code Generation & Execution</span>
+            </div>
+            <div className="ml-7">
+              <div className="w-full bg-blue-200 rounded-full h-3 overflow-hidden">
+                <div className="bg-gradient-to-r from-blue-600 to-blue-500 h-3 rounded-full transition-all animate-pulse" style={{width: '65%'}} />
+              </div>
+              <p className="text-xs text-gray-600 mt-2">Generating adaptive code with LLM and executing in Docker sandbox...</p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -895,7 +1144,37 @@ function FeatureBar({ label, value }: any) {
   )
 }
 
-function DeliverableItem({ name, size }: any) {
+function DeliverableItem({ name, size, downloadUrl, workflowId }: any) {
+  const handleDownload = async () => {
+    if (!downloadUrl && !workflowId) {
+      console.error('No download URL or workflow ID provided')
+      return
+    }
+    
+    try {
+      // If downloadUrl is a full path, extract file type
+      let downloadPath = downloadUrl
+      if (downloadUrl && workflowId) {
+        // Determine file type from name
+        let fileType = 'model'
+        if (name.includes('dataset') || name.includes('.csv')) fileType = 'cleaned_dataset'
+        else if (name.includes('notebook') || name.includes('.ipynb')) fileType = 'notebook'
+        else if (name.includes('report') || name.includes('.md')) fileType = 'report'
+        
+        // Use download endpoint
+        downloadPath = `http://localhost:8000/api/workflow/download/${workflowId}/${fileType}`
+      } else if (downloadUrl && !downloadUrl.startsWith('http')) {
+        // Relative path - prepend backend URL
+        downloadPath = `http://localhost:8000${downloadUrl}`
+      }
+      
+      // Open download link
+      window.open(downloadPath, '_blank')
+    } catch (error) {
+      console.error('Download error:', error)
+    }
+  }
+  
   return (
     <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200">
       <div className="flex items-center space-x-3">
@@ -906,8 +1185,16 @@ function DeliverableItem({ name, size }: any) {
         </div>
       </div>
       <div className="flex space-x-2">
-        <button className="text-sm text-blue-600 hover:text-blue-700 font-medium">View</button>
-        <button className="text-sm text-blue-600 hover:text-blue-700 font-medium">Download</button>
+        {downloadUrl || workflowId ? (
+          <button 
+            onClick={handleDownload}
+            className="text-sm text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+          >
+            Download
+          </button>
+        ) : (
+          <span className="text-sm text-gray-400">Processing...</span>
+        )}
       </div>
     </div>
   )

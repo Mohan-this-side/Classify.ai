@@ -531,6 +531,12 @@ warnings.filterwarnings('ignore', category=UserWarning)
             state["dataset"] = results["cleaned_dataset"]  # Also update main dataset reference
             self.logger.info(f"✅ Updated processed_dataset with cleaned data from {self.agent_name}")
         
+        # Also handle processed_dataset if it's directly in results (for agents that pass through)
+        if "processed_dataset" in results and results["processed_dataset"] is not None:
+            state["processed_dataset"] = results["processed_dataset"]
+            state["dataset"] = results["processed_dataset"]
+            self.logger.info(f"✅ Updated processed_dataset from {self.agent_name} results")
+        
         # For feature engineering, update with engineered dataset
         if "engineered_dataset" in results and results["engineered_dataset"] is not None:
             state["processed_dataset"] = results["engineered_dataset"]

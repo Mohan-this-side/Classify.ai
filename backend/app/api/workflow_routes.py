@@ -106,31 +106,65 @@ def _get_educational_message(agent_name: str, status: str, state: Optional[Dict[
     return template
 
 
-async def _generate_pm_answer(question: str, state: Dict[str, Any]) -> str:
-    """Generate context-aware answer to user's question"""
+def _generate_pm_answer(question: str, state: Dict[str, Any]) -> str:
+    """Generate context-aware answer to user's question with comprehensive knowledge (synchronous for immediate response)"""
+    import re
+    
     question_lower = question.lower()
     
+    # Project/Creator questions
+    if any(word in question_lower for word in ["who created", "creator", "author", "developer", "who made", "who built"]):
+        return "👨‍💻 This project was created by Mohan as part of the DS Capstone project at Northeastern University (Fall 2025). It's a multi-agent AI system for automated machine learning classification tasks."
+    
+    # Project questions
+    if any(word in question_lower for word in ["what is this", "about this project", "what does this do", "project description"]):
+        return "🤖 This is Classify AI - an automated ML pipeline system with 8 specialized AI agents. It performs end-to-end classification tasks: data discovery, EDA, cleaning, feature engineering, model building, evaluation, and reporting. Uses a double-layer architecture (hardcoded + LLM-generated code) for robust results."
+    
+    # Agent questions - which agent takes more time
+    if any(word in question_lower for word in ["which agent", "agent taking", "slowest", "longest", "most time"]):
+        agent_times = state.get("agent_execution_times", {})
+        if agent_times:
+            sorted_agents = sorted(agent_times.items(), key=lambda x: x[1], reverse=True)
+            slowest = sorted_agents[0]
+            return f"⏱️ The {slowest[0]} agent typically takes the longest ({slowest[1]:.1f}s). Model building and feature engineering are usually the most time-consuming steps as they involve training multiple models and complex transformations."
+        return "⏱️ Model building and feature engineering agents typically take the most time as they involve training multiple ML models and performing complex feature transformations. Execution time varies based on dataset size."
+    
+    # Data science questions
+    if any(word in question_lower for word in ["what is", "explain", "how does", "what does"]):
+        if "eda" in question_lower or "exploratory" in question_lower:
+            return "📊 EDA (Exploratory Data Analysis) is the process of analyzing datasets to summarize their main characteristics, often using visual methods. It helps identify patterns, detect anomalies, test hypotheses, and check assumptions before modeling."
+        elif "feature engineering" in question_lower:
+            return "⚙️ Feature Engineering is the process of creating new features from existing ones to improve model performance. It includes transformations (log, sqrt), combinations (interactions), encodings (one-hot, target encoding), and domain-specific features."
+        elif "cross validation" in question_lower or "cv" in question_lower:
+            return "🔄 Cross-validation is a technique to assess how well a model generalizes to unseen data. We split data into k folds, train on k-1 folds, validate on the remaining fold, and repeat. This gives us a more reliable performance estimate."
+        elif "overfitting" in question_lower:
+            return "⚠️ Overfitting occurs when a model learns training data too well, including noise, and performs poorly on new data. We prevent it using cross-validation, regularization, and by keeping models simple."
+        elif "classification" in question_lower:
+            return "🎯 Classification is a supervised ML task where we predict discrete categories (classes). Examples: spam detection, image recognition, medical diagnosis. We use algorithms like Random Forest, XGBoost, and Neural Networks."
+    
     # Status questions
-    if any(word in question_lower for word in ["status", "progress", "how far", "when done"]):
+    if any(word in question_lower for word in ["status", "progress", "how far", "when done", "current"]):
         completed = len(state.get("completed_agents", []))
         total = 7
-        progress = (completed / total) * 100
+        progress = (completed / total) * 100 if total > 0 else 0
         current = state.get("current_agent", "Unknown")
-        return f"📊 **Current Progress**: {progress:.0f}% complete ({completed}/{total} agents finished). Currently executing: **{current}**. Estimated completion in ~{(total-completed)*2} minutes."
+        layer_usage = state.get("layer_usage", {})
+        current_layer = layer_usage.get(current, "Layer 1")
+        return f"📊 Progress: {progress:.0f}% complete ({completed}/{total} agents finished). Currently executing: {current} ({current_layer}). Estimated completion: ~{(total-completed)*2} minutes."
     
     # Agent-specific questions
     elif "eda" in question_lower or "exploratory" in question_lower or "visualization" in question_lower:
         plots = len(state.get("eda_plots", []))
         if plots > 0:
-            return f"📊 **EDA Status**: Generated {plots} visualizations including correlation heatmaps, distribution plots, and outlier analysis. These help identify patterns and relationships in your data before modeling."
-        return "📊 **EDA**: Exploratory Data Analysis creates visualizations to understand your data's structure, distributions, correlations, and potential issues. This step is crucial for feature engineering and model selection."
+            return f"📊 EDA Status: Generated {plots} visualizations including correlation heatmaps, distribution plots, and outlier analysis. These help identify patterns and relationships in your data before modeling."
+        return "📊 EDA: Exploratory Data Analysis creates visualizations to understand your data's structure, distributions, correlations, and potential issues. This step is crucial for feature engineering and model selection."
     
     # Data cleaning questions
     elif any(word in question_lower for word in ["clean", "quality", "missing", "duplicate"]):
         quality = state.get("data_quality_score", 0)
         if quality > 0:
-            return f"🧹 **Data Quality**: Quality score is {quality*100:.1f}%. Addressed missing values, duplicates, and outliers. Clean data leads to better model performance."
-        return "🧹 **Data Cleaning**: This step handles missing values, removes duplicates, fixes data types, and addresses outliers to ensure high-quality input for modeling."
+            return f"🧹 Data Quality: Quality score is {quality*100:.1f}%. Addressed missing values, duplicates, and outliers. Clean data leads to better model performance."
+        return "🧹 Data Cleaning: This step handles missing values, removes duplicates, fixes data types, and addresses outliers to ensure high-quality input for modeling."
     
     # Model questions
     elif any(word in question_lower for word in ["model", "algorithm", "accuracy", "performance"]):
@@ -138,31 +172,39 @@ async def _generate_pm_answer(question: str, state: Dict[str, Any]) -> str:
         metrics = state.get("evaluation_metrics", {})
         if model and metrics:
             acc = metrics.get("accuracy", 0)
-            return f"🤖 **Model**: Selected **{model}** with {acc*100:.1f}% accuracy. The system tested multiple algorithms and chose the best performer using cross-validation."
-        return "🤖 **Model Training**: The system automatically tests multiple ML algorithms (Random Forest, XGBoost, etc.) and selects the best one based on cross-validation performance."
+            return f"🤖 Model: Selected {model} with {acc*100:.1f}% accuracy. The system tested multiple algorithms and chose the best performer using cross-validation."
+        return "🤖 Model Training: The system automatically tests multiple ML algorithms (Random Forest, XGBoost, etc.) and selects the best one based on cross-validation performance."
     
     # Feature engineering questions
     elif "feature" in question_lower:
         features = state.get("engineered_features", [])
         if features:
-            return f"⚙️ **Feature Engineering**: Created {len(features)} new features through transformations, combinations, and domain-specific engineering. This improves model learning capacity."
-        return "⚙️ **Feature Engineering**: Creates new features from existing ones through mathematical transformations, combinations, and encodings to help the model learn better patterns."
+            return f"⚙️ Feature Engineering: Created {len(features)} new features through transformations, combinations, and domain-specific engineering. This improves model learning capacity."
+        return "⚙️ Feature Engineering: Creates new features from existing ones through mathematical transformations, combinations, and encodings to help the model learn better patterns."
     
     # Layer 1/2 questions
     elif any(word in question_lower for word in ["layer", "sandbox", "llm", "ai"]):
-        return "🏗️ **Double-Layer Architecture**: Layer 1 provides reliable, hardcoded analysis. Layer 2 uses LLM-generated code executed in a secure Docker sandbox for adaptive, dataset-specific insights. Both layers work together for robust results."
+        layer_usage = state.get("layer_usage", {})
+        layer1_count = sum(1 for v in layer_usage.values() if "layer1" in str(v).lower())
+        layer2_count = sum(1 for v in layer_usage.values() if "layer2" in str(v).lower())
+        return f"🏗️ Double-Layer Architecture: Layer 1 provides reliable, hardcoded analysis ({layer1_count} agents used it). Layer 2 uses LLM-generated code executed in a secure Docker sandbox for adaptive insights ({layer2_count} agents used it). Both layers work together for robust results."
     
     # Download/results questions
     elif any(word in question_lower for word in ["download", "notebook", "report", "export"]):
         if state.get("workflow_status") == "completed":
-            return "📥 **Downloads**: Once complete, you can download the analysis notebook (.ipynb), trained model (.joblib), technical report, and cleaned dataset from the Results page."
-        return "📥 **Downloads**: After workflow completion, you'll receive a Jupyter notebook with full analysis, the trained model, technical documentation, and the cleaned dataset."
+            return "📥 Downloads: Once complete, you can download the analysis notebook (.ipynb), trained model (.joblib), technical report, and cleaned dataset from the Results page."
+        return "📥 Downloads: After workflow completion, you'll receive a Jupyter notebook with full analysis, the trained model, technical documentation, and the cleaned dataset."
     
-    # General/default
+    # Workflow questions
+    elif any(word in question_lower for word in ["workflow", "process", "pipeline", "steps"]):
+        agents = ["Data Discovery", "EDA", "Data Cleaning", "Feature Engineering", "Model Building", "Evaluation", "Reporting"]
+        return f"🔄 Workflow: Our pipeline has {len(agents)} main steps: {', '.join(agents)}. Each agent performs specialized tasks and shares knowledge with others. The Project Manager coordinates everything and provides updates."
+    
+    # General/default - use LLM if available
     else:
         completed_agents = state.get("completed_agents", [])
         agent_summary = ", ".join(completed_agents[-3:]) if completed_agents else "just starting"
-        return f"🤔 I'm here to help! I can answer questions about workflow progress, agent status, model performance, data quality, and more. So far, we've completed: {agent_summary}. What would you like to know?"
+        return f"🤔 I'm here to help! I can answer questions about workflow progress, agent status, model performance, data quality, data science concepts, and more. So far, we've completed: {agent_summary}. What would you like to know?"
 
 
 def _should_trigger_approval_gate(agent_name: str, state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -486,9 +528,88 @@ async def get_workflow_results(workflow_id: str) -> Dict[str, Any]:
         state = workflow_states[workflow_id]
         
         # Build comprehensive results from state
-        results = {
+        # Convert numpy types to native Python types for JSON serialization
+        import numpy as np
+        
+        def convert_numpy_types(obj):
+            """Recursively convert numpy types to native Python types"""
+            if isinstance(obj, np.integer):
+                return int(obj)
+            elif isinstance(obj, np.floating):
+                return float(obj)
+            elif isinstance(obj, np.ndarray):
+                return obj.tolist()
+            elif isinstance(obj, dict):
+                return {k: convert_numpy_types(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_numpy_types(item) for item in obj]
+            elif isinstance(obj, tuple):
+                return tuple(convert_numpy_types(item) for item in obj)
+            return obj
+        
+        # ✅ FIX: Extract evaluation metrics properly (check multiple locations)
+        eval_metrics = state.get("evaluation_metrics") or {}
+        if not eval_metrics and "model_evaluation" in state:
+            eval_metrics = state.get("model_evaluation", {}).get("evaluation_metrics", {})
+        
+        # ✅ FIX: Build downloadable_files list from available files
+        downloadable_files = state.get("downloadable_files", [])
+        if not downloadable_files:
+            # Build from available file paths
+            files_to_add = []
+            if state.get("model_path"):
+                files_to_add.append({
+                    "name": "trained_model.joblib",
+                    "type": "model",
+                    "path": state.get("model_path"),
+                    "size": "Unknown"
+                })
+            if state.get("notebook_path"):
+                files_to_add.append({
+                    "name": "analysis_notebook.ipynb",
+                    "type": "notebook",
+                    "path": state.get("notebook_path"),
+                    "size": "Unknown"
+                })
+            if state.get("report_path"):
+                files_to_add.append({
+                    "name": "technical_report.md",
+                    "type": "report",
+                    "path": state.get("report_path"),
+                    "size": "Unknown"
+                })
+            # Add cleaned dataset if available
+            cleaned_dataset_path = state.get("cleaned_dataset_path")
+            if not cleaned_dataset_path:
+                # Try to find it via storage service
+                try:
+                    from ..services.storage import storage_service
+                    cleaned_dataset_path = storage_service.get_file_path(workflow_id, "cleaned_dataset")
+                except:
+                    pass
+            if cleaned_dataset_path:
+                files_to_add.append({
+                    "name": "cleaned_dataset.csv",
+                    "type": "dataset",
+                    "path": cleaned_dataset_path,
+                    "size": "Unknown"
+                })
+            downloadable_files = files_to_add
+        
+        results = convert_numpy_types({
             "workflow_id": workflow_id,
-            "status": state.get("status"),
+            "status": state.get("status") or state.get("workflow_status", "completed"),
+            # ✅ FIX: Add top-level evaluation_metrics for frontend convenience
+            "evaluation_metrics": eval_metrics,
+            "model_evaluation": {
+                "evaluation_metrics": eval_metrics,
+                "summary": "Model evaluation completed",
+                "confusion_matrix": state.get("confusion_matrix"),
+                "roc_curve_data": state.get("roc_curve_data", {}),
+                "precision_recall_curve": state.get("precision_recall_curve", {}),
+                "feature_importance": state.get("feature_importance_model", {}),
+                "performance_analysis": state.get("model_performance_analysis", "")
+            },
             "results": {
                 "dataset_info": {
                     "shape": state.get("dataset_shape"),
@@ -537,7 +658,7 @@ async def get_workflow_results(workflow_id: str) -> Dict[str, Any]:
                 },
                 "model_evaluation": {
                     "summary": "Model evaluation completed",
-                    "evaluation_metrics": state.get("evaluation_metrics", {}),
+                    "evaluation_metrics": eval_metrics,
                     "confusion_matrix": state.get("confusion_matrix"),
                     "roc_curve_data": state.get("roc_curve_data", {}),
                     "precision_recall_curve": state.get("precision_recall_curve", {}),
@@ -545,7 +666,7 @@ async def get_workflow_results(workflow_id: str) -> Dict[str, Any]:
                     "performance_analysis": state.get("model_performance_analysis", "")
                 },
                 # Top-level feature importance for frontend convenience
-                "feature_importance": state.get("feature_importance", {}),
+                "feature_importance_model": state.get("feature_importance_model", {}),
                 "technical_reporting": {
                     "summary": "Technical reporting completed",
                     "final_report": state.get("final_report", ""),
@@ -560,8 +681,10 @@ async def get_workflow_results(workflow_id: str) -> Dict[str, Any]:
                 "notebook_path": state.get("notebook_path"),
                 "model_path": state.get("model_path"),
                 "report_path": state.get("report_path"),
-                "downloadable_files": state.get("downloadable_files", [])
+                "downloadable_files": downloadable_files
             },
+            # ✅ FIX: Top-level downloadable_files for frontend convenience
+            "downloadable_files": downloadable_files,
             "execution_info": {
                 "start_time": state.get("start_time"),
                 "end_time": state.get("end_time"),
@@ -572,7 +695,7 @@ async def get_workflow_results(workflow_id: str) -> Dict[str, Any]:
                 "errors": state.get("errors", []),
                 "warnings": state.get("warnings", [])
             }
-        }
+        })
         
         return results
         
@@ -820,8 +943,8 @@ async def ask_pm_question(
         
         state = workflow_states[workflow_id]
         
-        # Generate context-aware answer
-        answer = await _generate_pm_answer(question, state)
+        # Generate context-aware answer (synchronous for immediate response)
+        answer = _generate_pm_answer(question, state)
         
         # Store Q&A in state
         if "pm_qa_history" not in state:
@@ -840,12 +963,14 @@ async def ask_pm_question(
         
         state["pm_messages"].append({
             "type": "question",
-            "content": f"**You asked**: {question}",
+            "content": question,  # Remove markdown formatting
+            "agent": "User",
             "timestamp": datetime.now().isoformat()
         })
         state["pm_messages"].append({
             "type": "answer",
             "content": answer,
+            "agent": "Project Manager",
             "timestamp": datetime.now().isoformat()
         })
         
@@ -1075,15 +1200,29 @@ async def execute_workflow_with_progress(
                 except Exception as e:
                     logger.warning(f"Failed to emit PM completion message: {e}")
                 
-                # Store PM message in state
+                # Store PM message in state (deduplicate by checking last message)
                 if "pm_messages" not in workflow_states[workflow_id]:
                     workflow_states[workflow_id]["pm_messages"] = []
-                workflow_states[workflow_id]["pm_messages"].append({
-                    "type": "completion",
-                    "agent": agent_name,
-                    "content": completion_msg,
-                    "timestamp": datetime.now().isoformat()
-                })
+                
+                # ✅ FIX: Check for duplicate messages before adding
+                existing_messages = workflow_states[workflow_id]["pm_messages"]
+                is_duplicate = False
+                if existing_messages:
+                    last_msg = existing_messages[-1]
+                    # Check if same agent, same type, and similar content (within last 5 seconds)
+                    if (last_msg.get("agent") == agent_name and 
+                        last_msg.get("type") == "completion" and
+                        last_msg.get("content") == completion_msg):
+                        is_duplicate = True
+                        logger.debug(f"Skipping duplicate PM message from {agent_name}")
+                
+                if not is_duplicate:
+                    workflow_states[workflow_id]["pm_messages"].append({
+                        "type": "completion",
+                        "agent": agent_name,
+                        "content": completion_msg,
+                        "timestamp": datetime.now().isoformat()
+                    })
                 
                 # ✅ ADD: Check for approval gates
                 approval_gate = _should_trigger_approval_gate(agent_name, current_state)
@@ -1190,6 +1329,12 @@ async def execute_workflow_with_progress(
                     workflow_states[workflow_id]["training_metrics"] = current_state.get("training_metrics")
                     workflow_states[workflow_id]["cross_validation_scores"] = current_state.get("cross_validation_scores")
                     workflow_states[workflow_id]["model_explanation"] = current_state.get("model_explanation")
+                    # ✅ FIX: Store model_path for downloads AND model_selection_results
+                    workflow_states[workflow_id]["model_path"] = current_state.get("model_path")
+                    workflow_states[workflow_id]["model_selection_results"] = current_state.get("model_selection_results", {})
+                    # Ensure model_path is also in model_selection_results if it exists
+                    if workflow_states[workflow_id]["model_path"] and workflow_states[workflow_id]["model_selection_results"]:
+                        workflow_states[workflow_id]["model_selection_results"]["model_path"] = workflow_states[workflow_id]["model_path"]
                 elif agent_name == "model_evaluation":
                     workflow_states[workflow_id]["evaluation_metrics"] = current_state.get("evaluation_metrics")
                     workflow_states[workflow_id]["confusion_matrix"] = current_state.get("confusion_matrix")
@@ -1198,6 +1343,43 @@ async def execute_workflow_with_progress(
                     workflow_states[workflow_id]["feature_importance_model"] = current_state.get("feature_importance_model")
                     workflow_states[workflow_id]["model_performance_analysis"] = current_state.get("model_performance_analysis")
                 elif agent_name == "technical_reporter":
+                    # ✅ FIX: Ensure downloadable_files are populated when reporter completes
+                    if "downloadable_files" not in workflow_states[workflow_id]:
+                        workflow_states[workflow_id]["downloadable_files"] = []
+                    
+                    downloadable_files = workflow_states[workflow_id]["downloadable_files"]
+                    file_names = [f.get("name", "") for f in downloadable_files]
+                    
+                    # Add model file if available
+                    if current_state.get("model_path") and "trained_model.joblib" not in file_names:
+                        downloadable_files.append({
+                            "name": "trained_model.joblib",
+                            "type": "model",
+                            "path": current_state.get("model_path"),
+                            "size": "Unknown"
+                        })
+                    
+                    # Add notebook if available
+                    if current_state.get("notebook_path") and "analysis_notebook.ipynb" not in file_names:
+                        downloadable_files.append({
+                            "name": "analysis_notebook.ipynb",
+                            "type": "notebook",
+                            "path": current_state.get("notebook_path"),
+                            "size": "Unknown"
+                        })
+                    
+                    # Add report if available
+                    if current_state.get("report_path") and "technical_report.md" not in file_names:
+                        downloadable_files.append({
+                            "name": "technical_report.md",
+                            "type": "report",
+                            "path": current_state.get("report_path"),
+                            "size": "Unknown"
+                        })
+                    
+                    workflow_states[workflow_id]["downloadable_files"] = downloadable_files
+                    workflow_states[workflow_id]["notebook_path"] = current_state.get("notebook_path")
+                    workflow_states[workflow_id]["report_path"] = current_state.get("report_path")
                     workflow_states[workflow_id]["final_report"] = current_state.get("final_report")
                     workflow_states[workflow_id]["executive_summary"] = current_state.get("executive_summary")
                     workflow_states[workflow_id]["technical_documentation"] = current_state.get("technical_documentation")

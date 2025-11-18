@@ -71,10 +71,16 @@ class ModelEvaluationAgent(BaseAgent):
         try:
             self.logger.info("Starting model evaluation process")
             
-            # Get model and data
-            model_path = state.get("model_selection_results", {}).get("model_path")
-            if not model_path or not os.path.exists(model_path):
-                raise ValueError("No trained model available for evaluation")
+            # Get model and data - check multiple locations for model_path
+            model_path = (
+                state.get("model_selection_results", {}).get("model_path") or
+                state.get("model_path") or
+                None
+            )
+            if not model_path:
+                raise ValueError("No trained model available for evaluation - model_path not found in state")
+            if not os.path.exists(model_path):
+                raise ValueError(f"Model file not found at path: {model_path}")
             
             # Load model
             model = joblib.load(model_path)

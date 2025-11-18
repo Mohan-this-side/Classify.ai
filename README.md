@@ -55,15 +55,15 @@ Our system employs **8 specialized AI agents** working in concert to handle diff
 
 ```mermaid
 graph TB
-    subgraph "Agent Workflow"
-        DD[Data Discovery Agent<br/>Dataset Profiling]
-        EDA[EDA Agent<br/>Exploratory Analysis]
-        DC[Data Cleaning Agent<br/>Quality Improvement]
-        FE[Feature Engineering Agent<br/>Feature Creation]
-        ML[ML Builder Agent<br/>Model Training]
-        ME[Model Evaluation Agent<br/>Performance Analysis]
-        TR[Technical Reporter Agent<br/>Documentation]
-        PM[Project Manager Agent<br/>Education & Guidance]
+    subgraph AgentWorkflow["Agent Workflow"]
+        DD["Data Discovery Agent<br/>Dataset Profiling"]
+        EDA["EDA Agent<br/>Exploratory Analysis"]
+        DC["Data Cleaning Agent<br/>Quality Improvement"]
+        FE["Feature Engineering Agent<br/>Feature Creation"]
+        ML["ML Builder Agent<br/>Model Training"]
+        ME["Model Evaluation Agent<br/>Performance Analysis"]
+        TR["Technical Reporter Agent<br/>Documentation"]
+        PM["Project Manager Agent<br/>Education & Guidance"]
     end
     
     DD --> EDA
@@ -101,44 +101,44 @@ Each agent employs a sophisticated two-layer approach:
 
 ```mermaid
 graph TB
-    subgraph "Frontend Layer"
-        UI[Web Interface<br/>Next.js + React]
-        PM[Project Manager<br/>Window]
+    subgraph FrontendLayer["Frontend Layer"]
+        UI["Web Interface<br/>Next.js + React"]
+        PMWin["Project Manager<br/>Window"]
     end
     
-    subgraph "Orchestration Layer"
-        API[FastAPI<br/>REST API]
-        WS[WebSocket<br/>Real-time Updates]
-        LG[LangGraph<br/>Workflow Engine]
+    subgraph OrchestrationLayer["Orchestration Layer"]
+        API["FastAPI<br/>REST API"]
+        WS["WebSocket<br/>Real-time Updates"]
+        LG["LangGraph<br/>Workflow Engine"]
     end
     
-    subgraph "Agent Layer"
-        DC[Data Cleaning<br/>Agent]
-        DD[Data Discovery<br/>Agent]
-        EDA[EDA<br/>Agent]
-        FE[Feature Engineering<br/>Agent]
-        ML[ML Builder<br/>Agent]
-        ME[Model Evaluation<br/>Agent]
-        TR[Technical Reporter<br/>Agent]
-        PMA[Project Manager<br/>Agent]
+    subgraph AgentLayer["Agent Layer"]
+        DC["Data Cleaning<br/>Agent"]
+        DD["Data Discovery<br/>Agent"]
+        EDA["EDA<br/>Agent"]
+        FE["Feature Engineering<br/>Agent"]
+        ML["ML Builder<br/>Agent"]
+        ME["Model Evaluation<br/>Agent"]
+        TR["Technical Reporter<br/>Agent"]
+        PMA["Project Manager<br/>Agent"]
     end
     
-    subgraph "Service Layer"
-        LLM[LLM Service<br/>Gemini/OpenAI/Anthropic]
-        VAL[Code Validator<br/>Security Scanner]
-        SAND[Docker Sandbox<br/>Secure Execution]
-        STOR[Storage Service<br/>Results Management]
+    subgraph ServiceLayer["Service Layer"]
+        LLM["LLM Service<br/>Gemini/OpenAI/Anthropic"]
+        VAL["Code Validator<br/>Security Scanner"]
+        SAND["Docker Sandbox<br/>Secure Execution"]
+        STOR["Storage Service<br/>Results Management"]
     end
     
-    subgraph "Data Layer"
-        DB[(PostgreSQL<br/>Metadata)]
-        REDIS[(Redis<br/>Cache)]
-        FS[File System<br/>Results & Models]
+    subgraph DataLayer["Data Layer"]
+        DB[("PostgreSQL<br/>Metadata")]
+        REDIS[("Redis<br/>Cache")]
+        FS["File System<br/>Results & Models"]
     end
     
     UI --> API
     UI --> WS
-    PM --> WS
+    PMWin --> WS
     API --> LG
     WS --> LG
     
@@ -613,18 +613,3 @@ If you use Classify AI in your research or project, please cite:
 
 ---
 
-## Project Status
-
-**Current Status**: **Production Ready**
-
-- Complete multi-agent workflow implementation
-- Interactive Project Manager with Q&A
-- Secure sandboxed code execution
-- Real-time progress tracking
-- Educational transparency and guidance
-- Comprehensive testing and validation
-- Production-ready deployment configuration
-
----
-
-**Built with passion for making machine learning accessible to everyone while maintaining transparency and educational value.**

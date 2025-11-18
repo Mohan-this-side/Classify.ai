@@ -120,50 +120,91 @@ class EnhancedDataCleaningAgent(BaseAgent):
 
     async def perform_layer1_analysis(self, state: ClassificationState) -> Dict[str, Any]:
         """
-        LAYER 1: Perform reliable hardcoded data cleaning analysis ONLY.
+        LAYER 1: Perform reliable hardcoded data cleaning (analysis + actual cleaning).
         
-        This method only ANALYZES the data and returns analysis results.
-        It does NOT clean or modify the dataset. That happens in the execute() method.
+        This method analyzes AND cleans the data using hardcoded reliable methods.
+        Layer 2 can enhance this with LLM-generated adaptive code.
         
         Args:
             state: Current workflow state
 
         Returns:
-            Dictionary containing Layer 1 analysis results
+            Dictionary containing Layer 1 analysis results AND cleaned_dataset
         """
-        self.logger.info("🔍 LAYER 1: Starting hardcoded data cleaning ANALYSIS")
+        self.logger.info("🔍 LAYER 1: Starting hardcoded data cleaning (analysis + cleaning)")
         
         # Get original dataset
         original_dataset = state_manager.get_dataset(state, "original")
         if original_dataset is None:
             raise ValueError("Original dataset not found in state")
         
-        # Perform analysis on original dataset (don't modify it)
-        self.logger.info(f"Analyzing dataset shape: {original_dataset.shape}")
+        self.logger.info(f"Original dataset shape: {original_dataset.shape}")
         
-        # Analyze missing values
-        missing_analysis = await self._comprehensive_missing_analysis(original_dataset, state.get("target_column"))
+        # Make a copy to avoid modifying original
+        cleaned_df = original_dataset.copy()
+        cleaning_actions = []
         
-        # Analyze data types
-        type_validation = await self._comprehensive_type_validation(original_dataset, state.get("target_column"))
+        # 1. Analyze missing values
+        missing_analysis = await self._comprehensive_missing_analysis(cleaned_df, state.get("target_column"))
         
-        # Analyze outliers  
-        outlier_detection = await self._comprehensive_outlier_detection(original_dataset, state.get("target_column"))
+        # 2. Analyze data types
+        type_validation = await self._comprehensive_type_validation(cleaned_df, state.get("target_column"))
         
-        # Compile analysis results
+        # 3. Analyze outliers  
+        outlier_detection = await self._comprehensive_outlier_detection(cleaned_df, state.get("target_column"))
+        
+        # 4. ACTUAL CLEANING OPERATIONS
+        self.logger.info("🧹 Performing actual data cleaning operations...")
+        
+        # Fix structural errors
+        cleaned_df, structural_actions = await self._fix_structural_errors(cleaned_df)
+        cleaning_actions.extend(structural_actions)
+        
+        # Intelligent type conversion
+        cleaned_df, type_actions = await self._intelligent_type_conversion(cleaned_df, state.get("target_column"))
+        cleaning_actions.extend(type_actions)
+        
+        # Advanced missing value handling
+        cleaned_df, missing_actions = await self._advanced_missing_value_handling(cleaned_df)
+        cleaning_actions.extend(missing_actions)
+        
+        # Advanced duplicate handling
+        cleaned_df, duplicate_actions = await self._advanced_duplicate_handling(cleaned_df)
+        cleaning_actions.extend(duplicate_actions)
+        
+        # Advanced outlier detection and treatment
+        cleaned_df, outlier_actions = await self._advanced_outlier_detection(cleaned_df, state.get("target_column"))
+        cleaning_actions.extend(outlier_actions)
+        
+        # Standardize formats
+        cleaned_df, format_actions = await self._standardize_formats(cleaned_df)
+        cleaning_actions.extend(format_actions)
+        
+        # Standardize categorical data
+        cleaned_df, categorical_actions = await self._standardize_categorical_data(cleaned_df)
+        cleaning_actions.extend(categorical_actions)
+        
+        self.logger.info(f"✅ Cleaning complete. Shape: {original_dataset.shape} → {cleaned_df.shape}")
+        self.logger.info(f"✅ Performed {len(cleaning_actions)} cleaning actions")
+        
+        # Compile analysis results WITH cleaned_dataset
         analysis_results = {
             "dataset_shape": original_dataset.shape,
-            "columns": list(original_dataset.columns),
-            "data_types": {col: str(dtype) for col, dtype in original_dataset.dtypes.items()},
-            "missing_values": dict(original_dataset.isnull().sum()),
-            "duplicate_count": int(original_dataset.duplicated().sum()),
+            "cleaned_shape": cleaned_df.shape,
+            "columns": list(cleaned_df.columns),
+            "data_types": {col: str(dtype) for col, dtype in cleaned_df.dtypes.items()},
+            "missing_values": dict(cleaned_df.isnull().sum()),
+            "duplicate_count": int(cleaned_df.duplicated().sum()),
             "missing_analysis": missing_analysis,
             "type_validation": type_validation,
             "outlier_detection": outlier_detection,
             "target_column": state.get("target_column"),
+            "cleaning_actions_taken": cleaning_actions,
+            # CRITICAL: Include cleaned_dataset so it gets stored via _update_state_with_results
+            "cleaned_dataset": cleaned_df
         }
         
-        self.logger.info("✅ LAYER 1: Analysis complete")
+        self.logger.info("✅ LAYER 1: Analysis and cleaning complete")
         
         return analysis_results
     
@@ -1065,3 +1106,35 @@ Generate clean, production-ready Python code:"""
         
         self.logger.info("✅ LAYER 2: Sandbox results processed and validated")
         return result
+    
+    def _update_state_with_results(
+        self,
+        state: ClassificationState,
+        results: Dict[str, Any],
+        layer_used: str,
+        layer2_attempted: bool,
+        layer2_error: Optional[str]
+    ) -> ClassificationState:
+        """
+        Override to ensure cleaned dataset is stored via state_manager.
+        
+        This is critical for downstream agents (like EDA) to access the cleaned data.
+        """
+        # Call parent method first
+        state = super()._update_state_with_results(state, results, layer_used, layer2_attempted, layer2_error)
+        
+        # CRITICAL FIX: Store cleaned dataset via state_manager
+        # This ensures EDA agent can access it via state_manager.get_dataset(state, "cleaned")
+        if "cleaned_dataset" in results and results["cleaned_dataset"] is not None:
+            cleaned_df = results["cleaned_dataset"]
+            if hasattr(cleaned_df, 'shape'):  # It's a DataFrame
+                state_manager.store_dataset(state, cleaned_df, "cleaned")
+                self.logger.info(f"✅ Stored cleaned dataset via state_manager with shape {cleaned_df.shape}")
+        
+        # Also ensure processed_dataset is set (for direct access)
+        if "cleaned_dataset" in results and results["cleaned_dataset"] is not None:
+            state["processed_dataset"] = results["cleaned_dataset"]
+            state["dataset"] = results["cleaned_dataset"]
+            self.logger.info(f"✅ Updated processed_dataset and dataset in state")
+        
+        return state

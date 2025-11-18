@@ -90,6 +90,9 @@ Generate the complete implementation now. Focus on providing actionable insights
 EDA_PROMPT_TEMPLATE = """
 You are an expert data scientist performing Exploratory Data Analysis (EDA). Based on the Layer 1 statistical analysis below, generate Python code to create ADVANCED visualizations and insights.
 
+## User's Dataset Description:
+{user_description}
+
 ## Layer 1 Analysis Results:
 
 ### Statistical Summary:
@@ -99,10 +102,10 @@ You are an expert data scientist performing Exploratory Data Analysis (EDA). Bas
 {correlations_summary}
 
 ### Distribution Statistics:
-{distribution_stats}
+{distributions_summary}
 
 ### Target Variable Relationship:
-{target_relationship}
+{target_relationships_summary}
 
 ## Your Task:
 
@@ -114,6 +117,7 @@ Generate Python code that creates ADVANCED visualizations including:
 4. **Outlier Visualization**: Box plots with outlier annotations
 5. **Feature Importance Plot**: Using multiple methods
 6. **Dimensionality Reduction**: PCA/t-SNE visualizations if applicable
+7. **Domain-Specific Visualizations**: Consider the user's description when creating visualizations
 
 ## Code Requirements:
 
@@ -123,6 +127,7 @@ Generate Python code that creates ADVANCED visualizations including:
 - Return plot metadata as dictionary
 - Do not use file I/O except for plot saving
 - Assume DataFrame is available as `df`
+- Consider the user's description: "{user_description}" when generating insights
 
 Generate the complete visualization code now.
 """

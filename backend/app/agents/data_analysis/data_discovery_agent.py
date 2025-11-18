@@ -639,7 +639,13 @@ class DataDiscoveryAgent(BaseAgent):
         correlations = layer1_results.get("correlations", {})
         data_types = layer1_results.get("data_types", {})
         
+        # Get user description for context
+        user_description = state.get("user_description", "")
+        
         prompt = f"""Generate advanced Python code for comprehensive data discovery and analysis based on the following insights:
+
+## User's Dataset Description:
+{user_description if user_description else "No specific description provided by user."}
 
 ## Dataset Overview:
 - Shape: {basic_info.get('shape', 'unknown')}
@@ -658,13 +664,14 @@ class DataDiscoveryAgent(BaseAgent):
 ## Requirements for Generated Code:
 1. Perform advanced statistical analysis beyond basic summaries
 2. Detect complex patterns: seasonality, trends, cyclic behavior
-3. Identify domain-specific insights based on column names
+3. Identify domain-specific insights based on column names and user description
 4. Generate visualizations (charts, heatmaps, distributions)
 5. Create feature importance rankings
 6. Detect potential data quality issues
 7. Use only: pandas, numpy, matplotlib, seaborn
 8. Add clear comments explaining each analysis
 9. Return structured results (dictionary with findings)
+10. Consider the user's description when generating insights: "{user_description}"
 
 Generate comprehensive, production-ready Python code:"""
         

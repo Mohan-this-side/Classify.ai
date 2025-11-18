@@ -249,6 +249,17 @@ class EDAAgent(BaseAgent):
         results["plots"] = plot_list  # Also add as 'plots' for consistency
 
         self.logger.info(f"✅ LAYER 1 Complete: Generated {len(plot_list)} plots accessible via API")
+        
+        # CRITICAL FIX: Ensure processed_dataset is updated so downstream agents can access it
+        # EDA doesn't modify the dataset, so pass it through
+        if "processed_dataset" not in state or state.get("processed_dataset") is None:
+            # Get dataset from state_manager and update processed_dataset
+            from ...workflows.state_management import state_manager
+            df_for_next = state_manager.get_dataset(state, "cleaned") or state_manager.get_dataset(state, "original")
+            if df_for_next is not None:
+                results["processed_dataset"] = df_for_next
+                self.logger.info(f"✅ Updated processed_dataset in EDA results with shape {df_for_next.shape}")
+        
         return results
 
     def _compute_correlations_with_pvalues(self, df: pd.DataFrame, target_column: str) -> Dict[str, Any]:
@@ -657,6 +668,7 @@ class EDAAgent(BaseAgent):
         from .prompts import EDA_VISUALIZATION_PROMPT_TEMPLATE
 
         # Prepare context from Layer 1 results
+        user_description = state.get("user_description", "")
         context = {
             "statistical_summary": layer1_results.get("summary_statistics", {}),
             "correlations_summary": layer1_results.get("correlations", {}),
@@ -665,7 +677,8 @@ class EDAAgent(BaseAgent):
             "feature_importance_summary": layer1_results.get("feature_importance", {}),
             "target_relationships_summary": layer1_results.get("target_relationships", {}),
             "target_column": state.get("target_column", ""),
-            "session_id": state.get("session_id", "unknown")
+            "session_id": state.get("session_id", "unknown"),
+            "user_description": user_description if user_description else "No specific description provided by user."
         }
 
         # Generate prompt

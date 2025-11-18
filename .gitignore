@@ -1,6 +1,10 @@
 # Node dependencies
 node_modules/
 
+# Next.js build output
+.next/
+.next/**
+
 # Python
 __pycache__/
 *.py[cod]
@@ -70,9 +74,18 @@ Thumbs.db
 
 # Cursor AI
 .cursor/
+.cursorrules
+*.cursorrules
 
 # Taskmaster AI
 .taskmaster/
+
+# Project Planning Documents (PID/PRD)
+PRD_GAP_ANALYSIS.md
+*PRD*.md
+*PID*.md
+*GAP*.md
+scripts/PRD.txt
 
 # Results and models
 backend/results/

@@ -155,91 +155,9 @@ class MLBuilderAgent(BaseAgent):
     def get_dependencies(self) -> list:
         return ["data_cleaning", "feature_engineering"]
 
-    async def execute(self, state: ClassificationState) -> ClassificationState:
-        """
-        Execute the enhanced ML model building process with hybrid architecture
-        """
-        try:
-            self.logger.info("Starting enhanced ML model building process")
-
-            # Step 1: Get cleaned dataset
-            cleaned_df = state_manager.get_dataset(state, "cleaned")
-            if cleaned_df is None:
-                cleaned_df = state_manager.get_dataset(state, "original")
-            if cleaned_df is None:
-                raise ValueError("No cleaned dataset available")
-
-            target_column = state.get("target_column")
-            if not target_column:
-                raise ValueError("No target column specified")
-
-            # Step 2: Hardcoded data analysis
-            self.logger.info("Performing hardcoded data analysis")
-            data_analysis = self._analyze_data_for_model_selection(cleaned_df, target_column)
-            
-            # Step 3: Train/test split BEFORE any preprocessing
-            self.logger.info("Performing train/test split before preprocessing")
-            X, y = self._prepare_data(cleaned_df, target_column)
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=0.2, random_state=42, stratify=y
-            )
-            
-            # Step 4: LLM code generation
-            self.logger.info("Generating ML training code using LLM")
-            generated_code = await self._generate_model_training_code(
-                data_analysis, X_train, X_test, y_train, y_test
-            )
-            
-            # Step 5: Validate generated code
-            self.logger.info("Validating generated code for best practices")
-            validation_result = self._validate_generated_code(generated_code)
-            
-            if not validation_result["is_valid"]:
-                self.logger.warning("Generated code validation failed, using fallback approach")
-                return await self._fallback_model_training(state, X_train, X_test, y_train, y_test)
-            
-            # Step 6: Execute in sandbox
-            self.logger.info("Executing generated code in Docker sandbox")
-            execution_results = await self._execute_in_sandbox(
-                generated_code, X_train, X_test, y_train, y_test
-            )
-            
-            if not execution_results["success"]:
-                self.logger.warning("Sandbox execution failed, using fallback approach")
-                return await self._fallback_model_training(state, X_train, X_test, y_train, y_test)
-            
-            # Step 7: Extract and process results
-            self.logger.info("Processing execution results")
-            model_results = self._process_execution_results(execution_results, data_analysis)
-            
-            # Step 8: Update state with results
-            state.update({
-                "model_selection_results": model_results["selection_results"],
-                "best_model": model_results["best_model"],
-                "model_hyperparameters": model_results["hyperparameters"],
-                "training_metrics": model_results["training_metrics"],
-                "evaluation_metrics": model_results["evaluation_metrics"],
-                "model_explanation": model_results["explanation"],
-                "generated_code": generated_code,
-                "validation_result": validation_result,
-                "execution_results": execution_results,
-                "data_analysis": data_analysis,
-                "pipeline_enforcement": True,
-                "data_leakage_prevention": True
-            })
-
-            state["agent_statuses"]["ml_building"] = AgentStatus.COMPLETED
-            state["completed_agents"].append("ml_building")
-
-            self.logger.info("Enhanced ML model building completed successfully")
-            return state
-
-        except Exception as e:
-            self.logger.error(f"Error in enhanced ML model building: {str(e)}")
-            state["agent_statuses"]["ml_building"] = AgentStatus.FAILED
-            state["last_error"] = str(e)
-            state["error_count"] += 1
-            return state
+    # Remove custom execute() - use BaseAgent's double-layer pattern instead
+    # The BaseAgent.execute() will call perform_layer1_analysis() and optionally _execute_layer2()
+    # This ensures proper error handling and fallback behavior
 
     # ============================================================================
     # HARDCODED ANALYSIS METHODS (Layer 1: Reliability)
@@ -927,51 +845,190 @@ y_test = pd.read_csv('y_test.csv').iloc[:, 0]   # First column
 
     async def perform_layer1_analysis(self, state: ClassificationState) -> Dict[str, Any]:
         """
-        LAYER 1: Analyze data characteristics for model building.
+        LAYER 1: Perform hardcoded model training (reliable fallback).
         
-        This agent uses execute() for its full flow, but we implement this
-        to satisfy the abstract method requirement.
+        This provides reliable model training without LLM dependency.
         """
-        self.logger.info("🔍 LAYER 1: Analyzing data characteristics for model building")
+        self.logger.info("🔍 LAYER 1: Performing hardcoded model training")
         
-        cleaned_df = state_manager.get_dataset(state, "cleaned")
-        if cleaned_df is None:
-            raise ValueError("No cleaned dataset available")
+        try:
+            cleaned_df = state_manager.get_dataset(state, "cleaned")
+            if cleaned_df is None:
+                cleaned_df = state_manager.get_dataset(state, "original")
+            if cleaned_df is None:
+                raise ValueError("No dataset available")
+            
+            target_column = state.get("target_column")
+            if not target_column:
+                raise ValueError("No target column specified")
+            
+            # Prepare data
+            X, y = self._prepare_data(cleaned_df, target_column)
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=0.2, random_state=42, stratify=y if len(y.unique()) > 1 else None
+            )
+            
+            # Analyze data for model selection
+            analysis = self._analyze_data_for_model_selection(cleaned_df, target_column)
+            
+            # Train model using fallback approach (reliable)
+            self.logger.info("Training model using Layer 1 (hardcoded) approach")
+            best_model_name = self._select_best_model(X_train, y_train)
+            best_model, best_params = self._tune_hyperparameters(best_model_name, X_train, y_train)
+            
+            # Train model
+            best_model.fit(X_train, y_train)
+            
+            # Extract feature importance
+            feature_importance = {}
+            try:
+                if hasattr(best_model, 'feature_importances_'):
+                    importances = best_model.feature_importances_
+                    feature_importance = dict(zip(X_train.columns, importances.tolist()))
+                elif hasattr(best_model, 'coef_'):
+                    importances = np.abs(best_model.coef_[0] if len(best_model.coef_.shape) > 1 else best_model.coef_)
+                    feature_importance = dict(zip(X_train.columns, importances.tolist()))
+            except Exception as e:
+                self.logger.warning(f"Failed to extract feature importance: {e}")
+            
+            # Evaluate
+            train_score = best_model.score(X_train, y_train)
+            test_score = best_model.score(X_test, y_test)
+            cv_scores = cross_val_score(best_model, X_train, y_train, cv=5)
+            
+            y_pred = best_model.predict(X_test)
+            metrics = self._calculate_metrics(y_test, y_pred)
+            
+            # Save model
+            model_path = self._save_model(best_model, state.get("session_id"))
+            
+            # Store model externally
+            state_manager.external_storage[state.get("dataset_id")]["model"] = best_model
+            
+            results = {
+                "model_selection_results": {
+                    "selected_model": best_model_name,
+                    "best_parameters": best_params,
+                    "models_tested": list(self.model_candidates.keys())
+                },
+                "best_model": best_model_name,
+                "model_hyperparameters": best_params,
+                "training_metrics": {
+                    "train_accuracy": train_score,
+                    "test_accuracy": test_score,
+                    "cv_mean": cv_scores.mean(),
+                    "cv_std": cv_scores.std()
+                },
+                "evaluation_metrics": metrics,
+                "feature_importance_model": feature_importance,
+                "model_path": model_path,
+                "model_explanation": self._generate_model_explanation(best_model_name, best_params, metrics),
+                "data_analysis": analysis,
+                "pipeline_enforcement": True,
+                "data_leakage_prevention": True
+            }
+            
+            self.logger.info(f"✅ Layer 1 model training completed: {best_model_name} with {test_score:.4f} accuracy")
+            return results
+            
+        except Exception as e:
+            self.logger.error(f"Layer 1 model training failed: {e}", exc_info=True)
+            raise
+    
+    def _prepare_sandbox_datasets(self, state: ClassificationState) -> Dict[str, str]:
+        """
+        Prepare train/test datasets for sandbox execution.
         
-        target_column = state.get("target_column")
-        if not target_column:
-            raise ValueError("No target column specified")
-        
-        # Analyze data for model selection
-        analysis = self._analyze_data_for_model_selection(cleaned_df, target_column)
-        
-        return analysis
+        Override BaseAgent method to provide X_train, X_test, y_train, y_test
+        """
+        try:
+            cleaned_df = state_manager.get_dataset(state, "cleaned")
+            if cleaned_df is None:
+                cleaned_df = state_manager.get_dataset(state, "original")
+            if cleaned_df is None:
+                return {}
+            
+            target_column = state.get("target_column")
+            if not target_column:
+                return {}
+            
+            # Prepare data
+            X, y = self._prepare_data(cleaned_df, target_column)
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=0.2, random_state=42, stratify=y if len(y.unique()) > 1 else None
+            )
+            
+            # Save to temporary files for sandbox
+            import tempfile
+            import os
+            
+            temp_dir = tempfile.mkdtemp()
+            X_train_path = os.path.join(temp_dir, "X_train.csv")
+            X_test_path = os.path.join(temp_dir, "X_test.csv")
+            y_train_path = os.path.join(temp_dir, "y_train.csv")
+            y_test_path = os.path.join(temp_dir, "y_test.csv")
+            
+            X_train.to_csv(X_train_path, index=False)
+            X_test.to_csv(X_test_path, index=False)
+            y_train.to_frame().to_csv(y_train_path, index=False, header=True)
+            y_test.to_frame().to_csv(y_test_path, index=False, header=True)
+            
+            return {
+                "X_train": X_train_path,
+                "X_test": X_test_path,
+                "y_train": y_train_path,
+                "y_test": y_test_path
+            }
+        except Exception as e:
+            self.logger.warning(f"Failed to prepare sandbox datasets: {e}")
+            return {}
     
     def generate_layer2_code(self, layer1_results: Dict[str, Any], state: ClassificationState) -> str:
         """
-        LAYER 2: Generate prompt for LLM to create model training code.
-        
-        This agent already generates code in execute(), this is for compatibility.
+        LAYER 2: Generate prompt for LLM to create adaptive model training code.
         """
-        self.logger.info("🔧 LAYER 2: Generating LLM prompt for model training")
+        self.logger.info("🔧 LAYER 2: Generating LLM prompt for adaptive model training")
         
-        prompt = f"""Generate Python code for machine learning model training based on the following analysis:
+        data_analysis = layer1_results.get("data_analysis", {})
+        user_description = state.get("user_description", "")
+        
+        prompt = f"""Generate optimized Python code for machine learning model training based on the following analysis:
 
-## Data Analysis:
-{layer1_results}
+## User's Dataset Description:
+{user_description}
+
+## Data Analysis Results:
+- Dataset Shape: {data_analysis.get('data_size', 'Unknown')}
+- Feature Count: {data_analysis.get('feature_count', 'Unknown')}
+- Target Classes: {data_analysis.get('target_classes', 'Unknown')}
+- Is Balanced: {data_analysis.get('is_balanced', 'Unknown')}
+- Complexity Score: {data_analysis.get('complexity_score', 'Unknown')}
+- Recommended Models: {data_analysis.get('recommended_models', [])}
+- Preprocessing Needed: {data_analysis.get('preprocessing_needed', {})}
+
+## Layer 1 Results:
+- Selected Model: {layer1_results.get('best_model', 'Unknown')}
+- Test Accuracy: {layer1_results.get('evaluation_metrics', {}).get('accuracy', 0):.4f}
+
+## Data Files Available:
+The following CSV files are available in the sandbox:
+- X_train.csv: Training features
+- X_test.csv: Test features  
+- y_train.csv: Training target (first column)
+- y_test.csv: Test target (first column)
 
 ## Requirements:
-1. Implement model training pipeline
-2. Handle train/test split
-3. Apply preprocessing
-3. Train multiple model candidates
-4. Evaluate and select best model
-5. Save model with joblib
-6. Use only: sklearn, xgboost, lightgbm, pandas, numpy
-7. Add clear comments
-8. Return model metrics and best model name
+1. Load data: X_train = pd.read_csv('X_train.csv'), X_test = pd.read_csv('X_test.csv'), y_train = pd.read_csv('y_train.csv').iloc[:, 0], y_test = pd.read_csv('y_test.csv').iloc[:, 0]
+2. Improve upon Layer 1 results using adaptive techniques
+3. Implement sklearn.Pipeline to prevent data leakage
+4. Apply appropriate preprocessing based on data characteristics
+5. Try advanced techniques (feature selection, ensemble methods, hyperparameter tuning)
+6. Use only: sklearn, xgboost, lightgbm, pandas, numpy, joblib
+7. Save the best model with joblib.dump(model, 'best_model.joblib')
+8. Print comprehensive metrics (accuracy, precision, recall, F1)
+9. Add clear comments explaining each step
 
-Generate comprehensive, production-ready Python code:"""
+Generate optimized, production-ready Python code that improves upon Layer 1 results:"""
         
         return prompt
     
@@ -982,19 +1039,38 @@ Generate comprehensive, production-ready Python code:"""
         state: ClassificationState
     ) -> Dict[str, Any]:
         """
-        LAYER 2: Process sandbox execution results for model building.
+        LAYER 2: Process sandbox execution results and extract model information.
         """
-        self.logger.info("🔍 LAYER 2: Processing sandbox results for model building")
+        self.logger.info("🔍 LAYER 2: Processing sandbox results")
         
         if sandbox_output.get("status") != "SUCCESS":
             raise ValueError(f"Sandbox execution failed: {sandbox_output.get('error', 'Unknown error')}")
         
-        result = {
-            "model_data": sandbox_output.get("output", {}),
+        # Parse output to extract model information
+        output_text = sandbox_output.get("output", "")
+        
+        # Try to extract metrics from output
+        import re
+        metrics = {}
+        if "accuracy" in output_text.lower():
+            acc_match = re.search(r'accuracy[:\s]+([\d.]+)', output_text, re.IGNORECASE)
+            if acc_match:
+                metrics["accuracy"] = float(acc_match.group(1))
+        
+        # Use Layer 1 results as base and enhance with Layer 2 if available
+        results = {
+            **layer1_results,  # Start with Layer 1 results
             "layer2_success": True,
-            "sandbox_execution_time": sandbox_output.get("execution_time", 0)
+            "sandbox_execution_time": sandbox_output.get("execution_time", 0),
+            "layer2_output": output_text,
+            "layer2_metrics": metrics if metrics else layer1_results.get("evaluation_metrics", {})
         }
         
-        return result
+        # If Layer 2 metrics are better, use them
+        if metrics.get("accuracy", 0) > layer1_results.get("evaluation_metrics", {}).get("accuracy", 0):
+            results["evaluation_metrics"] = {**layer1_results.get("evaluation_metrics", {}), **metrics}
+            results["best_model"] = "Layer2_Optimized_" + layer1_results.get("best_model", "Model")
+        
+        return results
 
 
