@@ -22,13 +22,13 @@ fi
 # Check if .env file exists in root directory
 if [ ! -f .env ]; then
     echo "⚠️  .env file not found in root directory. Creating from example..."
-    if [ -f env.example ]; then
-        cp env.example .env
+    if [ -f config/env.example ]; then
+        cp config/env.example .env
         echo "📝 Please edit .env file with your API keys before continuing."
         echo "   Required: GEMINI_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY"
         read -p "Press Enter to continue after editing .env file..."
     else
-        echo "❌ env.example not found. Please create .env file manually."
+        echo "❌ config/env.example not found. Please create .env file manually."
         exit 1
     fi
 fi

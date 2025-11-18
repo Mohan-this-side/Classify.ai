@@ -107,12 +107,12 @@ setup_environment() {
     print_status "Setting up environment configuration..."
     
     if [ ! -f ".env" ]; then
-        if [ -f "env.example" ]; then
-            cp env.example .env
+        if [ -f "config/env.example" ]; then
+            cp config/env.example .env
             print_success "Environment file created from template"
             print_warning "Please edit .env file with your actual API keys and configuration"
         else
-            print_error "env.example file not found"
+            print_error "config/env.example file not found"
             exit 1
         fi
     else
