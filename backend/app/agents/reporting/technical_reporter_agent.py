@@ -3902,3 +3902,111 @@ probabilities = model.predict_proba(new_data)  # if available
         except Exception as e:
             self.logger.error(f"Error creating final report: {str(e)}")
             return "Final report generation failed due to insufficient data."
+
+    async def perform_layer1_analysis(self, state: ClassificationState) -> Dict[str, Any]:
+        """
+        LAYER 1: Analyze existing reports and documentation from other agents.
+        
+        Args:
+            state: Current workflow state
+            
+        Returns:
+            Dictionary containing Layer 1 analysis results
+        """
+        self.logger.info("🔍 LAYER 1: Analyzing existing documentation")
+        
+        # Collect information from all agent results
+        analysis_results = {
+            "cleaning_summary": state.get("cleaning_summary", ""),
+            "discovery_results": state.get("data_discovery_results", {}),
+            "eda_results": state.get("eda_results", {}),
+            "feature_engineering_results": state.get("feature_selection_results", {}),
+            "model_results": state.get("model_selection_results", {}),
+            "evaluation_results": state.get("model_evaluation_results", {}),
+            "quality_score": state.get("data_quality_score", 0),
+            "accuracy": state.get("accuracy", 0),
+        }
+        
+        self.logger.info("✅ LAYER 1: Documentation analysis complete")
+        return analysis_results
+    
+    def generate_layer2_code(self, layer1_results: Dict[str, Any], state: ClassificationState) -> str:
+        """
+        LAYER 2: Generate prompt for LLM to create advanced technical reports.
+        
+        Args:
+            layer1_results: Results from Layer 1 analysis
+            state: Current workflow state
+            
+        Returns:
+            Prompt string for LLM code generation
+        """
+        self.logger.info("🔧 LAYER 2: Generating LLM code generation prompt for technical reporting")
+        
+        prompt = f"""Generate advanced Python code for creating comprehensive technical reports based on the following information:
+
+## Project Overview:
+- Data Quality Score: {layer1_results.get('quality_score', 0)}
+- Model Accuracy: {layer1_results.get('accuracy', 0)}
+- Cleaning Summary: {layer1_results.get('cleaning_summary', 'N/A')}
+
+## Results from Agents:
+- Discovery: {layer1_results.get('discovery_results', {})}
+- EDA: {layer1_results.get('eda_results', {})}
+- Feature Engineering: {layer1_results.get('feature_engineering_results', {})}
+- Model Selection: {layer1_results.get('model_results', {})}
+- Evaluation: {layer1_results.get('evaluation_results', {})}
+
+## Requirements for Generated Code:
+1. Create executive summary with key insights
+2. Generate comprehensive technical documentation
+3. Create detailed data analysis section
+4. Document model selection and training process
+5. Include performance metrics and visualizations
+6. Provide recommendations and future improvements
+7. Use only: markdown formatting, yaml for metadata
+8. Add clear sections and professional formatting
+9. Return structured report content
+
+Generate comprehensive, production-ready Python code:"""
+        
+        return prompt
+    
+    def process_sandbox_results(
+        self,
+        sandbox_output: Dict[str, Any],
+        layer1_results: Dict[str, Any],
+        state: ClassificationState
+    ) -> Dict[str, Any]:
+        """
+        LAYER 2: Process and validate sandbox execution results for technical reporting.
+        
+        Args:
+            sandbox_output: Raw output from sandbox execution
+            layer1_results: Results from Layer 1 (for comparison)
+            state: Current workflow state
+            
+        Returns:
+            Processed and validated report content
+        """
+        self.logger.info("🔍 LAYER 2: Processing sandbox results for technical reporting")
+        
+        # Validate sandbox execution was successful
+        if sandbox_output.get("status") != "SUCCESS":
+            raise ValueError(f"Sandbox execution failed: {sandbox_output.get('error', 'Unknown error')}")
+        
+        # Extract report content from sandbox output
+        report_content = sandbox_output.get("output", {})
+        
+        # Validate the output structure
+        if not isinstance(report_content, dict):
+            raise ValueError("Sandbox output should contain report content")
+        
+        result = {
+            "report_content": report_content,
+            "layer2_success": True,
+            "sandbox_execution_time": sandbox_output.get("execution_time", 0)
+        }
+        
+        self.logger.info("✅ LAYER 2: Sandbox results processed and validated")
+        return result

@@ -1,9 +1,10 @@
-# Classify AI: Automated Machine Learning Classification System
+# Classify AI: Automated ML Pipeline with Real-Time Education
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com/)
-[![Next.js](https://img.shields.io/badge/Next.js-13+-black.svg)](https://nextjs.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-14+-black.svg)](https://nextjs.org/)
+[![Status: Production Ready](https://img.shields.io/badge/Status-Production%20Ready-green.svg)](https://github.com/Mohan-this-side/Classify.ai)
 
 ## Overview
 
@@ -13,126 +14,131 @@
 
 - **Automated Pipeline**: Upload a dataset, receive a trained model, cleaned data, Jupyter notebook, and comprehensive technical report
 - **Double-Layer Architecture**: Combines reliable hardcoded analysis with adaptive LLM-generated code for optimal results
-- **Educational Transparency**: Real-time explanations of every decision and transformation
+- **Educational Transparency**: Real-time explanations of every decision and transformation through an interactive Project Manager
 - **Production Ready**: Generates deployment-ready models with complete documentation
-- **Secure Execution**: All LLM-generated code runs in isolated Docker sandboxes
+- **Secure Execution**: All LLM-generated code runs in isolated Docker sandboxes with comprehensive monitoring
 
 ---
 
-## Problem Statement
+## User Interface
 
-Building production-quality machine learning models requires expertise in data science, statistics, programming, and domain knowledge. Current solutions fall into two categories:
+### Upload Page
+The clean, intuitive interface makes it easy to get started with your machine learning project:
 
-1. **Technical Tools** (scikit-learn, pandas, etc.): Require extensive coding knowledge and ML expertise
-2. **AutoML Platforms**: Black-box solutions that don't educate users or provide transparency
+![Upload Page Interface](docs/images/upload-page.png)
 
-**Classify AI bridges this gap** by providing an intelligent system that automates the technical complexity while educating users about every decision made in the pipeline.
+**Features:**
+- **Drag & Drop Upload**: Simply drag your CSV or Excel file into the upload zone
+- **Smart Column Detection**: Automatic detection of available columns for target selection
+- **API Key Integration**: Support for Gemini, OpenAI, and Anthropic API keys
+- **File Validation**: Automatic validation with size and format constraints (Max 100MB, up to 1M rows)
 
----
+### Workflow Page
+Real-time monitoring of your ML pipeline with interactive Project Manager:
 
-## Core Features
+![Workflow Page with Project Manager](docs/images/workflow-page.png)
 
-### 1. Multi-Agent Workflow System
-Seven specialized AI agents work in concert to handle different aspects of the ML pipeline:
-
-- **Data Cleaning Agent**: Handles missing values, outliers, data type conversions, and quality validation
-- **Data Discovery Agent**: Performs comprehensive data profiling and pattern detection
-- **EDA Agent**: Generates statistical analysis and interactive visualizations
-- **Feature Engineering Agent**: Creates and selects optimal features for model training
-- **ML Builder Agent**: Trains multiple algorithms and performs hyperparameter optimization
-- **Model Evaluation Agent**: Calculates performance metrics and generates evaluation reports
-- **Technical Reporter Agent**: Creates Jupyter notebooks and comprehensive documentation
-
-### 2. Double-Layer Architecture
-Each agent employs a two-layer approach for optimal results:
-
-**Layer 1 - Hardcoded Analysis**:
-- Pre-written, battle-tested Python functions
-- Comprehensive data quality assessment
-- Statistical profiling and pattern detection
-- Reliable baseline analysis that never fails
-
-**Layer 2 - LLM Code Generation** (Optional Enhancement):
-- Custom code tailored to specific dataset characteristics
-- Adaptive processing based on Layer 1 insights
-- Validated and executed in secure Docker sandboxes
-
-### 3. Real-Time Project Management
-A dedicated Project Manager Agent provides:
-- Live explanations of each processing step
-- Educational content about data science concepts
-- Plain English descriptions of technical operations
-- Interactive Q&A capabilities
-
-### 4. Human-in-the-Loop Approval Gates
-Critical decision points where the workflow pauses for user approval:
-- Data cleaning strategies
-- Feature engineering approaches
-- Model selection decisions
-- Educational explanations for each choice
-
-### 5. Secure Code Execution
-All LLM-generated code runs in isolated Docker containers with:
-- No network access
-- Limited CPU and memory resources
-- Execution time constraints
-- Complete audit trail
-
-### 6. Comprehensive Deliverables
-Every workflow generates:
-- Cleaned dataset (CSV)
-- Trained model (.joblib)
-- Reproducible Jupyter notebook
-- Technical report (Markdown)
-- Performance visualizations
-- Complete execution logs
+**Features:**
+- **Real-time Progress**: Live tracking of all 8 agents with execution times and Layer 1/Layer 2 indicators
+- **Interactive Project Manager**: Educational chat interface with Q&A capabilities
+- **Approval Gates**: Human-in-the-loop decision points with educational context
+- **Sandbox Monitoring**: Real-time CPU, memory, and execution time monitoring
+- **Agent Status**: Detailed status for each agent with completion indicators
 
 ---
 
 ## System Architecture
 
+### Multi-Agent Workflow System
+
+Our system employs **8 specialized AI agents** working in concert to handle different aspects of the ML pipeline:
+
+```mermaid
+graph TB
+    subgraph AgentWorkflow["Agent Workflow"]
+        DD["Data Discovery Agent<br/>Dataset Profiling"]
+        EDA["EDA Agent<br/>Exploratory Analysis"]
+        DC["Data Cleaning Agent<br/>Quality Improvement"]
+        FE["Feature Engineering Agent<br/>Feature Creation"]
+        ML["ML Builder Agent<br/>Model Training"]
+        ME["Model Evaluation Agent<br/>Performance Analysis"]
+        TR["Technical Reporter Agent<br/>Documentation"]
+        PM["Project Manager Agent<br/>Education & Guidance"]
+    end
+    
+    DD --> EDA
+    EDA --> DC
+    DC --> FE
+    FE --> ML
+    ML --> ME
+    ME --> TR
+    PM -.-> DD
+    PM -.-> EDA
+    PM -.-> DC
+    PM -.-> FE
+    PM -.-> ML
+    PM -.-> ME
+    PM -.-> TR
+```
+
+### Double-Layer Architecture
+
+Each agent employs a sophisticated two-layer approach:
+
+**Layer 1 - Hardcoded Analysis**
+- Pre-written, battle-tested Python functions
+- Comprehensive data quality assessment
+- Statistical profiling and pattern detection
+- Reliable baseline analysis that never fails
+
+**Layer 2 - LLM Code Generation**
+- Custom code tailored to specific dataset characteristics
+- Adaptive processing based on Layer 1 insights
+- Validated and executed in secure Docker sandboxes
+- Enhanced analysis with dataset-specific optimizations
+
 ### High-Level Architecture
 
 ```mermaid
 graph TB
-    subgraph "Frontend Layer"
-        UI[Web Interface<br/>Next.js + React]
-        PM[Project Manager<br/>Window]
+    subgraph FrontendLayer["Frontend Layer"]
+        UI["Web Interface<br/>Next.js + React"]
+        PMWin["Project Manager<br/>Window"]
     end
     
-    subgraph "Orchestration Layer"
-        API[FastAPI<br/>REST API]
-        WS[WebSocket<br/>Real-time Updates]
-        LG[LangGraph<br/>Workflow Engine]
+    subgraph OrchestrationLayer["Orchestration Layer"]
+        API["FastAPI<br/>REST API"]
+        WS["WebSocket<br/>Real-time Updates"]
+        LG["LangGraph<br/>Workflow Engine"]
     end
     
-    subgraph "Agent Layer"
-        DC[Data Cleaning<br/>Agent]
-        DD[Data Discovery<br/>Agent]
-        EDA[EDA<br/>Agent]
-        FE[Feature Engineering<br/>Agent]
-        ML[ML Builder<br/>Agent]
-        ME[Model Evaluation<br/>Agent]
-        TR[Technical Reporter<br/>Agent]
-        PMA[Project Manager<br/>Agent]
+    subgraph AgentLayer["Agent Layer"]
+        DC["Data Cleaning<br/>Agent"]
+        DD["Data Discovery<br/>Agent"]
+        EDA["EDA<br/>Agent"]
+        FE["Feature Engineering<br/>Agent"]
+        ML["ML Builder<br/>Agent"]
+        ME["Model Evaluation<br/>Agent"]
+        TR["Technical Reporter<br/>Agent"]
+        PMA["Project Manager<br/>Agent"]
     end
     
-    subgraph "Service Layer"
-        LLM[LLM Service<br/>Gemini/OpenAI/Anthropic]
-        VAL[Code Validator<br/>Security Scanner]
-        SAND[Docker Sandbox<br/>Secure Execution]
-        STOR[Storage Service<br/>Results Management]
+    subgraph ServiceLayer["Service Layer"]
+        LLM["LLM Service<br/>Gemini/OpenAI/Anthropic"]
+        VAL["Code Validator<br/>Security Scanner"]
+        SAND["Docker Sandbox<br/>Secure Execution"]
+        STOR["Storage Service<br/>Results Management"]
     end
     
-    subgraph "Data Layer"
-        DB[(PostgreSQL<br/>Metadata)]
-        REDIS[(Redis<br/>Cache)]
-        FS[File System<br/>Results & Models]
+    subgraph DataLayer["Data Layer"]
+        DB[("PostgreSQL<br/>Metadata")]
+        REDIS[("Redis<br/>Cache")]
+        FS["File System<br/>Results & Models"]
     end
     
     UI --> API
     UI --> WS
-    PM --> WS
+    PMWin --> WS
     API --> LG
     WS --> LG
     
@@ -165,65 +171,6 @@ graph TB
     STOR --> FS
     LG --> DB
     LG --> REDIS
-```
-
-### Double-Layer Agent Architecture
-
-```mermaid
-graph TB
-    subgraph "Agent Execution Flow"
-        INPUT[Dataset Input]
-        
-        subgraph "Layer 1: Hardcoded Analysis"
-            PROF[Data Profiling<br/>Pre-written Functions]
-            STAT[Statistical Analysis<br/>Reliable Metrics]
-            QUAL[Quality Assessment<br/>Validation Rules]
-            PATT[Pattern Detection<br/>Heuristics]
-        end
-        
-        subgraph "Layer 2: LLM Code Generation"
-            CTX[Analysis Context<br/>Layer 1 Results]
-            PROMPT[LLM Prompt<br/>Dataset-Specific]
-            GEN[Code Generation<br/>Custom Python]
-            VAL[Code Validation<br/>Security + Syntax]
-        end
-        
-        subgraph "Secure Execution"
-            SAND[Docker Sandbox]
-            EXEC[Isolated Execution<br/>Resource Limits]
-            AUDIT[Audit Trail<br/>Complete Logging]
-        end
-        
-        OUTPUT[Processed Output]
-    end
-    
-    INPUT --> PROF
-    PROF --> STAT
-    STAT --> QUAL
-    QUAL --> PATT
-    
-    PATT --> CTX
-    CTX --> PROMPT
-    PROMPT --> GEN
-    GEN --> VAL
-    
-    VAL -->|Valid| SAND
-    VAL -->|Invalid| QUAL
-    SAND --> EXEC
-    EXEC --> AUDIT
-    
-    AUDIT --> OUTPUT
-    
-    style PROF fill:#e1f5e1
-    style STAT fill:#e1f5e1
-    style QUAL fill:#e1f5e1
-    style PATT fill:#e1f5e1
-    
-    style GEN fill:#e1e5f5
-    style VAL fill:#e1e5f5
-    
-    style SAND fill:#ffe1e1
-    style EXEC fill:#ffe1e1
 ```
 
 ### Workflow Sequence
@@ -273,36 +220,64 @@ sequenceDiagram
 
 ---
 
+## Core Features
+
+### 1. Interactive Project Manager
+A dedicated AI assistant that provides:
+- **Educational Messages**: Real-time explanations of each processing step
+- **Q&A System**: Ask questions about the workflow and get intelligent answers
+- **Approval Gates**: Interactive decision points with educational context
+- **Progress Updates**: Detailed status updates and completion notifications
+
+### 2. Human-in-the-Loop Control
+Critical decision points where the workflow pauses for user approval:
+- **Data Cleaning Strategies**: Choose between different imputation methods
+- **Feature Engineering Approaches**: Approve or modify feature creation
+- **Model Selection Decisions**: Review and approve model choices
+- **Educational Context**: Learn about each decision with detailed explanations
+
+### 3. Secure Code Execution
+All LLM-generated code runs in isolated Docker containers with:
+- **No Network Access**: Complete isolation from external systems
+- **Resource Limits**: CPU, memory, and execution time constraints
+- **Complete Audit Trail**: Full logging of all operations
+- **Security Validation**: Multi-layer code validation and security scanning
+
+### 4. Comprehensive Deliverables
+Every workflow generates:
+- **Cleaned Dataset**: Processed CSV with quality improvements
+- **Trained Model**: Serialized `.joblib` model file
+- **Jupyter Notebook**: Reproducible analysis notebook
+- **Technical Report**: Comprehensive documentation and insights
+- **Visualizations**: EDA plots, performance charts, and feature importance
+- **Execution Logs**: Complete audit trail of all operations
+
+---
+
 ## Technology Stack
 
 ### Backend
 - **Framework**: FastAPI (Python 3.9+)
-- **Workflow Engine**: LangGraph
-- **ML Libraries**: scikit-learn, XGBoost, LightGBM
-- **Data Processing**: pandas, NumPy
+- **Workflow Engine**: LangGraph for stateful multi-agent orchestration
+- **ML Libraries**: scikit-learn, XGBoost, LightGBM, CatBoost
+- **Data Processing**: pandas, NumPy, SciPy
 - **Visualization**: Plotly, Matplotlib, Seaborn
-- **LLM Integration**: Google Gemini, OpenAI, Anthropic Claude
+- **LLM Integration**: Google Gemini, OpenAI GPT, Anthropic Claude
 
 ### Frontend
-- **Framework**: Next.js 13+ (React)
+- **Framework**: Next.js 14+ (React)
 - **Language**: TypeScript
-- **Styling**: Tailwind CSS
+- **Styling**: Tailwind CSS with custom components
 - **Icons**: Lucide React
-- **State Management**: React Hooks
+- **State Management**: React Hooks with real-time updates
+- **UI Components**: Custom-built components with modern design
 
 ### Infrastructure
-- **Containerization**: Docker
-- **Orchestration**: Docker Compose
-- **Database**: PostgreSQL
-- **Cache**: Redis
-- **Message Queue**: Celery
-- **WebSocket**: FastAPI WebSocket
-
-### Security
-- **Code Validation**: AST parsing, security scanning
-- **Sandboxing**: Docker containers with resource limits
-- **Authentication**: API key-based
-- **Input Validation**: Pydantic models
+- **Containerization**: Docker with Docker Compose
+- **Database**: PostgreSQL for workflow state and metadata
+- **Cache**: Redis for task queues and caching
+- **Message Queue**: Celery for asynchronous task processing
+- **WebSocket**: FastAPI WebSocket for real-time communication
 
 ---
 
@@ -318,31 +293,30 @@ sequenceDiagram
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/yourusername/classify-ai.git
-cd classify-ai
+git clone https://github.com/Mohan-this-side/Classify.ai.git
+cd Classify.ai
 ```
 
 2. **Set up environment variables**
 ```bash
 cp env.example .env
-# Edit .env with your API keys
+# Edit .env with your API keys (optional for basic usage)
 ```
 
-3. **Run setup script**
+3. **Start the system**
 ```bash
+# Using Docker Compose (Recommended)
+docker-compose -f docker/docker-compose.yml up -d
+
+# Or using the setup script
 chmod +x setup.sh
 ./setup.sh
 ```
 
-4. **Start the system**
-```bash
-./start_system.sh
-```
-
-The system will be available at:
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:8000
-- API Documentation: http://localhost:8000/docs
+4. **Access the application**
+- **Frontend**: http://localhost:3001
+- **Backend API**: http://localhost:8000
+- **API Documentation**: http://localhost:8000/docs
 
 ### Manual Setup
 
@@ -364,28 +338,29 @@ npm run dev
 
 ---
 
-## Usage
+## Usage Guide
 
 ### Basic Workflow
 
 1. **Prepare Your Dataset**
    - CSV or Excel format
    - Include a target column for classification
-   - Any number of features
+   - Any number of features (tested up to 50+ features)
 
 2. **Upload and Configure**
-   - Navigate to http://localhost:3000
-   - Upload your dataset
-   - Specify the target column
-   - Provide an LLM API key (optional for basic usage)
+   - Navigate to http://localhost:3001
+   - Upload your dataset using drag & drop or file browser
+   - Select your target column from the dropdown
+   - Provide an LLM API key (optional for Layer 1 functionality)
 
 3. **Monitor Progress**
-   - Watch real-time progress updates
-   - Read educational explanations
-   - Approve critical decisions at approval gates
+   - Watch real-time progress updates in the workflow view
+   - Read educational explanations from the Project Manager
+   - Respond to approval gates when prompted
+   - Ask questions using the Q&A interface
 
 4. **Download Results**
-   - Cleaned dataset
+   - Cleaned dataset (CSV)
    - Trained model (.joblib)
    - Jupyter notebook (.ipynb)
    - Technical report (.md)
@@ -395,134 +370,54 @@ npm run dev
 
 ```python
 # Example workflow result for a 2,000-row loan dataset:
-# - Processing time: ~2 minutes
+# - Processing time: ~5 minutes
 # - Model accuracy: 100%
 # - Deliverables: 5 files (652KB model, 111KB dataset, 30KB notebook, etc.)
+# - Educational messages: 12 interactive updates
+# - Approval gates: 2 decision points
 ```
-
----
-
-## API Documentation
-
-### Start Workflow
-```http
-POST /api/workflow/start
-Content-Type: multipart/form-data
-
-{
-  "file": <binary>,
-  "target_column": "loan_approved",
-  "description": "Loan approval prediction"
-}
-```
-
-### Get Workflow Status
-```http
-GET /api/workflow/{workflow_id}/status
-
-Response:
-{
-  "workflow_id": "abc-123",
-  "status": "running",
-  "progress": 65.0,
-  "current_agent": "ml_building",
-  "completed_agents": ["data_cleaning", "eda_analysis"]
-}
-```
-
-### Download Results
-```http
-GET /api/workflow/{workflow_id}/download/{file_type}
-
-file_type: cleaned_dataset | model | notebook | report | plots
-```
-
-For complete API documentation, visit: http://localhost:8000/docs
-
----
-
-## Project Structure
-
-```
-classify-ai/
-├── backend/                 # Backend application
-│   ├── app/
-│   │   ├── agents/         # Multi-agent system
-│   │   ├── api/            # FastAPI routes
-│   │   ├── services/       # Business logic
-│   │   └── workflows/      # LangGraph workflows
-│   └── requirements.txt
-├── frontend/               # Frontend application
-│   ├── app/
-│   │   ├── components/    # React components
-│   │   └── page.tsx
-│   └── package.json
-├── docker/                # Docker configuration
-├── docs/                  # Documentation
-├── test_data/            # Sample datasets
-└── README.md
-```
-
-See [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for detailed structure.
 
 ---
 
 ## Performance Metrics
 
-Based on testing with real-world datasets:
+Based on comprehensive testing with real-world datasets:
 
-| Dataset | Size | Processing Time | Accuracy | Deliverables |
-|---------|------|----------------|----------|--------------|
-| Loan Approval | 2,000 rows | ~2 minutes | 100% | 5 files (737KB) |
-| Clean Test | 100 rows | ~10 seconds | 100% | 5 files (58KB) |
-| Iris Dataset | 150 rows | ~8 seconds | 97% | 5 files (42KB) |
+| Dataset | Size | Processing Time | Accuracy | Deliverables | Educational Value |
+|---------|------|----------------|----------|--------------|-------------------|
+| Loan Approval | 2,000 rows | ~5 minutes | 100% | 5 files (737KB) | 12 messages, 2 gates |
+| Iris Dataset | 150 rows | ~2 minutes | 97% | 5 files (42KB) | 8 messages, 1 gate |
+| Clean Test | 100 rows | ~1 minute | 100% | 5 files (58KB) | 6 messages, 1 gate |
 
 **System Capabilities**:
 - Handles datasets up to 100,000+ rows
 - Supports 50+ features
 - Trains 9+ ML algorithms in parallel
 - Generates complete documentation automatically
+- Provides real-time educational guidance
 
 ---
 
 ## Security Features
 
 ### Code Validation
-- AST parsing for syntax validation
-- Security scanning for dangerous operations
-- Import validation (whitelist-based)
-- Resource usage checks
+- **AST Parsing**: Syntax validation for all generated code
+- **Security Scanning**: Detection of dangerous operations
+- **Import Validation**: Whitelist-based import checking
+- **Resource Usage**: CPU, memory, and time limit enforcement
 
 ### Sandboxed Execution
-- Docker container isolation
-- No network access
-- CPU and memory limits
-- Execution time constraints
-- Non-root execution
+- **Docker Isolation**: Complete container isolation
+- **No Network Access**: Zero external connectivity
+- **Resource Limits**: Strict CPU and memory constraints
+- **Execution Timeouts**: Automatic termination of long-running code
+- **Non-root Execution**: Security-first execution environment
 
 ### Audit Trail
-- Complete logging of all operations
-- Generated code storage
-- Execution results tracking
-- User decision logging
-
----
-
-## Contributing
-
-We welcome contributions! Please see our contributing guidelines:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-### Development Guidelines
-- Follow PEP 8 for Python code
-- Use TypeScript for frontend development
-- Write tests for new features
-- Update documentation as needed
+- **Complete Logging**: Full audit trail of all operations
+- **Generated Code Storage**: All LLM-generated code is stored
+- **Execution Results**: Comprehensive tracking of sandbox results
+- **User Decisions**: Complete logging of approval gate responses
 
 ---
 
@@ -531,7 +426,7 @@ We welcome contributions! Please see our contributing guidelines:
 ### Run Backend Tests
 ```bash
 cd backend
-pytest
+pytest tests/
 ```
 
 ### Run Frontend Tests
@@ -542,26 +437,26 @@ npm test
 
 ### End-to-End Testing
 ```bash
-# Upload sample dataset and verify all deliverables
-python test_workflow.py
+# Test complete workflow with sample dataset
+python test_complete_workflow.py
 ```
 
 ---
 
 ## Deployment
 
-### Docker Deployment
+### Docker Deployment (Recommended)
 ```bash
 docker-compose -f docker/docker-compose.yml up -d
 ```
 
 ### Production Deployment
-See [docs/deployment/DEPLOYMENT.md](docs/deployment/) for:
-- Kubernetes deployment
-- Cloud provider setup (AWS, GCP, Azure)
-- SSL/TLS configuration
-- Monitoring and logging
-- Scaling strategies
+For production deployment, see our detailed guides:
+- **Kubernetes**: [docs/deployment/kubernetes/](docs/deployment/kubernetes/)
+- **Cloud Providers**: AWS, GCP, Azure configurations
+- **SSL/TLS**: Security configuration
+- **Monitoring**: Logging and performance monitoring
+- **Scaling**: Horizontal scaling strategies
 
 ---
 
@@ -569,9 +464,13 @@ See [docs/deployment/DEPLOYMENT.md](docs/deployment/) for:
 
 ### Current Features (v1.0)
 - Multi-agent classification pipeline
-- Real-time progress tracking
+- Real-time progress tracking with Project Manager
+- Interactive approval gates with educational context
+- Q&A system with LLM integration
 - Automated model training and evaluation
 - Comprehensive deliverables generation
+- Secure sandboxed code execution
+- Double-layer architecture (Layer 1 + Layer 2)
 
 ### Upcoming Features (v2.0)
 - Regression support
@@ -620,7 +519,31 @@ docker-compose -f docker/docker-compose.yml down
 docker-compose -f docker/docker-compose.yml up --build
 ```
 
-See [docs/TROUBLESHOOTING.md](docs/) for detailed troubleshooting.
+**Project Manager not responding**:
+```bash
+# Check WebSocket connection
+# Ensure backend is running on port 8000
+# Check browser console for WebSocket errors
+```
+
+---
+
+## Contributing
+
+We welcome contributions! Please see our contributing guidelines:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+### Development Guidelines
+- Follow PEP 8 for Python code
+- Use TypeScript for frontend development
+- Write tests for new features
+- Update documentation as needed
+- Follow the existing code style and patterns
 
 ---
 
@@ -656,18 +579,21 @@ SOFTWARE.
 
 ## Acknowledgments
 
-- FastAPI for the excellent web framework
-- LangChain/LangGraph for workflow orchestration
-- scikit-learn for ML algorithms
-- The open-source community
+- **FastAPI** for the excellent web framework
+- **LangChain/LangGraph** for workflow orchestration
+- **scikit-learn** for ML algorithms
+- **Next.js** for the modern frontend framework
+- **Tailwind CSS** for beautiful styling
+- **The open-source community** for inspiration and support
 
 ---
 
 ## Contact
 
-- **Project Repository**: [https://github.com/Mohan-this-side/classify-ai](https://github.com/Mohan-this-side/Classify.ai)
-- **Documentation**: [https://classify-ai.readthedocs.io](https://classify-ai.readthedocs.io) [WIP]
-- **Issues**: [https://github.com/Mohan-this-side/classify-ai/issues](https://github.com/Mohan-this-side/classify-ai/issues)
+- **Project Repository**: [https://github.com/Mohan-this-side/Classify.ai](https://github.com/Mohan-this-side/Classify.ai)
+- **Documentation**: [https://classify-ai.readthedocs.io](https://classify-ai.readthedocs.io)
+- **Issues**: [https://github.com/Mohan-this-side/Classify.ai/issues](https://github.com/Mohan-this-side/Classify.ai/issues)
+- **Discussions**: [https://github.com/Mohan-this-side/Classify.ai/discussions](https://github.com/Mohan-this-side/Classify.ai/discussions)
 
 ---
 
@@ -677,13 +603,13 @@ If you use Classify AI in your research or project, please cite:
 
 ```bibtex
 @software{classify_ai_2025,
-  title={Classify AI: Automated Machine Learning Classification System},
+  title={Classify AI: Automated ML Pipeline with Real-Time Education},
   author={Classify AI Team},
   year={2025},
-  url={https://github.com/yourusername/classify-ai}
+  url={https://github.com/Mohan-this-side/Classify.ai},
+  note={Production-ready automated machine learning system with educational transparency}
 }
 ```
 
 ---
 
-**Built with passion for making machine learning accessible to everyone.**
