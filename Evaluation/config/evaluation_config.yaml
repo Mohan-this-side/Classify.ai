@@ -1,0 +1,299 @@
+# Comprehensive Evaluation Framework Configuration
+# This file defines all parameters, thresholds, and specifications for evaluation
+
+# Kaggle API Configuration
+kaggle:
+  username: "mohanbhosale"
+  key: "39e9a35d1faf9b4dd8fe47282b75e925"
+  datasets_dir: "Evaluation/datasets/real_world"
+
+# Real-World Datasets from Kaggle
+real_world_datasets:
+  - name: "titanic"
+    kaggle_id: "c/titanic"
+    expected_issues:
+      - missing_values: true
+      - missing_percentage: ~20
+      - mixed_types: true
+      - binary_classification: true
+    target_column: "Survived"
+    
+  - name: "heart_disease"
+    kaggle_id: "ronitf/heart-disease-uci"
+    expected_issues:
+      - missing_values: false
+      - binary_classification: true
+      - feature_engineering_opportunities: true
+    target_column: "target"
+    
+  - name: "bank_marketing"
+    kaggle_id: "prakharrathi25/banking-marketing-dataset"
+    expected_issues:
+      - class_imbalance: true
+      - imbalance_ratio: "~88:12"
+      - many_features: true
+      - categorical_features: true
+    target_column: "deposit"
+    
+  - name: "credit_card_fraud"
+    kaggle_id: "mlg-ulb/creditcardfraud"
+    expected_issues:
+      - severe_imbalance: true
+      - imbalance_ratio: "~99.8:0.2"
+      - pca_features: true
+      - high_dimensionality: true
+    target_column: "Class"
+    
+  - name: "adult_income"
+    kaggle_id: "uciml/adult-census-income"
+    expected_issues:
+      - mixed_categorical_numeric: true
+      - missing_values: true
+      - binary_classification: true
+    target_column: "income"
+    
+  - name: "wine_quality"
+    kaggle_id: "uciml/red-wine-quality-cortez-et-al-2009"
+    expected_issues:
+      - multiclass_classification: true
+      - numeric_features: true
+      - quality_classification: true
+    target_column: "quality"
+
+# Synthetic Datasets with Known Issues
+synthetic_datasets:
+  - name: "perfect_leakage"
+    description: "Target column duplicated as feature - test anti-cheating"
+    n_samples: 1000
+    n_features: 10
+    n_classes: 2
+    issues:
+      - data_leakage: true
+      - perfect_correlation: true
+    expected_behavior:
+      - should_flag_suspicious_accuracy: true
+      - should_not_celebrate_high_accuracy: true
+      
+  - name: "severe_imbalance"
+    description: "99:1 ratio with high majority class accuracy trap"
+    n_samples: 1000
+    n_features: 15
+    n_classes: 2
+    imbalance_ratio: "99:1"
+    issues:
+      - severe_class_imbalance: true
+      - majority_class_accuracy_trap: true
+    expected_behavior:
+      - should_detect_imbalance: true
+      - should_apply_class_balancing: true
+      - should_check_minority_recall: true
+      
+  - name: "multicollinearity"
+    description: "Features with correlation >0.95 - test feature engineering"
+    n_samples: 500
+    n_features: 20
+    n_classes: 3
+    correlation_threshold: 0.95
+    issues:
+      - high_multicollinearity: true
+      - redundant_features: true
+    expected_behavior:
+      - should_detect_correlation: true
+      - should_remove_redundant_features: true
+      
+  - name: "high_dimensionality"
+    description: "200 features, 100 samples - test curse of dimensionality"
+    n_samples: 100
+    n_features: 200
+    n_classes: 2
+    issues:
+      - curse_of_dimensionality: true
+      - more_features_than_samples: true
+    expected_behavior:
+      - should_detect_dimensionality_issue: true
+      - should_recommend_dimensionality_reduction: true
+
+# Quality Thresholds for Each Agent
+quality_thresholds:
+  data_discovery:
+    type_detection_accuracy: 0.90
+    target_suggestion_relevance: true  # Binary
+    
+  eda_analysis:
+    imbalance_detection_rate: 0.95  # Must detect >70:30 imbalance
+    missing_value_detection_accuracy: 0.90
+    outlier_detection_precision: 0.80
+    correlation_detection_completeness: 0.85
+    
+  data_cleaning:
+    imputation_appropriateness_min: 3.0  # LLM-as-judge 1-5 scale
+    data_quality_improvement_min: 0.10  # 10% improvement
+    zero_variance_removal: true  # Binary
+    
+  feature_engineering:
+    feature_usefulness_correlation_min: 0.30
+    multicollinearity_reduction_min: 0.20  # 20% VIF reduction
+    encoding_appropriateness_min: 3.0  # LLM-as-judge 1-5 scale
+    layer2_success_rate_min: 0.80
+    
+  ml_builder:
+    algorithm_selection_appropriateness_min: 3.5  # LLM-as-judge 1-5 scale
+    class_balancing_application: true  # Binary - applied when needed
+    model_diversity_min: 2  # At least 2 different algorithms
+    anti_cheating_score_min: 0.70  # Checks specificity/sensitivity
+    
+  model_evaluation:
+    metric_completeness: 0.90  # 90% of required metrics computed
+    imbalance_awareness: true  # Binary - flags high accuracy with low minority recall
+    overfitting_detection: true  # Binary - flags train/test gap
+    
+  technical_reporter:
+    report_completeness: 0.85  # 85% of required sections present
+    explanation_clarity_min: 3.5  # LLM-as-judge 1-5 scale
+    visualization_quality: true  # Binary - plots informative
+    
+  project_manager:
+    explanation_accuracy_min: 4.0  # LLM-as-judge 1-5 scale (target ≥85% = 4.25 average)
+    educational_effectiveness_min: 3.5
+    decision_reasoning_quality_min: 3.5
+    overall_pm_accuracy_min: 0.85  # Target ≥85%
+
+# System-Level Performance Targets
+system_performance:
+  layer2_success_rate_min: 0.80
+  approval_gate_latency_max_seconds: 30
+  frontend_load_time_max_seconds: 3
+  system_uptime_min: 0.99
+  execution_time_max_minutes: 30  # Full evaluation should complete
+
+# Metric Definitions
+metrics:
+  # Agent-level metrics
+  type_detection_accuracy:
+    definition: "Percentage of columns with correctly identified data types"
+    range: [0, 1]
+    interpretation:
+      - "0.9-1.0: Excellent"
+      - "0.8-0.9: Good"
+      - "0.7-0.8: Acceptable"
+      - "<0.7: Poor"
+      
+  imbalance_detection_rate:
+    definition: "Percentage of imbalanced datasets (>70:30 ratio) correctly flagged"
+    range: [0, 1]
+    interpretation:
+      - "≥0.95: Excellent"
+      - "0.85-0.95: Good"
+      - "<0.85: Poor"
+      
+  anti_cheating_score:
+    definition: "Combined score checking specificity, sensitivity, and minority class performance"
+    calculation: "(specificity + sensitivity + minority_recall) / 3"
+    range: [0, 1]
+    interpretation:
+      - "≥0.8: Excellent - no cheating detected"
+      - "0.7-0.8: Good"
+      - "<0.7: Potential cheating (e.g., always predicting majority class)"
+      
+  layer2_success_rate:
+    definition: "Percentage of successful LLM code generation and execution attempts"
+    range: [0, 1]
+    interpretation:
+      - "≥0.80: Meets target"
+      - "0.70-0.80: Acceptable"
+      - "<0.70: Needs improvement"
+      
+  pm_accuracy:
+    definition: "Average LLM-as-judge score for Project Manager explanation accuracy"
+    range: [1, 5]
+    target: 4.25  # Equivalent to 85% (4.25/5 = 0.85)
+    interpretation:
+      - "≥4.25: Meets target (≥85%)"
+      - "4.0-4.25: Good"
+      - "3.5-4.0: Acceptable"
+      - "<3.5: Poor"
+
+# Test Scenarios and Pass/Fail Criteria
+test_scenarios:
+  class_imbalance_detection:
+    test_datasets: ["severe_imbalance", "bank_marketing", "credit_card_fraud"]
+    pass_criteria:
+      - eda_agent_flags_imbalance: true
+      - ml_builder_applies_balancing: true
+      - model_evaluation_checks_minority_recall: true
+    fail_if:
+      - celebrates_high_accuracy_without_checking_minority_class: true
+      
+  anti_cheating:
+    test_datasets: ["perfect_leakage"]
+    pass_criteria:
+      - flags_suspicious_accuracy: true
+      - does_not_celebrate_perfect_accuracy: true
+      - checks_specificity_and_sensitivity: true
+    fail_if:
+      - reports_100_percent_accuracy_as_success: true
+      
+  multicollinearity_handling:
+    test_datasets: ["multicollinearity"]
+    pass_criteria:
+      - detects_high_correlation: true
+      - removes_redundant_features: true
+      - vif_reduction: true
+    fail_if:
+      - ignores_correlation: true
+      
+  high_dimensionality:
+    test_datasets: ["high_dimensionality"]
+    pass_criteria:
+      - detects_curse_of_dimensionality: true
+      - recommends_dimensionality_reduction: true
+    fail_if:
+      - proceeds_without_dimensionality_reduction: true
+
+# LLM-as-Judge Configuration
+llm_judge:
+  provider: "gemini"  # Use same provider as agents
+  model: "gemini-pro"
+  temperature: 0.0  # Deterministic evaluation
+  evaluation_criteria:
+    explanation_accuracy:
+      prompt_template: "evaluation/prompts/explanation_accuracy.txt"
+      scale: [1, 5]
+    educational_effectiveness:
+      prompt_template: "evaluation/prompts/educational_effectiveness.txt"
+      scale: [1, 5]
+    decision_reasoning:
+      prompt_template: "evaluation/prompts/decision_reasoning.txt"
+      scale: [1, 5]
+
+# Visualization Configuration
+visualization:
+  output_dir: "Evaluation/results/visualization"
+  formats: ["png", "pdf", "svg"]
+  dpi: 300
+  style: "seaborn-v0_8"
+  figure_size:
+    default: [10, 6]
+    scorecard: [14, 8]
+    dashboard: [16, 10]
+
+# Reporting Configuration
+reporting:
+  output_dir: "Evaluation/reports"
+  formats: ["markdown", "html", "pdf"]
+  include_sections:
+    - executive_summary
+    - agent_scorecards
+    - system_performance
+    - edge_case_results
+    - failure_analysis
+    - recommendations
+  comparison_baseline: "Evaluation/results/baseline.json"
+
+# Reproducibility Settings
+reproducibility:
+  random_seed: 42
+  save_intermediate_results: true
+  save_state_snapshots: true
+  version_results: true  # Save timestamped results
+

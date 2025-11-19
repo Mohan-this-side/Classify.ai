@@ -1,0 +1,279 @@
+{
+  "dataset_name": "credit_card_fraud",
+  "file_path": "Evaluation/datasets/real_world/credit_card_fraud.csv",
+  "source": "kaggle",
+  "kaggle_id": "mlg-ulb/creditcardfraud",
+  "description": "",
+  "analysis": {
+    "dataset_name": "credit_card_fraud",
+    "file_path": "Evaluation/datasets/real_world/credit_card_fraud.csv",
+    "shape": [
+      284807,
+      31
+    ],
+    "columns": [
+      "Time",
+      "V1",
+      "V2",
+      "V3",
+      "V4",
+      "V5",
+      "V6",
+      "V7",
+      "V8",
+      "V9",
+      "V10",
+      "V11",
+      "V12",
+      "V13",
+      "V14",
+      "V15",
+      "V16",
+      "V17",
+      "V18",
+      "V19",
+      "V20",
+      "V21",
+      "V22",
+      "V23",
+      "V24",
+      "V25",
+      "V26",
+      "V27",
+      "V28",
+      "Amount",
+      "Class"
+    ],
+    "target_column": "Class",
+    "has_target": true,
+    "missing_values": {
+      "counts": {
+        "Time": 0,
+        "V1": 0,
+        "V2": 0,
+        "V3": 0,
+        "V4": 0,
+        "V5": 0,
+        "V6": 0,
+        "V7": 0,
+        "V8": 0,
+        "V9": 0,
+        "V10": 0,
+        "V11": 0,
+        "V12": 0,
+        "V13": 0,
+        "V14": 0,
+        "V15": 0,
+        "V16": 0,
+        "V17": 0,
+        "V18": 0,
+        "V19": 0,
+        "V20": 0,
+        "V21": 0,
+        "V22": 0,
+        "V23": 0,
+        "V24": 0,
+        "V25": 0,
+        "V26": 0,
+        "V27": 0,
+        "V28": 0,
+        "Amount": 0,
+        "Class": 0
+      },
+      "percentages": {
+        "Time": 0.0,
+        "V1": 0.0,
+        "V2": 0.0,
+        "V3": 0.0,
+        "V4": 0.0,
+        "V5": 0.0,
+        "V6": 0.0,
+        "V7": 0.0,
+        "V8": 0.0,
+        "V9": 0.0,
+        "V10": 0.0,
+        "V11": 0.0,
+        "V12": 0.0,
+        "V13": 0.0,
+        "V14": 0.0,
+        "V15": 0.0,
+        "V16": 0.0,
+        "V17": 0.0,
+        "V18": 0.0,
+        "V19": 0.0,
+        "V20": 0.0,
+        "V21": 0.0,
+        "V22": 0.0,
+        "V23": 0.0,
+        "V24": 0.0,
+        "V25": 0.0,
+        "V26": 0.0,
+        "V27": 0.0,
+        "V28": 0.0,
+        "Amount": 0.0,
+        "Class": 0.0
+      },
+      "total_missing_pct": 0.0
+    },
+    "class_imbalance": {
+      "counts": {
+        "0": 284315,
+        "1": 492
+      },
+      "distribution_pct": {
+        "0": 99.82725143693798,
+        "1": 0.1727485630620034
+      },
+      "imbalance_ratio": 577.8760162601625,
+      "is_imbalanced": true,
+      "is_severely_imbalanced": true
+    },
+    "data_types": {
+      "all": {
+        "Time": "float64",
+        "V1": "float64",
+        "V2": "float64",
+        "V3": "float64",
+        "V4": "float64",
+        "V5": "float64",
+        "V6": "float64",
+        "V7": "float64",
+        "V8": "float64",
+        "V9": "float64",
+        "V10": "float64",
+        "V11": "float64",
+        "V12": "float64",
+        "V13": "float64",
+        "V14": "float64",
+        "V15": "float64",
+        "V16": "float64",
+        "V17": "float64",
+        "V18": "float64",
+        "V19": "float64",
+        "V20": "float64",
+        "V21": "float64",
+        "V22": "float64",
+        "V23": "float64",
+        "V24": "float64",
+        "V25": "float64",
+        "V26": "float64",
+        "V27": "float64",
+        "V28": "float64",
+        "Amount": "float64",
+        "Class": "int64"
+      },
+      "numeric": [
+        "Time",
+        "V1",
+        "V2",
+        "V3",
+        "V4",
+        "V5",
+        "V6",
+        "V7",
+        "V8",
+        "V9",
+        "V10",
+        "V11",
+        "V12",
+        "V13",
+        "V14",
+        "V15",
+        "V16",
+        "V17",
+        "V18",
+        "V19",
+        "V20",
+        "V21",
+        "V22",
+        "V23",
+        "V24",
+        "V25",
+        "V26",
+        "V27",
+        "V28",
+        "Amount",
+        "Class"
+      ],
+      "categorical": [],
+      "mixed_types": false
+    },
+    "correlations": {
+      "high_correlation_pairs": [],
+      "has_multicollinearity": false
+    },
+    "dimensionality": {
+      "n_samples": 284807,
+      "n_features": 30,
+      "features_per_sample": 0.00010533448967195329,
+      "curse_of_dimensionality": false
+    }
+  },
+  "expected_issues": [
+    {
+      "severe_imbalance": true
+    },
+    {
+      "imbalance_ratio": "~99.8:0.2"
+    },
+    {
+      "pca_features": true
+    },
+    {
+      "high_dimensionality": true
+    }
+  ],
+  "expected_behavior": {},
+  "pass_fail_criteria": {
+    "data_discovery": {
+      "should_detect_types": true,
+      "should_identify_target": true,
+      "should_report_shape": true,
+      "type_detection_accuracy_min": 0.9
+    },
+    "eda_analysis": {
+      "should_detect_imbalance": true,
+      "should_flag_severe_imbalance": true,
+      "should_detect_missing_values": "False",
+      "should_detect_correlations": false,
+      "should_not_celebrate_high_accuracy_if_imbalanced": true
+    },
+    "data_cleaning": {
+      "should_handle_missing_values": "False",
+      "should_remove_duplicates": true,
+      "should_handle_outliers": true,
+      "imputation_appropriateness_min": null
+    },
+    "feature_engineering": {
+      "should_detect_multicollinearity": false,
+      "should_remove_redundant_features": false,
+      "should_encode_categoricals": false,
+      "should_scale_features": true
+    },
+    "ml_builder": {
+      "should_apply_class_balancing": true,
+      "should_not_celebrate_majority_class_accuracy": true,
+      "should_flag_suspicious_accuracy": false,
+      "should_check_minority_recall": true,
+      "anti_cheating_score_min": 0.7
+    },
+    "model_evaluation": {
+      "should_compute_comprehensive_metrics": true,
+      "should_flag_imbalance_issues": true,
+      "should_check_minority_class_performance": true,
+      "should_flag_suspicious_accuracy": false,
+      "metric_completeness_min": 0.9
+    },
+    "technical_reporter": {
+      "should_document_all_steps": true,
+      "should_include_visualizations": true,
+      "report_completeness_min": 0.85
+    },
+    "project_manager": {
+      "should_explain_imbalance": true,
+      "should_explain_data_leakage": false,
+      "should_provide_educational_explanations": true,
+      "explanation_accuracy_min": 4.0
+    }
+  }
+}
