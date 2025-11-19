@@ -696,6 +696,14 @@ Generate comprehensive, production-ready Python code:"""
         """
         self.logger.info("🔍 LAYER 2: Processing sandbox results for data discovery")
         
+        # Handle cases where sandbox execution had issues but still produced output
+        if sandbox_output.get("status") not in ["SUCCESS", "FAILED"]:
+            # If status is unclear, check if we have output
+            if sandbox_output.get("output") or sandbox_output.get("error"):
+                self.logger.warning(f"Sandbox status unclear: {sandbox_output.get('status')}, but output exists. Attempting to process.")
+            else:
+                raise ValueError(f"Sandbox execution failed with status: {sandbox_output.get('status')}")
+        
         # Validate sandbox execution was successful
         if sandbox_output.get("status") != "SUCCESS":
             raise ValueError(f"Sandbox execution failed: {sandbox_output.get('error', 'Unknown error')}")

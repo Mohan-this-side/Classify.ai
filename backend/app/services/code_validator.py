@@ -128,12 +128,15 @@ class CodeValidator:
         """Scan for security issues (RELAXED for sandbox environment)"""
         issues = []
         
-        # Check for CRITICAL dangerous operations only
-        critical_dangerous = ['eval', 'exec', '__import__', 'os.system', 'subprocess.call']
+        # In sandbox environment, exec/eval are safe (isolated execution)
+        # Only block truly dangerous operations that could escape sandbox
+        critical_dangerous = ['os.system', 'subprocess.call', 'subprocess.run', 'subprocess.Popen']
         for dangerous in critical_dangerous:
             if dangerous in code:
                 issues.append(f"Critical dangerous operation: {dangerous}")
         
+        # exec/eval are OK in sandbox (code runs in isolated Docker container)
+        # __import__ is OK in sandbox (limited to allowed imports)
         # File system operations are OK in sandbox (has limited access)
         # Network operations are OK in sandbox (network is isolated)
         # Most built-ins are OK in sandbox

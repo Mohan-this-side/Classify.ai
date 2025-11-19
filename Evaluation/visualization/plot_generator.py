@@ -97,7 +97,8 @@ class PlotGenerator:
         plt.ylabel('Dataset', fontsize=13, fontweight='bold')
         
         # Rotate labels for better readability
-        plt.xticks(rotation=45, ha='right')
+        plt.xticks(rotation=45)
+        plt.setp(plt.gca().get_xticklabels(), ha='right')
         plt.yticks(rotation=0)
         
         # Add grid lines
@@ -181,7 +182,8 @@ class PlotGenerator:
                                    fontsize=12, fontweight='bold')
                 axes[idx].set_xlabel('')
                 axes[idx].set_ylabel('Score', fontsize=10)
-                axes[idx].tick_params(axis='x', rotation=45, ha='right')
+                axes[idx].tick_params(axis='x', rotation=45)
+                axes[idx].set_xticklabels(axes[idx].get_xticklabels(), ha='right')
                 axes[idx].legend(loc='upper right', fontsize=8)
                 axes[idx].grid(axis='y', alpha=0.3)
         
@@ -244,7 +246,8 @@ class PlotGenerator:
         plt.ylabel('Success Rate', fontsize=13, fontweight='bold')
         plt.ylim(0, 1.1)
         plt.legend(loc='upper right', fontsize=11, framealpha=0.9)
-        plt.xticks(rotation=45, ha='right')
+        plt.xticks(rotation=45)
+        plt.setp(plt.gca().get_xticklabels(), ha='right')
         plt.grid(axis='y', alpha=0.3, linestyle='--')
         plt.tight_layout()
         

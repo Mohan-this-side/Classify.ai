@@ -51,11 +51,20 @@ class BaseAgentTest:
         """Create a ClassificationState for testing."""
         from app.workflows.state_management import WorkflowStatus, AgentStatus
         
+        dataset_id = f"test_{dataset.shape[0]}_{id(dataset)}"
+        
+        # Register dataset with state_manager BEFORE creating state
+        state_manager.store_dataset(
+            {'dataset_id': dataset_id},  # Temporary state for storage
+            dataset,
+            "original"
+        )
+        
         state = ClassificationState(
             session_id=f"test_{dataset.shape[0]}",
-            dataset_id=f"test_{dataset.shape[0]}",
+            dataset_id=dataset_id,
             workflow_status=WorkflowStatus.RUNNING,
-            original_dataset=dataset,
+            original_dataset=dataset,  # Keep reference for direct access
             target_column=target_column,
             user_description="",
             api_key="",
@@ -108,26 +117,133 @@ class BaseAgentTest:
             project_manager_summary=None,
             educational_explanations={},
             user_guidance=[],
-            next_steps_recommendations=[]
+            next_steps_recommendations=[],
+            warnings=[],
+            # Additional required fields
+            workflow_progress=0.0,
+            progress=0.0,
+            estimated_completion_time=None,
+            resource_usage={},
+            quality_checks_passed=[],
+            quality_checks_failed=[],
+            errors=[],
+            retry_count=0,
+            max_retries=3,
+            error_count=0,
+            last_error=None,
+            start_time=None,
+            end_time=None,
+            total_execution_time=None,
+            agent_execution_times={},
+            memory_usage={},
+            cpu_usage={},
+            requires_human_input=False,
+            human_input_required=None,
+            human_feedback=None,
+            user_approvals={},
+            output_artifacts={},
+            downloadable_files=[],
+            model_path=None,
+            report_path=None,
+            final_report=None,
+            executive_summary=None,
+            technical_documentation=None,
+            recommendations=[],
+            limitations=[],
+            future_improvements=[],
+            roc_curve_data=None,
+            feature_importance_model=None,
+            model_performance_analysis=None
         )
         return state
     
-    async def run_agent(self, agent, state: ClassificationState) -> Dict[str, Any]:
-        """Run an agent and return results."""
+    async def run_agent(self, agent, state: ClassificationState, timeout: int = 120) -> Dict[str, Any]:
+        """Run an agent with timeout and return results."""
         try:
-            result = await agent.execute(state)
+            # Run agent with timeout
+            result = await asyncio.wait_for(
+                agent.execute(state),
+                timeout=timeout
+            )
             return {
                 'success': True,
                 'result': result,
                 'error': None
             }
-        except Exception as e:
-            logger.error(f"Error running agent: {e}")
+        except asyncio.TimeoutError:
+            logger.warning(f"Agent {agent.agent_name} timed out after {timeout}s")
+            # Check for partial results in state
+            partial_results = self._extract_partial_results(state, agent.agent_name)
             return {
                 'success': False,
-                'result': None,
-                'error': str(e)
+                'result': partial_results,
+                'error': f'Timeout after {timeout}s',
+                'partial': True
             }
+        except Exception as e:
+            logger.error(f"Error running agent: {e}")
+            # Try to extract partial results even on error
+            partial_results = self._extract_partial_results(state, agent.agent_name)
+            return {
+                'success': False,
+                'result': partial_results,
+                'error': str(e),
+                'partial': partial_results is not None
+            }
+    
+    def _extract_partial_results(self, state: ClassificationState, agent_name: str) -> Optional[Dict[str, Any]]:
+        """Extract partial results from state even if agent failed."""
+        partial = {}
+        
+        # Extract based on agent type
+        if agent_name == 'data_discovery':
+            if state.get('discovery_results'):
+                partial['data'] = state.get('discovery_results', {})
+        elif agent_name == 'eda_analysis':
+            if state.get('statistical_summary') or state.get('eda_plots'):
+                partial['data'] = {
+                    'statistical_summary': state.get('statistical_summary'),
+                    'correlation_matrix': state.get('correlation_matrix') is not None,
+                    'eda_plots': state.get('eda_plots', []),
+                    'distribution_analysis': state.get('distribution_analysis'),
+                    'outlier_analysis': state.get('outlier_analysis')
+                }
+        elif agent_name == 'enhanced_data_cleaning':
+            if state.get('cleaned_dataset') is not None or state.get('cleaning_summary'):
+                partial['data'] = {
+                    'cleaning_summary': state.get('cleaning_summary'),
+                    'data_quality_score': state.get('data_quality_score'),
+                    'cleaning_issues_found': state.get('cleaning_issues_found', [])
+                }
+        elif agent_name == 'feature_engineering':
+            if state.get('engineered_features') or state.get('feature_selection_results'):
+                partial['data'] = {
+                    'engineered_features': state.get('engineered_features', []),
+                    'feature_selection_results': state.get('feature_selection_results')
+                }
+        elif agent_name == 'ml_builder':
+            if state.get('best_model') or state.get('model_selection_results'):
+                partial['data'] = {
+                    'model_selection_results': state.get('model_selection_results'),
+                    'training_metrics': state.get('training_metrics')
+                }
+        elif agent_name == 'model_evaluation':
+            if state.get('evaluation_metrics'):
+                partial['data'] = state.get('evaluation_metrics', {})
+        elif agent_name == 'technical_reporter':
+            if state.get('notebook_path') or state.get('technical_report_path'):
+                partial['data'] = {
+                    'notebook_path': state.get('notebook_path'),
+                    'report_path': state.get('technical_report_path')
+                }
+        elif agent_name == 'project_manager':
+            if state.get('project_manager_summary') or state.get('educational_explanations'):
+                partial['data'] = {
+                    'explanations': state.get('educational_explanations', {}),
+                    'summary': state.get('project_manager_summary')
+                }
+        
+        return partial if partial else None
     
     def record_test_result(
         self,
