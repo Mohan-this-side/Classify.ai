@@ -116,40 +116,101 @@ class CodeValidator:
     
     def _clean_code(self, code: str) -> str:
         """Clean and fix common LLM-generated code issues"""
+        if not code:
+            return code
+        
+        original_code = code
+        
+        # Remove markdown code fences
+        code = code.strip()
+        if code.startswith('```python'):
+            code = code[9:].strip()
+        elif code.startswith('```'):
+            code = code[3:].strip()
+        if code.endswith('```'):
+            code = code[:-3].strip()
+        
         lines = code.split('\n')
         cleaned_lines = []
+        skip_until_code = True
         
         for i, line in enumerate(lines):
-            # Fix common indentation issues at the start of code blocks
-            # If line starts with unexpected indent and previous line was empty or import, dedent
-            if i > 0 and line.strip() and not line.startswith(' ') and not line.startswith('\t'):
-                # Check if previous line suggests this should be at module level
-                prev_line = lines[i-1].strip()
-                if prev_line == '' or prev_line.startswith('import') or prev_line.startswith('from') or prev_line.startswith('#'):
-                    # Keep as is - likely correct
-                    cleaned_lines.append(line)
+            stripped = line.strip()
+            
+            # Skip empty lines at the start
+            if skip_until_code and not stripped:
+                continue
+            
+            # Detect start of actual code
+            if skip_until_code:
+                if stripped.startswith('import ') or stripped.startswith('from ') or stripped.startswith('def ') or stripped.startswith('class '):
+                    skip_until_code = False
                 else:
-                    cleaned_lines.append(line)
-            else:
-                cleaned_lines.append(line)
+                    # Skip explanatory text
+                    continue
+            
+            # Process code lines
+            if not skip_until_code:
+                # Fix indentation issues: if line should be at module level but is indented
+                if stripped.startswith('import ') or stripped.startswith('from ') or stripped.startswith('def ') or stripped.startswith('class '):
+                    # These should be at column 0 - remove leading whitespace
+                    cleaned_lines.append(stripped)
+                elif stripped.startswith('#'):
+                    # Comments - keep as is but remove excessive indentation
+                    if line.startswith(' ') and len(line) - len(line.lstrip()) > 4:
+                        cleaned_lines.append(stripped)
+                    else:
+                        cleaned_lines.append(line)
+                else:
+                    # Other code - preserve relative indentation but fix absolute
+                    # If line is indented but shouldn't be (after empty line or import)
+                    if cleaned_lines and cleaned_lines[-1].strip() and not cleaned_lines[-1].startswith(' '):
+                        # Previous line was at module level, check if this should be too
+                        if stripped and not (stripped.startswith('if ') or stripped.startswith('for ') or stripped.startswith('while ') or stripped.startswith('try:') or stripped.startswith('except') or stripped.startswith('with ')):
+                            # Might be incorrectly indented - try dedenting
+                            dedented = line.lstrip()
+                            if dedented and (dedented.startswith('import ') or dedented.startswith('from ') or dedented.startswith('def ') or dedented.startswith('class ')):
+                                cleaned_lines.append(dedented)
+                            else:
+                                cleaned_lines.append(line)
+                        else:
+                            cleaned_lines.append(line)
+                    else:
+                        cleaned_lines.append(line)
         
-        # Remove leading/trailing whitespace from each line but preserve indentation
-        cleaned_lines = [line.rstrip() for line in cleaned_lines]
-        
-        # Fix common markdown code block issues
+        # Join and clean up
         code_str = '\n'.join(cleaned_lines)
         
-        # Remove markdown code fences if present
-        if code_str.startswith('```python'):
-            code_str = code_str[9:]
-        elif code_str.startswith('```'):
-            code_str = code_str[3:]
-        if code_str.endswith('```'):
-            code_str = code_str[:-3]
+        # Final pass: ensure first import/def is at column 0
+        final_lines = code_str.split('\n')
+        if final_lines:
+            # Find first actual code line
+            first_code_idx = None
+            for i, line in enumerate(final_lines):
+                stripped = line.strip()
+                if stripped and (stripped.startswith('import ') or stripped.startswith('from ') or stripped.startswith('def ') or stripped.startswith('class ')):
+                    first_code_idx = i
+                    break
+            
+            if first_code_idx is not None and first_code_idx > 0:
+                # Remove everything before first code
+                final_lines = final_lines[first_code_idx:]
+            
+            # Ensure first line starts at column 0
+            if final_lines and final_lines[0].strip():
+                first_line = final_lines[0]
+                if first_line.startswith(' ') or first_line.startswith('\t'):
+                    final_lines[0] = final_lines[0].lstrip()
+            
+            code_str = '\n'.join(final_lines)
         
-        code_str = code_str.strip()
+        result = code_str.strip()
         
-        return code_str
+        # Log if significant cleaning happened
+        if len(result) < len(original_code) * 0.8:
+            self.logger.debug(f"Significant code cleaning: {len(original_code)} -> {len(result)} chars")
+        
+        return result
     
     def _validate_syntax(self, code: str) -> Tuple[bool, List[str]]:
         """Validate Python syntax, with automatic cleaning"""

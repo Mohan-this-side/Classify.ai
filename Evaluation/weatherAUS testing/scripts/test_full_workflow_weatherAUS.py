@@ -433,8 +433,10 @@ async def test_agent_with_tracking(
     }
     
     try:
-        df_before = state_manager.get_dataset(state, "cleaned") or state_manager.get_dataset(state, "original")
-        if df_before is not None and not df_before.empty:
+        df_before = state_manager.get_dataset(state, "cleaned")
+        if df_before is None:
+            df_before = state_manager.get_dataset(state, "original")
+        if df_before is not None and isinstance(df_before, pd.DataFrame) and not df_before.empty:
             before_state["dataset_shape"] = df_before.shape
             before_state["columns"] = list(df_before.columns)
             before_state["missing_values"] = df_before.isnull().sum().to_dict()
@@ -631,6 +633,40 @@ async def test_agent_with_tracking(
                 tracker.progress_tracker.track_step(
                     agent_name, agent_name, dataset_state, problems_solved, actions_taken
                 )
+        
+        # Capture AFTER state for visualization
+        after_state = {
+            "dataset_shape": None,
+            "missing_values": {},
+            "columns": [],
+            "data_types": {},
+            "outliers": {},
+            "target_distribution": {}
+        }
+        
+        try:
+            df_after = state_manager.get_dataset(state, "cleaned")
+            if df_after is None:
+                df_after = state_manager.get_dataset(state, "original")
+            if df_after is not None and isinstance(df_after, pd.DataFrame) and not df_after.empty:
+                after_state["dataset_shape"] = df_after.shape
+                after_state["columns"] = list(df_after.columns)
+                after_state["missing_values"] = df_after.isnull().sum().to_dict()
+                after_state["data_types"] = df_after.dtypes.astype(str).to_dict()
+                
+                # Get target distribution if available
+                target_col = state.get("target_column")
+                if target_col and target_col in df_after.columns:
+                    after_state["target_distribution"] = df_after[target_col].value_counts().to_dict()
+        except Exception as e:
+            logger.warning(f"Could not capture after state: {e}")
+        
+        # Store after state in tracker
+        if not hasattr(tracker, 'before_after_states'):
+            tracker.before_after_states = {}
+        if agent_name not in tracker.before_after_states:
+            tracker.before_after_states[agent_name] = {}
+        tracker.before_after_states[agent_name]["after"] = after_state
         
         # Snapshot state
         tracker.snapshot_state(state, agent_name)

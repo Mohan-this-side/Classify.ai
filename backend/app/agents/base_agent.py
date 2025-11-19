@@ -442,42 +442,43 @@ class BaseAgent(ABC):
             self.logger.info(f"  ✅ LLM generated {len(generated_code)} characters of code")
 
             # Add warning suppression header and logger stub to generated code
+            # IMPORTANT: All lines must start at column 0 (no indentation)
             code_header = """import warnings
-            warnings.filterwarnings('ignore', category=DeprecationWarning)
-            warnings.filterwarnings('ignore', category=FutureWarning)
-            warnings.filterwarnings('ignore', category=UserWarning)
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+warnings.filterwarnings('ignore', category=FutureWarning)
+warnings.filterwarnings('ignore', category=UserWarning)
 
-            # Logger stub for sandbox execution (prevents NameError if code uses logger)
-            import logging
-            logger = logging.getLogger('sandbox')
-            logger.setLevel(logging.INFO)
-            # Create a no-op handler if no handlers exist
-            if not logger.handlers:
-                handler = logging.NullHandler()
-                logger.addHandler(handler)
+# Logger stub for sandbox execution (prevents NameError if code uses logger)
+import logging
+logger = logging.getLogger('sandbox')
+logger.setLevel(logging.INFO)
+# Create a no-op handler if no handlers exist
+if not logger.handlers:
+    handler = logging.NullHandler()
+    logger.addHandler(handler)
 
-            # Fix matplotlib cache directory issue in Docker sandbox
-            import os
-            os.environ['MPLCONFIGDIR'] = '/tmp/matplotlib-cache'
-            os.makedirs('/tmp/matplotlib-cache', exist_ok=True)
+# Fix matplotlib cache directory issue in Docker sandbox
+import os
+os.environ['MPLCONFIGDIR'] = '/tmp/matplotlib-cache'
+os.makedirs('/tmp/matplotlib-cache', exist_ok=True)
+
+# Set matplotlib backend before importing pyplot
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend
+
+# Suppress matplotlib cache warnings
+warnings.filterwarnings('ignore', message='.*matplotlib.*cache.*')
+
+"""
+            # Clean LLM-generated code BEFORE adding header (header is already clean)
+            self.logger.info("🧹 Cleaning LLM-generated code...")
+            cleaned_llm_code = self.code_validator._clean_code(generated_code)
+            if cleaned_llm_code != generated_code:
+                self.logger.info(f"  ✅ LLM code cleaned (removed {len(generated_code) - len(cleaned_llm_code)} chars)")
+                generated_code = cleaned_llm_code
             
-            # Set matplotlib backend before importing pyplot
-            import matplotlib
-            matplotlib.use('Agg')  # Use non-interactive backend
-            
-            # Suppress matplotlib cache warnings
-            import warnings
-            warnings.filterwarnings('ignore', message='.*matplotlib.*cache.*')
-
-            """
+            # Now add the header (which is already properly formatted)
             generated_code = code_header + generated_code
-            
-            # Clean code first (fixes common LLM issues like indentation)
-            self.logger.info("🧹 Cleaning generated code...")
-            cleaned_code = self.code_validator._clean_code(generated_code)
-            if cleaned_code != generated_code:
-                self.logger.info(f"  ✅ Code cleaned (removed {len(generated_code) - len(cleaned_code)} chars)")
-                generated_code = cleaned_code
             
             self.logger.info(f"  ✅ Added warning suppression (final: {len(generated_code)} chars)")
 

@@ -70,6 +70,13 @@ from scipy import stats
 from sklearn.ensemble import IsolationForest
 from sklearn.feature_selection import mutual_info_regression
 
+# CRITICAL: Load the dataset from the sandbox data volume (if dataset is provided)
+try:
+    df = pd.read_csv('/app/data/dataset')
+except FileNotFoundError:
+    # If dataset not provided, create empty DataFrame
+    df = pd.DataFrame()
+
 def advanced_discovery_analysis(df):
     results = {{
         "normality_tests": {{}},
@@ -152,8 +159,8 @@ Generate EXECUTABLE Python code that creates DIFFERENT types of visualizations:
 6. **Plot saving**: Save each plot to '/app/results/plot_N.png' where N is 1-7
 7. **Different plot types**: Create DIFFERENT visualization types (not all the same)
 8. **Error handling**: Wrap each plot generation in try-except
-9. **DataFrame variable**: Assume DataFrame is available as variable `df`
-10. **Target column**: Target column is available as variable `target_col` if provided
+9. **DataFrame loading**: You MUST load the dataset using `df = pd.read_csv('/app/data/dataset')` at the start of your code
+10. **Target column**: Target column is available as variable `target_col` if provided (check Layer 1 results)
 11. **Output**: Print a dictionary with plot metadata at the end
 
 ## EXACT Code Structure (copy this format exactly):
@@ -164,6 +171,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 import numpy as np
+
+# CRITICAL: Load the dataset from the sandbox data volume
+df = pd.read_csv('/app/data/dataset')
 
 # Set style
 plt.style.use('default')

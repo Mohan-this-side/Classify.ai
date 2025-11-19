@@ -64,9 +64,16 @@ class FeatureEngineeringAgent(BaseAgent):
         if not target:
             raise ValueError("Target column not specified in state")
         
-        if target not in df.columns:
+        # Case-insensitive matching for target column
+        target_lower = target.lower()
+        matching_cols = [col for col in df.columns if col.lower() == target_lower]
+        if not matching_cols:
             self.logger.warning(f"Target column '{target}' not found in dataset columns: {list(df.columns)}")
             raise ValueError(f"Target column '{target}' not found in dataset")
+        # Use the actual column name (preserve original case)
+        target = matching_cols[0]
+        if target != state.get("target_column"):
+            self.logger.info(f"Using case-matched target column: '{target}' (requested: '{state.get('target_column')}')")
         
         # Create a copy to avoid modifying original
         fe_df = df.copy()
