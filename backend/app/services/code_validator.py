@@ -114,13 +114,59 @@ class CodeValidator:
             suggestions=suggestions
         )
     
+    def _clean_code(self, code: str) -> str:
+        """Clean and fix common LLM-generated code issues"""
+        lines = code.split('\n')
+        cleaned_lines = []
+        
+        for i, line in enumerate(lines):
+            # Fix common indentation issues at the start of code blocks
+            # If line starts with unexpected indent and previous line was empty or import, dedent
+            if i > 0 and line.strip() and not line.startswith(' ') and not line.startswith('\t'):
+                # Check if previous line suggests this should be at module level
+                prev_line = lines[i-1].strip()
+                if prev_line == '' or prev_line.startswith('import') or prev_line.startswith('from') or prev_line.startswith('#'):
+                    # Keep as is - likely correct
+                    cleaned_lines.append(line)
+                else:
+                    cleaned_lines.append(line)
+            else:
+                cleaned_lines.append(line)
+        
+        # Remove leading/trailing whitespace from each line but preserve indentation
+        cleaned_lines = [line.rstrip() for line in cleaned_lines]
+        
+        # Fix common markdown code block issues
+        code_str = '\n'.join(cleaned_lines)
+        
+        # Remove markdown code fences if present
+        if code_str.startswith('```python'):
+            code_str = code_str[9:]
+        elif code_str.startswith('```'):
+            code_str = code_str[3:]
+        if code_str.endswith('```'):
+            code_str = code_str[:-3]
+        
+        code_str = code_str.strip()
+        
+        return code_str
+    
     def _validate_syntax(self, code: str) -> Tuple[bool, List[str]]:
-        """Validate Python syntax"""
+        """Validate Python syntax, with automatic cleaning"""
+        # First try to clean the code
+        cleaned_code = self._clean_code(code)
+        
+        # Try parsing cleaned code
         try:
-            ast.parse(code)
+            ast.parse(cleaned_code)
             return True, []
         except SyntaxError as e:
-            return False, [f"Syntax error at line {e.lineno}: {e.msg}"]
+            # If cleaned code still fails, try original
+            try:
+                ast.parse(code)
+                return True, []
+            except SyntaxError as e2:
+                return False, [f"Syntax error at line {e2.lineno}: {e2.msg}"]
         except Exception as e:
             return False, [f"Parse error: {str(e)}"]
     

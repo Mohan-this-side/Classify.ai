@@ -296,16 +296,35 @@ class MLBuilderAgent(BaseAgent):
 
     def _prepare_data(self, df: pd.DataFrame, target_column: str) -> Tuple[pd.DataFrame, pd.Series]:
         """Prepare data for model training (basic preprocessing only)"""
-        X = df.drop(columns=[target_column])
-        y = df[target_column]
+        # Create a copy to avoid modifying original
+        df_clean = df.copy()
+        
+        # Remove rows with NaN in target column (critical for training)
+        if df_clean[target_column].isnull().any():
+            self.logger.warning(f"Removing {df_clean[target_column].isnull().sum()} rows with NaN in target column")
+            df_clean = df_clean.dropna(subset=[target_column])
+        
+        X = df_clean.drop(columns=[target_column])
+        y = df_clean[target_column]
         
         # Basic one-hot encoding for categorical variables
         X = pd.get_dummies(X, drop_first=True)
         
-        # Handle any remaining missing values
+        # Handle any remaining missing values in features
         if X.isnull().any().any():
-            X = X.fillna(X.mean())
+            # Fill numeric columns with mean
+            numeric_cols = X.select_dtypes(include=[np.number]).columns
+            if len(numeric_cols) > 0:
+                X[numeric_cols] = X[numeric_cols].fillna(X[numeric_cols].mean())
+            # Fill remaining NaN with 0 (for one-hot encoded columns that might have no occurrences)
+            X = X.fillna(0)
         
+        # Ensure target has no NaN (should already be handled above, but double-check)
+        if y.isnull().any():
+            self.logger.error("Target column still contains NaN after cleaning!")
+            raise ValueError("Target column contains NaN values - cannot train model")
+        
+        self.logger.info(f"Prepared data: X shape={X.shape}, y shape={y.shape}, y unique values={y.nunique()}")
         return X, y
 
     # ============================================================================

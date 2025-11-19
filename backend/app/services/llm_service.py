@@ -282,22 +282,46 @@ Generate the code now:
         return prompt
     
     def _extract_code_from_response(self, response: str) -> str:
-        """Extract Python code from LLM response"""
-        # Try to find code blocks
+        """Extract Python code from LLM response, cleaning it properly"""
+        code = response
+        
+        # Try to find code blocks first
         if "```python" in response:
             start = response.find("```python") + 9
             end = response.find("```", start)
             if end != -1:
-                return response[start:end].strip()
-        
+                code = response[start:end].strip()
         elif "```" in response:
             start = response.find("```") + 3
             end = response.find("```", start)
             if end != -1:
-                return response[start:end].strip()
+                code = response[start:end].strip()
         
-        # If no code blocks, return entire response
-        return response.strip()
+        # Clean the code: remove markdown artifacts
+        code = code.strip()
+        
+        # Remove any leading/trailing markdown artifacts
+        lines = code.split('\n')
+        cleaned_lines = []
+        in_code = False
+        
+        for line in lines:
+            # Skip markdown code fence lines
+            if line.strip().startswith('```'):
+                continue
+            # Skip explanatory text before code
+            if not in_code and (line.strip().startswith('import') or line.strip().startswith('from') or line.strip().startswith('def ') or line.strip().startswith('class ') or line.strip().startswith('#')):
+                in_code = True
+            if in_code:
+                cleaned_lines.append(line)
+        
+        code = '\n'.join(cleaned_lines).strip()
+        
+        # If still no code found, return original response
+        if not code or len(code) < 50:
+            return response.strip()
+        
+        return code
     
     async def generate_explanation(
         self,

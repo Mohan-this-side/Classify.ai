@@ -8,7 +8,9 @@ These templates are used to generate code via LLM for Layer 2 analysis.
 PROMPT_VERSION = "1.0.0"
 
 DISCOVERY_PROMPT_TEMPLATE = """
-You are an expert data scientist analyzing a dataset. Based on the Layer 1 statistical profiling results below, generate Python code to perform ADVANCED analysis that goes beyond basic statistics.
+You are an expert data scientist analyzing a dataset. Generate EXECUTABLE Python code for advanced analysis.
+
+CRITICAL: Your code MUST be syntactically correct and executable. Use proper indentation (4 spaces, no tabs). Start all code at column 0 (no leading spaces before imports).
 
 ## Layer 1 Analysis Results:
 
@@ -37,7 +39,7 @@ You are an expert data scientist analyzing a dataset. Based on the Layer 1 stati
 
 ## Your Task:
 
-Generate Python code that performs ADVANCED analysis including:
+Generate EXECUTABLE Python code that performs ADVANCED analysis including:
 
 1. **Normality Testing**: Test numeric columns for normal distribution using Shapiro-Wilk or Anderson-Darling tests
 2. **Stationarity Testing**: For time-series-like data, test for stationarity (ADF test)
@@ -47,18 +49,21 @@ Generate Python code that performs ADVANCED analysis including:
 6. **Preprocessing Recommendations**: Based on data characteristics, recommend specific transformations
 7. **Domain-Specific Insights**: If data patterns suggest specific domains (finance, healthcare, etc.), provide relevant insights
 
-## Code Requirements:
+## STRICT Code Requirements:
 
-- Use only these imports: pandas, numpy, scipy, sklearn
-- Code must be self-contained and executable
-- Return results as a dictionary with keys: "normality_tests", "stationarity_tests", "patterns", "anomalies", "relationships", "recommendations", "domain_insights"
-- Handle errors gracefully
-- Do not use any file I/O, network operations, or system calls
-- Assume the DataFrame is available as variable `df`
+1. **Syntax**: Code MUST be syntactically correct Python 3.11
+2. **Indentation**: Use exactly 4 spaces for indentation (NO tabs, NO mixed indentation)
+3. **Imports**: Use ONLY these imports: pandas, numpy, scipy, sklearn
+4. **No markdown**: Return ONLY Python code, NO markdown code fences (```python or ```)
+5. **No comments outside code**: Do not include explanatory text outside code blocks
+6. **Self-contained**: Code must be executable without modification
+7. **Error handling**: Wrap risky operations in try-except blocks
+8. **Output format**: Return results as a dictionary with keys: "normality_tests", "stationarity_tests", "patterns", "anomalies", "relationships", "recommendations", "domain_insights"
+9. **DataFrame variable**: Assume DataFrame is available as variable `df`
+10. **No file I/O**: Do not use file operations except for saving plots (if needed)
 
-## Code Structure:
+## EXACT Code Structure (copy this format exactly):
 
-```python
 import pandas as pd
 import numpy as np
 from scipy import stats
@@ -75,20 +80,38 @@ def advanced_discovery_analysis(df):
         "recommendations": [],
         "domain_insights": []
     }}
-
-    # Your advanced analysis code here
-
+    
+    try:
+        # Your advanced analysis code here
+        # Test normality for numeric columns
+        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        for col in numeric_cols[:5]:  # Limit to first 5 columns
+            try:
+                stat, p_value = stats.shapiro(df[col].dropna())
+                results["normality_tests"][col] = {{"statistic": stat, "p_value": p_value}}
+            except Exception as e:
+                results["normality_tests"][col] = {{"error": str(e)}}
+        
+        # Add more analysis here
+        
+    except Exception as e:
+        results["error"] = str(e)
+    
     return results
 
-# Execute
+# Execute the function
 result = advanced_discovery_analysis(df)
-```
 
-Generate the complete implementation now. Focus on providing actionable insights.
+# IMPORTANT: Print or return the result so it can be captured
+print(result)
+
+Generate ONLY the Python code following the exact structure above. Start with imports at column 0.
 """
 
 EDA_PROMPT_TEMPLATE = """
-You are an expert data scientist performing Exploratory Data Analysis (EDA). Based on the Layer 1 statistical analysis below, generate Python code to create ADVANCED visualizations and insights.
+You are an expert data scientist performing Exploratory Data Analysis (EDA). Generate EXECUTABLE Python code to create DIFFERENT types of visualizations.
+
+CRITICAL: Your code MUST be syntactically correct and executable. Use proper indentation (4 spaces, no tabs). Start all code at column 0 (no leading spaces before imports).
 
 ## User's Dataset Description:
 {user_description}
@@ -109,27 +132,84 @@ You are an expert data scientist performing Exploratory Data Analysis (EDA). Bas
 
 ## Your Task:
 
-Generate Python code that creates ADVANCED visualizations including:
+Generate EXECUTABLE Python code that creates DIFFERENT types of visualizations:
 
-1. **Interactive Correlation Heatmap**: With p-values and significance indicators
-2. **Distribution Analysis**: Overlaid histograms with KDE, box plots, violin plots
-3. **Pair Plots**: For top correlated features with target
-4. **Outlier Visualization**: Box plots with outlier annotations
-5. **Feature Importance Plot**: Using multiple methods
-6. **Dimensionality Reduction**: PCA/t-SNE visualizations if applicable
-7. **Domain-Specific Visualizations**: Consider the user's description when creating visualizations
+1. **Correlation Heatmap**: Use seaborn.heatmap() - save as 'plot_1.png'
+2. **Distribution Histogram**: Use matplotlib.pyplot.hist() or seaborn.histplot() - save as 'plot_2.png'
+3. **Box Plot**: Use seaborn.boxplot() - save as 'plot_3.png'
+4. **Scatter Plot**: Use matplotlib.pyplot.scatter() - save as 'plot_4.png'
+5. **Violin Plot**: Use seaborn.violinplot() - save as 'plot_5.png'
+6. **Pair Plot**: Use seaborn.pairplot() - save as 'plot_6.png' (if applicable)
+7. **Feature Importance Bar Chart**: Use matplotlib.pyplot.barh() - save as 'plot_7.png'
 
-## Code Requirements:
+## STRICT Code Requirements:
 
-- Use matplotlib, seaborn, or plotly for visualizations
-- Create 5-7 high-quality plots
-- Save plots to files: plot_1.png, plot_2.png, etc.
-- Return plot metadata as dictionary
-- Do not use file I/O except for plot saving
-- Assume DataFrame is available as `df`
-- Consider the user's description: "{user_description}" when generating insights
+1. **Syntax**: Code MUST be syntactically correct Python 3.11
+2. **Indentation**: Use exactly 4 spaces for indentation (NO tabs, NO mixed indentation)
+3. **Imports**: Use ONLY: matplotlib, matplotlib.pyplot, seaborn, pandas, numpy
+4. **No markdown**: Return ONLY Python code, NO markdown code fences (```python or ```)
+5. **No comments outside code**: Do not include explanatory text outside code blocks
+6. **Plot saving**: Save each plot to '/app/results/plot_N.png' where N is 1-7
+7. **Different plot types**: Create DIFFERENT visualization types (not all the same)
+8. **Error handling**: Wrap each plot generation in try-except
+9. **DataFrame variable**: Assume DataFrame is available as variable `df`
+10. **Target column**: Target column is available as variable `target_col` if provided
+11. **Output**: Print a dictionary with plot metadata at the end
 
-Generate the complete visualization code now.
+## EXACT Code Structure (copy this format exactly):
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+import numpy as np
+
+# Set style
+plt.style.use('default')
+sns.set_palette("husl")
+
+plot_metadata = {{}}
+
+try:
+    # Plot 1: Correlation Heatmap
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    if len(numeric_cols) > 1:
+        corr_matrix = df[numeric_cols].corr()
+        plt.figure(figsize=(12, 10))
+        sns.heatmap(corr_matrix, annot=True, fmt='.2f', cmap='coolwarm', center=0)
+        plt.title('Correlation Heatmap')
+        plt.tight_layout()
+        plt.savefig('/app/results/plot_1.png', dpi=150, bbox_inches='tight')
+        plt.close()
+        plot_metadata['plot_1'] = {{'type': 'correlation_heatmap', 'status': 'success'}}
+except Exception as e:
+    plot_metadata['plot_1'] = {{'type': 'correlation_heatmap', 'status': 'failed', 'error': str(e)}}
+
+try:
+    # Plot 2: Distribution Histogram
+    if len(numeric_cols) > 0:
+        fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+        axes = axes.flatten()
+        for i, col in enumerate(numeric_cols[:4]):
+            if i < len(axes):
+                axes[i].hist(df[col].dropna(), bins=30, edgecolor='black')
+                axes[i].set_title(f'Distribution of {{col}}')
+                axes[i].set_xlabel(col)
+                axes[i].set_ylabel('Frequency')
+        plt.tight_layout()
+        plt.savefig('/app/results/plot_2.png', dpi=150, bbox_inches='tight')
+        plt.close()
+        plot_metadata['plot_2'] = {{'type': 'distribution_histogram', 'status': 'success'}}
+except Exception as e:
+    plot_metadata['plot_2'] = {{'type': 'distribution_histogram', 'status': 'failed', 'error': str(e)}}
+
+# Add more plots following the same pattern...
+
+# Print metadata
+print(plot_metadata)
+
+Generate ONLY the Python code following the exact structure above. Start with imports at column 0. Create DIFFERENT plot types.
 """
 
 # Alias for backward compatibility

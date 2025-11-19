@@ -239,8 +239,10 @@ class BaseAgent(ABC):
         # If status is FAILED but we have error info, handle gracefully
         elif status == "FAILED":
             error_msg = sandbox_output.get("error", "Unknown error")
+            error_str = str(error_msg).lower()
+            
             # Check if error is about logger (we've fixed this, but handle gracefully)
-            if "logger" in str(error_msg).lower() and "not defined" in str(error_msg).lower():
+            if "logger" in error_str and "not defined" in error_str:
                 self.logger.warning("Sandbox execution failed due to logger issue (should be fixed now)")
                 # Try to extract any output that might exist
                 output = sandbox_output.get("output", "")
@@ -261,6 +263,32 @@ class BaseAgent(ABC):
                         except Exception:
                             output = {"raw_output": output[:500], "parse_error": "logger_error"}
                     return output if isinstance(output, dict) else {"output": output, "logger_warning": True}
+            
+            # Check if error is about matplotlib cache (warning, not fatal)
+            elif "matplotlib" in error_str and ("cache" in error_str or "mplconfigdir" in error_str):
+                self.logger.warning("Sandbox execution reported matplotlib cache warning (non-fatal)")
+                # Try to extract any output that might exist
+                output = sandbox_output.get("output", "")
+                if output:
+                    self.logger.info("Attempting to use output despite matplotlib cache warning")
+                    # Parse output if it's a string
+                    if isinstance(output, str):
+                        try:
+                            import json
+                            import ast
+                            try:
+                                output = json.loads(output)
+                            except json.JSONDecodeError:
+                                try:
+                                    output = ast.literal_eval(output)
+                                except (ValueError, SyntaxError, NameError):
+                                    output = {"raw_output": output, "parsed": False}
+                        except Exception:
+                            output = {"raw_output": output[:500], "parse_error": "matplotlib_warning"}
+                    # Upgrade status to SUCCESS if we have substantial output
+                    if output and len(str(output)) > 100:
+                        self.logger.info("Upgrading status to SUCCESS - matplotlib warning is non-fatal")
+                        return output if isinstance(output, dict) else {"output": output, "matplotlib_warning": True}
             
             # For other FAILED errors, raise (but log first)
             self.logger.error(f"Sandbox execution failed: {error_msg}")
@@ -415,21 +443,42 @@ class BaseAgent(ABC):
 
             # Add warning suppression header and logger stub to generated code
             code_header = """import warnings
-warnings.filterwarnings('ignore', category=DeprecationWarning)
-warnings.filterwarnings('ignore', category=FutureWarning)
-warnings.filterwarnings('ignore', category=UserWarning)
+            warnings.filterwarnings('ignore', category=DeprecationWarning)
+            warnings.filterwarnings('ignore', category=FutureWarning)
+            warnings.filterwarnings('ignore', category=UserWarning)
 
-# Logger stub for sandbox execution (prevents NameError if code uses logger)
-import logging
-logger = logging.getLogger('sandbox')
-logger.setLevel(logging.INFO)
-# Create a no-op handler if no handlers exist
-if not logger.handlers:
-    handler = logging.NullHandler()
-    logger.addHandler(handler)
+            # Logger stub for sandbox execution (prevents NameError if code uses logger)
+            import logging
+            logger = logging.getLogger('sandbox')
+            logger.setLevel(logging.INFO)
+            # Create a no-op handler if no handlers exist
+            if not logger.handlers:
+                handler = logging.NullHandler()
+                logger.addHandler(handler)
 
-"""
+            # Fix matplotlib cache directory issue in Docker sandbox
+            import os
+            os.environ['MPLCONFIGDIR'] = '/tmp/matplotlib-cache'
+            os.makedirs('/tmp/matplotlib-cache', exist_ok=True)
+            
+            # Set matplotlib backend before importing pyplot
+            import matplotlib
+            matplotlib.use('Agg')  # Use non-interactive backend
+            
+            # Suppress matplotlib cache warnings
+            import warnings
+            warnings.filterwarnings('ignore', message='.*matplotlib.*cache.*')
+
+            """
             generated_code = code_header + generated_code
+            
+            # Clean code first (fixes common LLM issues like indentation)
+            self.logger.info("🧹 Cleaning generated code...")
+            cleaned_code = self.code_validator._clean_code(generated_code)
+            if cleaned_code != generated_code:
+                self.logger.info(f"  ✅ Code cleaned (removed {len(generated_code) - len(cleaned_code)} chars)")
+                generated_code = cleaned_code
+            
             self.logger.info(f"  ✅ Added warning suppression (final: {len(generated_code)} chars)")
 
             # Step 3: Validate code

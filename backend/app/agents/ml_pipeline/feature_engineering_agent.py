@@ -36,105 +36,84 @@ class FeatureEngineeringAgent(BaseAgent):
     def get_dependencies(self) -> list:
         return ["eda_analysis"]
 
-    async def execute(self, state: ClassificationState) -> ClassificationState:
-        try:
-            self.logger.info("Starting feature engineering")
-
-            df = state_manager.get_dataset(state, "cleaned")
-            if df is None:
-                df = state_manager.get_dataset(state, "original")
-            if df is None:
-                raise ValueError("No dataset available for feature engineering")
-
-            target = state.get("target_column")
-            if not target or target not in df.columns:
-                raise ValueError("Target column missing for feature engineering")
-
-            # Simple, safe feature operations (do not mutate original stored df until done)
-            fe_df = df.copy()
-
-            # Example: create interaction features for top 2 numeric columns (if exist)
-            numeric_cols = list(fe_df.select_dtypes(include=["number"]).columns)
-            created: List[str] = []
-            if len(numeric_cols) >= 2:
-                a, b = numeric_cols[0], numeric_cols[1]
-                new_col = f"{a}_x_{b}"
-                fe_df[new_col] = fe_df[a] * fe_df[b]
-                created.append(new_col)
-
-            # Record preprocessing steps and selections (no DataFrame in state)
-            state["engineered_features"] = created
-            state["feature_transformations"] = {
-                "one_hot": "applied in ML builder via pd.get_dummies",
-                "interactions": created,
-            }
-            state["feature_selection_results"] = {
-                "method": "heuristic",
-                "kept_features": [c for c in fe_df.columns if c != target][:100],
-            }
-
-            # Store engineered dataset for downstream (as cleaned replacement)
-            state_manager.store_dataset(state, fe_df, "cleaned")
-
-            state["agent_statuses"]["feature_engineering"] = AgentStatus.COMPLETED
-            state["completed_agents"].append("feature_engineering")
-            self.logger.info("Feature engineering completed")
-            return state
-        
-        except Exception as e:
-            self.logger.error(f"Feature engineering failed: {e}")
-            state["agent_statuses"]["feature_engineering"] = AgentStatus.FAILED
-            state["last_error"] = str(e)
-            state["error_count"] = state.get("error_count", 0) + 1
-            return state
     
     async def perform_layer1_analysis(self, state: ClassificationState) -> Dict[str, Any]:
         """
-        LAYER 1: Analyze available data and determine feature engineering opportunities.
+        LAYER 1: Perform basic feature engineering (hardcoded, reliable).
         
         Args:
             state: Current workflow state
             
         Returns:
-            Dictionary containing Layer 1 analysis results
+            Dictionary containing Layer 1 feature engineering results
         """
-        self.logger.info("🔍 LAYER 1: Analyzing feature engineering opportunities")
+        self.logger.info("🔍 LAYER 1: Performing basic feature engineering")
         
         # Get cleaned dataset
         df = state_manager.get_dataset(state, "cleaned")
         if df is None:
-            raise ValueError("No cleaned dataset available")
+            df = state_manager.get_dataset(state, "original")
+        if df is None:
+            raise ValueError("No dataset available for feature engineering")
         
         target = state.get("target_column")
-        if not target or target not in df.columns:
-            raise ValueError("Target column missing")
+        if not target:
+            # Try alternative key names
+            target = state.get("target_col") or state.get("target")
+        
+        if not target:
+            raise ValueError("Target column not specified in state")
+        
+        if target not in df.columns:
+            self.logger.warning(f"Target column '{target}' not found in dataset columns: {list(df.columns)}")
+            raise ValueError(f"Target column '{target}' not found in dataset")
+        
+        # Create a copy to avoid modifying original
+        fe_df = df.copy()
         
         # Analyze data types
-        numeric_cols = list(df.select_dtypes(include=["number"]).columns)
-        categorical_cols = list(df.select_dtypes(exclude=["number"]).columns)
+        numeric_cols = list(fe_df.select_dtypes(include=["number"]).columns)
+        categorical_cols = list(fe_df.select_dtypes(exclude=["number"]).columns)
         
-        # Check for potential feature engineering opportunities
-        opportunities = []
+        # Remove target from numeric/categorical lists
+        if target in numeric_cols:
+            numeric_cols.remove(target)
+        if target in categorical_cols:
+            categorical_cols.remove(target)
         
+        # LAYER 1: Create basic interaction features
+        created: List[str] = []
         if len(numeric_cols) >= 2:
-            opportunities.append("Create interaction features between numeric columns")
+            # Create interaction feature for top 2 numeric columns
+            a, b = numeric_cols[0], numeric_cols[1]
+            new_col = f"{a}_x_{b}"
+            fe_df[new_col] = fe_df[a] * fe_df[b]
+            created.append(new_col)
         
-        if len(categorical_cols) > 0:
-            opportunities.append("Apply one-hot encoding to categorical columns")
+        # Store engineered dataset for downstream
+        state_manager.store_dataset(state, fe_df, "cleaned")
         
-        if len(numeric_cols) > 0:
-            opportunities.append("Create polynomial features for linear relationships")
-        
-        analysis_results = {
+        # Prepare results
+        results = {
+            "engineered_features": created,
+            "feature_transformations": {
+                "one_hot": "applied in ML builder via pd.get_dummies",
+                "interactions": created,
+            },
+            "feature_selection_results": {
+                "method": "heuristic",
+                "kept_features": [c for c in fe_df.columns if c != target][:100],
+            },
             "numeric_columns": numeric_cols,
             "categorical_columns": categorical_cols,
             "target_column": target,
-            "feature_engineering_opportunities": opportunities,
             "total_features_before": len(df.columns),
+            "total_features_after": len(fe_df.columns),
+            "features_created": len(created),
         }
         
-        self.logger.info("✅ LAYER 1: Feature engineering analysis complete")
-        return analysis_results
+        self.logger.info(f"✅ LAYER 1: Feature engineering complete - Created {len(created)} features")
+        return results
     
     def generate_layer2_code(self, layer1_results: Dict[str, Any], state: ClassificationState) -> str:
         """

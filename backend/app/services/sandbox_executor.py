@@ -123,8 +123,13 @@ class SandboxExecutor:
                         }
             
             # Create environment file if needed
-            if additional_env:
-                env_json = json.dumps(additional_env)
+            # Always include matplotlib cache directory fix
+            env_vars = additional_env.copy() if additional_env else {}
+            env_vars['MPLCONFIGDIR'] = '/tmp/matplotlib-cache'
+            env_vars['PYTHONUNBUFFERED'] = '1'  # Ensure output is not buffered
+            
+            if env_vars:
+                env_json = json.dumps(env_vars)
                 with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as env_file:
                     env_file_path = env_file.name
                     env_file.write(env_json)
@@ -231,7 +236,9 @@ class SandboxExecutor:
             "--cpus", str(self.cpu_limit),
             "--security-opt=no-new-privileges",
             "--read-only",  # Read-only filesystem
-            "--tmpfs", "/tmp:exec,size=256M,nodev,nosuid",  # Temporary filesystem
+            "--tmpfs", "/tmp:exec,size=512M,nodev,nosuid",  # Temporary filesystem (increased for matplotlib cache)
+            "-e", "MPLCONFIGDIR=/tmp/matplotlib-cache",  # Set matplotlib cache directory
+            "-e", "PYTHONUNBUFFERED=1",  # Ensure output is not buffered
             "-v", f"{self.code_volume}:/app/code",
             "-v", f"{self.results_volume}:/app/results",
             "-v", f"{self.data_volume}:/app/data"
