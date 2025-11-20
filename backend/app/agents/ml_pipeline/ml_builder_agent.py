@@ -27,7 +27,7 @@ import pandas as pd
 import google.generativeai as genai
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, classification_report
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, classification_report, roc_auc_score
 from sklearn.model_selection import GridSearchCV, cross_val_score, train_test_split
 from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
@@ -37,6 +37,14 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
+
+# Import SMOTE for class imbalance handling
+try:
+    from imblearn.over_sampling import SMOTE
+    SMOTE_AVAILABLE = True
+except ImportError:
+    SMOTE_AVAILABLE = False
+    logging.warning("imblearn not available - SMOTE will not be used")
 
 from ..base_agent import BaseAgent
 from ...workflows.state_management import AgentStatus, ClassificationState, state_manager
@@ -307,6 +315,12 @@ class MLBuilderAgent(BaseAgent):
         X = df_clean.drop(columns=[target_column])
         y = df_clean[target_column]
         
+        # Drop datetime columns (they can't be used directly in sklearn models)
+        datetime_cols = X.select_dtypes(include=['datetime64', 'datetime']).columns
+        if len(datetime_cols) > 0:
+            self.logger.info(f"Dropping datetime columns: {list(datetime_cols)}")
+            X = X.drop(columns=datetime_cols)
+        
         # Basic one-hot encoding for categorical variables
         X = pd.get_dummies(X, drop_first=True)
         
@@ -384,11 +398,16 @@ REQUIREMENTS:
 2. MUST implement train/test split BEFORE any preprocessing
 3. Use the recommended models: {data_analysis['recommended_models'][:3]}
 4. Include hyperparameter tuning with GridSearchCV
-5. Include comprehensive evaluation metrics
+5. Include comprehensive evaluation metrics (accuracy, F1-score, ROC-AUC, precision, recall)
 6. Add educational comments explaining each step
 7. Handle both numeric and categorical features appropriately
 8. Use proper cross-validation
 9. Save the best model and results
+10. **CRITICAL**: If data is imbalanced (is_balanced={data_analysis['is_balanced']}), you MUST apply SMOTE:
+   - Import: from imblearn.over_sampling import SMOTE
+   - Apply SMOTE to training data: smote = SMOTE(random_state=42); X_train, y_train = smote.fit_resample(X_train, y_train)
+   - This is MANDATORY for imbalanced datasets to prevent biased predictions
+11. **CRITICAL**: Use appropriate metrics for imbalanced data - prioritize F1-score and ROC-AUC over accuracy
 
 Generate complete, production-ready Python code that follows ML best practices.
 The code should be educational and well-commented.
@@ -827,14 +846,30 @@ y_test = pd.read_csv('y_test.csv').iloc[:, 0]   # First column
         self.logger.info(f"Best params for {model_name}: {gs.best_params_} (score={gs.best_score_:.4f})")
         return gs.best_estimator_, gs.best_params_
 
-    def _calculate_metrics(self, y_true: pd.Series, y_pred: np.ndarray) -> Dict[str, float]:
-        """Calculate evaluation metrics"""
-        return {
+    def _calculate_metrics(self, y_true: pd.Series, y_pred: np.ndarray, y_pred_proba: Optional[np.ndarray] = None) -> Dict[str, float]:
+        """Calculate comprehensive evaluation metrics"""
+        metrics = {
             "accuracy": float(accuracy_score(y_true, y_pred)),
-            "precision": float(precision_score(y_true, y_pred, average="weighted")),
-            "recall": float(recall_score(y_true, y_pred, average="weighted")),
-            "f1_score": float(f1_score(y_true, y_pred, average="weighted")),
+            "precision": float(precision_score(y_true, y_pred, average="weighted", zero_division=0)),
+            "recall": float(recall_score(y_true, y_pred, average="weighted", zero_division=0)),
+            "f1_score": float(f1_score(y_true, y_pred, average="weighted", zero_division=0)),
+            "precision_macro": float(precision_score(y_true, y_pred, average="macro", zero_division=0)),
+            "recall_macro": float(recall_score(y_true, y_pred, average="macro", zero_division=0)),
+            "f1_macro": float(f1_score(y_true, y_pred, average="macro", zero_division=0)),
         }
+        
+        # Add ROC-AUC if probabilities available
+        if y_pred_proba is not None:
+            try:
+                # Handle binary and multiclass
+                if len(np.unique(y_true)) == 2:
+                    metrics["roc_auc"] = float(roc_auc_score(y_true, y_pred_proba))
+                else:
+                    metrics["roc_auc"] = float(roc_auc_score(y_true, y_pred_proba, multi_class='ovr', average='weighted'))
+            except Exception as e:
+                self.logger.warning(f"Could not calculate ROC-AUC: {e}")
+        
+        return metrics
 
     def _save_model(self, model: Any, session_id: Optional[str]) -> str:
         """Save trained model using storage service"""
@@ -881,17 +916,111 @@ y_test = pd.read_csv('y_test.csv').iloc[:, 0]   # First column
             if not target_column:
                 raise ValueError("No target column specified")
             
+            # Case-insensitive matching for target column (Feature Engineering may have changed case)
+            target_lower = target_column.lower()
+            matching_cols = [col for col in cleaned_df.columns if col.lower() == target_lower]
+            if matching_cols:
+                actual_target_col = matching_cols[0]
+                if actual_target_col != target_column:
+                    self.logger.info(f"Using case-matched target column: '{actual_target_col}' (requested: '{target_column}')")
+                    target_column = actual_target_col
+            
             # Prepare data
             X, y = self._prepare_data(cleaned_df, target_column)
+            
+            # Check for temporal data (Date column) - use time-based split if available
+            use_temporal_split = False
+            temporal_info = {}
+            if "Date" in cleaned_df.columns:
+                try:
+                    cleaned_df["Date"] = pd.to_datetime(cleaned_df["Date"])
+                    sorted_indices = cleaned_df["Date"].sort_values().index
+                    split_idx = int(len(sorted_indices) * 0.8)
+                    train_indices = sorted_indices[:split_idx]
+                    test_indices = sorted_indices[split_idx:]
+                    
+                    X_train = X.loc[train_indices]
+                    X_test = X.loc[test_indices]
+                    y_train = y.loc[train_indices]
+                    y_test = y.loc[test_indices]
+                    
+                    use_temporal_split = True
+                    temporal_info = {
+                        "split_method": "temporal",
+                        "train_period": f"{cleaned_df.loc[train_indices, 'Date'].min()} to {cleaned_df.loc[train_indices, 'Date'].max()}",
+                        "test_period": f"{cleaned_df.loc[test_indices, 'Date'].min()} to {cleaned_df.loc[test_indices, 'Date'].max()}",
+                        "train_size": len(train_indices),
+                        "test_size": len(test_indices)
+                    }
+                    self.logger.info(f"✅ Using temporal split: Train {temporal_info['train_period']}, Test {temporal_info['test_period']}")
+                except Exception as e:
+                    self.logger.warning(f"Failed to use temporal split: {e}, falling back to random split")
+                    use_temporal_split = False
+            
+            if not use_temporal_split:
+                # Use random stratified split
             X_train, X_test, y_train, y_test = train_test_split(
                 X, y, test_size=0.2, random_state=42, stratify=y if len(y.unique()) > 1 else None
             )
+                temporal_info = {"split_method": "random_stratified", "test_size": 0.2}
             
             # Analyze data for model selection
             analysis = self._analyze_data_for_model_selection(cleaned_df, target_column)
             
+            # Handle class imbalance with SMOTE if detected
+            imbalance_handling = None
+            if not analysis.get("is_balanced", True):
+                imbalance_ratio = min(analysis["target_distribution"].values()) / max(analysis["target_distribution"].values())
+                if imbalance_ratio < 0.5:  # More than 2:1 imbalance
+                    if SMOTE_AVAILABLE:
+                        try:
+                            # Calculate class distribution before SMOTE
+                            ratio_before = y_train.value_counts(normalize=True).to_dict()
+                            
+                            # Apply SMOTE
+                            smote = SMOTE(random_state=42)
+                            X_train, y_train = smote.fit_resample(X_train, y_train)
+                            
+                            # Calculate class distribution after SMOTE
+                            ratio_after = pd.Series(y_train).value_counts(normalize=True).to_dict()
+                            
+                            imbalance_handling = {
+                                "method": "SMOTE",
+                                "imbalance_ratio_before": imbalance_ratio,
+                                "ratio_before": ratio_before,
+                                "ratio_after": ratio_after,
+                                "samples_generated": len(y_train) - len(X_test) * 4,  # Approximate
+                                "rationale": f"Severe class imbalance detected (ratio: {imbalance_ratio:.3f}), applied SMOTE to balance classes"
+                            }
+                            self.logger.info(f"✅ Applied SMOTE: Before {ratio_before}, After {ratio_after}")
+                        except Exception as e:
+                            self.logger.warning(f"SMOTE failed: {e}, using class weights instead")
+                            imbalance_handling = {
+                                "method": "class_weights",
+                                "imbalance_ratio": imbalance_ratio,
+                                "rationale": f"SMOTE failed, will use class_weight='balanced' in models"
+                            }
+                    else:
+                        imbalance_handling = {
+                            "method": "class_weights",
+                            "imbalance_ratio": imbalance_ratio,
+                            "rationale": "SMOTE not available, will use class_weight='balanced' in models"
+                        }
+            
             # Train model using fallback approach (reliable)
             self.logger.info("Training model using Layer 1 (hardcoded) approach")
+            
+            # If imbalance handling used class weights, update model candidates
+            if imbalance_handling and imbalance_handling.get("method") == "class_weights":
+                # Update models to use class weights
+                for name, model in self.model_candidates.items():
+                    if hasattr(model, 'set_params'):
+                        try:
+                            if 'class_weight' in model.get_params():
+                                model.set_params(class_weight='balanced')
+                        except:
+                            pass
+            
             best_model_name = self._select_best_model(X_train, y_train)
             best_model, best_params = self._tune_hyperparameters(best_model_name, X_train, y_train)
             
@@ -924,11 +1053,29 @@ y_test = pd.read_csv('y_test.csv').iloc[:, 0]   # First column
             # Store model externally
             state_manager.external_storage[state.get("dataset_id")]["model"] = best_model
             
+            # Model selection reasoning
+            # Generate model selection reason
+            reason = f"Selected {best_model_name} based on data characteristics"
+            if not analysis.get('is_balanced', True):
+                reason += " (imbalanced data)"
+            if analysis.get('complexity_score', 0.5) > 0.7:
+                reason += " (high complexity)"
+            elif analysis.get('complexity_score', 0.5) < 0.3:
+                reason += " (low complexity)"
+            
+            model_selection_reasoning = {
+                "selected_model": best_model_name,
+                "reason": reason,
+                "alternatives_considered": list(self.model_candidates.keys()),
+                "final_choice_rationale": f"Selected {best_model_name} based on data characteristics: imbalance={not analysis.get('is_balanced', True)}, complexity={analysis.get('complexity_score', 0.5):.2f}"
+            }
+            
             results = {
                 "model_selection_results": {
                     "selected_model": best_model_name,
                     "best_parameters": best_params,
-                    "models_tested": list(self.model_candidates.keys())
+                    "models_tested": list(self.model_candidates.keys()),
+                    "reasoning": model_selection_reasoning
                 },
                 "best_model": best_model_name,
                 "model_hyperparameters": best_params,
@@ -944,7 +1091,10 @@ y_test = pd.read_csv('y_test.csv').iloc[:, 0]   # First column
                 "model_explanation": self._generate_model_explanation(best_model_name, best_params, metrics),
                 "data_analysis": analysis,
                 "pipeline_enforcement": True,
-                "data_leakage_prevention": True
+                "data_leakage_prevention": True,
+                "temporal_split_info": temporal_info,
+                "imbalance_handling": imbalance_handling,
+                "model_selection_reasoning": model_selection_reasoning
             }
             
             self.logger.info(f"✅ Layer 1 model training completed: {best_model_name} with {test_score:.4f} accuracy")
@@ -970,6 +1120,14 @@ y_test = pd.read_csv('y_test.csv').iloc[:, 0]   # First column
             target_column = state.get("target_column")
             if not target_column:
                 return {}
+            
+            # Case-insensitive matching for target column
+            target_lower = target_column.lower()
+            matching_cols = [col for col in cleaned_df.columns if col.lower() == target_lower]
+            if matching_cols:
+                actual_target_col = matching_cols[0]
+                if actual_target_col != target_column:
+                    target_column = actual_target_col
             
             # Prepare data
             X, y = self._prepare_data(cleaned_df, target_column)

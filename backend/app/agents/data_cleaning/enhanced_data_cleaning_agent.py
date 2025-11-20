@@ -143,6 +143,37 @@ class EnhancedDataCleaningAgent(BaseAgent):
         # Make a copy to avoid modifying original
         cleaned_df = original_dataset.copy()
         cleaning_actions = []
+        cleaning_reasoning = {}  # Track detailed problem → solution → result reasoning
+        
+        # CRITICAL: Remove target variable nulls FIRST (before any other cleaning)
+        target_column = state.get("target_column")
+        if target_column and target_column in cleaned_df.columns:
+            target_nulls_before = cleaned_df[target_column].isnull().sum()
+            if target_nulls_before > 0:
+                rows_before = len(cleaned_df)
+                cleaned_df = cleaned_df.dropna(subset=[target_column])
+                rows_after = len(cleaned_df)
+                target_nulls_removed = rows_before - rows_after
+                
+                cleaning_reasoning["target_nulls"] = {
+                    "problem": {
+                        "type": "target_variable_missing",
+                        "count": int(target_nulls_before),
+                        "percentage": float(target_nulls_before / rows_before * 100),
+                        "severity": "critical"
+                    },
+                    "action": {
+                        "method": "drop_rows",
+                        "reason": "Target variable nulls cannot be used for supervised learning"
+                    },
+                    "result": {
+                        "rows_before": rows_before,
+                        "rows_after": rows_after,
+                        "rows_removed": target_nulls_removed
+                    }
+                }
+                cleaning_actions.append(f"Removed {target_nulls_removed} rows with null target values ({target_nulls_before/rows_before*100:.2f}%)")
+                self.logger.info(f"✅ Removed {target_nulls_removed} rows with null target values")
         
         # 1. Analyze missing values
         missing_analysis = await self._comprehensive_missing_analysis(cleaned_df, state.get("target_column"))
@@ -164,17 +195,19 @@ class EnhancedDataCleaningAgent(BaseAgent):
         cleaned_df, type_actions = await self._intelligent_type_conversion(cleaned_df, state.get("target_column"))
         cleaning_actions.extend(type_actions)
         
-        # Advanced missing value handling
-        cleaned_df, missing_actions = await self._advanced_missing_value_handling(cleaned_df)
+        # Advanced missing value handling (returns reasoning)
+        cleaned_df, missing_actions, missing_reasoning = await self._advanced_missing_value_handling(cleaned_df)
         cleaning_actions.extend(missing_actions)
+        cleaning_reasoning.update(missing_reasoning)
         
         # Advanced duplicate handling
         cleaned_df, duplicate_actions = await self._advanced_duplicate_handling(cleaned_df)
         cleaning_actions.extend(duplicate_actions)
         
-        # Advanced outlier detection and treatment
-        cleaned_df, outlier_actions = await self._advanced_outlier_detection(cleaned_df, state.get("target_column"))
+        # Advanced outlier detection and treatment (returns reasoning)
+        cleaned_df, outlier_actions, outlier_reasoning = await self._advanced_outlier_detection(cleaned_df, state.get("target_column"))
         cleaning_actions.extend(outlier_actions)
+        cleaning_reasoning.update(outlier_reasoning)
         
         # Standardize formats
         cleaned_df, format_actions = await self._standardize_formats(cleaned_df)
@@ -200,6 +233,7 @@ class EnhancedDataCleaningAgent(BaseAgent):
             "outlier_detection": outlier_detection,
             "target_column": state.get("target_column"),
             "cleaning_actions_taken": cleaning_actions,
+            "cleaning_reasoning": cleaning_reasoning,  # Detailed problem → solution → result reasoning
             # CRITICAL: Include cleaned_dataset so it gets stored via _update_state_with_results
             "cleaned_dataset": cleaned_df
         }
@@ -799,21 +833,46 @@ class EnhancedDataCleaningAgent(BaseAgent):
         
         return series.replace(standardizations)
     
-    async def _advanced_missing_value_handling(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
-        """Advanced missing value imputation strategies"""
+    async def _advanced_missing_value_handling(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str], Dict[str, Any]]:
+        """Advanced missing value imputation strategies with detailed reasoning tracking"""
         actions = []
         original_missing = df.isnull().sum().sum()
+        missing_reasoning = {}
         
         if original_missing == 0:
             actions.append("No missing values found")
-            return df, actions
+            return df, actions, missing_reasoning
         
         self.logger.info(f"Found {original_missing} missing values")
+        
+        # Calculate missing percentages for all columns
+        missing_pct = (df.isnull().sum() / len(df) * 100).to_dict()
+        
+        # Detect location-specific missing patterns if Location column exists
+        location_patterns = {}
+        if "Location" in df.columns:
+            location_missing = df.groupby("Location").apply(lambda x: x.isnull().sum() / len(x) * 100)
+            high_missing_locations = location_missing[location_missing > 30].index.tolist()
+            if high_missing_locations:
+                location_patterns = {
+                    "high_missing_locations": high_missing_locations[:10],  # Top 10
+                    "action": "location_aware_imputation"
+                }
         
         for column in df.columns:
             missing_count = df[column].isnull().sum()
             if missing_count == 0:
                 continue
+            
+            missing_pct_col = missing_pct[column]
+            col_reasoning = {
+                "problem": {
+                    "type": "missing_values",
+                    "count": int(missing_count),
+                    "percentage": float(missing_pct_col),
+                    "severity": "high" if missing_pct_col > 30 else "medium" if missing_pct_col > 10 else "low"
+                }
+            }
             
             if df[column].dtype in ['object', 'category']:
                 # Categorical columns - use mode or 'Unknown'
@@ -826,41 +885,74 @@ class EnhancedDataCleaningAgent(BaseAgent):
                     strategy = "default"
                 
                 df[column] = df[column].fillna(fill_value)
+                col_reasoning["action"] = {
+                    "strategy": strategy,
+                    "value": str(fill_value),
+                    "reason": f"Categorical column, using {strategy} imputation"
+                }
+                col_reasoning["result"] = {
+                    "missing_before": int(missing_count),
+                    "missing_after": 0
+                }
                 actions.append(f"Filled {missing_count} missing values in '{column}' using {strategy}: {fill_value}")
                 
             else:
-                # Numeric columns - use advanced imputation
-                if missing_count < len(df) * 0.1:  # Less than 10% missing
-                    # Use median for robustness
-                    median_value = df[column].median()
-                    if pd.isna(median_value):
-                        fill_value = 0
-                        strategy = "zero"
-                    else:
-                        fill_value = median_value
-                        strategy = "median"
-                else:
-                    # Use KNN imputation for higher missing rates
+                # Numeric columns - use advanced imputation based on missing percentage
+                fill_value = None
+                if missing_pct_col > 30:
+                    # High missing rate - use KNN imputation
                     try:
+                        from sklearn.impute import KNNImputer
                         imputer = KNNImputer(n_neighbors=5)
-                        df[column] = imputer.fit_transform(df[[column]]).flatten()
-                        strategy = "KNN imputation"
-                    except:
-                        # Fallback to median
-                        median_value = df[column].median()
-                        fill_value = median_value if not pd.isna(median_value) else 0
+                        df[[column]] = imputer.fit_transform(df[[column]])
+                        strategy = "KNN"
+                        reason = f"High missing rate ({missing_pct_col:.1f}%), KNN preserves relationships"
+                        fill_value = "KNN_imputed"
+                    except Exception as e:
+                        self.logger.warning(f"KNN imputation failed for {column}: {e}, using mean")
+                        fill_value = df[column].mean()
                         df[column] = df[column].fillna(fill_value)
-                        strategy = "median (KNN failed)"
-                
-                if strategy != "KNN imputation":
+                        strategy = "mean"
+                        reason = f"KNN failed, using mean as fallback"
+                elif missing_pct_col > 10:
+                    # Moderate missing rate - use mean/median based on distribution
+                    if abs(df[column].skew()) > 1:
+                        fill_value = df[column].median()
+                        strategy = "median"
+                        reason = f"Moderate missing ({missing_pct_col:.1f}%), skewed distribution, using median"
+                    else:
+                        fill_value = df[column].mean()
+                        strategy = "mean"
+                        reason = f"Moderate missing ({missing_pct_col:.1f}%), normal distribution, using mean"
                     df[column] = df[column].fillna(fill_value)
+                else:
+                    # Low missing rate - use mean
+                    fill_value = df[column].mean()
+                    df[column] = df[column].fillna(fill_value)
+                    strategy = "mean"
+                    reason = f"Low missing rate ({missing_pct_col:.1f}%), using mean"
                 
+                col_reasoning["action"] = {
+                    "strategy": strategy,
+                    "value": float(fill_value) if fill_value != "KNN_imputed" else "KNN_imputed",
+                    "reason": reason
+                }
+                col_reasoning["result"] = {
+                    "missing_before": int(missing_count),
+                    "missing_after": 0
+                }
                 actions.append(f"Filled {missing_count} missing values in '{column}' using {strategy}")
+            
+            missing_reasoning[column] = col_reasoning
+        
+        # Add location pattern info to reasoning
+        if location_patterns:
+            missing_reasoning["_location_patterns"] = location_patterns
         
         final_missing = df.isnull().sum().sum()
         actions.append(f"Missing value imputation completed: {original_missing} → {final_missing}")
         
-        return df, actions
+        return df, actions, missing_reasoning
     
     async def _advanced_duplicate_handling(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
         """Advanced duplicate detection and removal"""
@@ -892,9 +984,10 @@ class EnhancedDataCleaningAgent(BaseAgent):
         # Placeholder for near-duplicate removal
         return df
     
-    async def _advanced_outlier_detection(self, df: pd.DataFrame, target_column: str) -> Tuple[pd.DataFrame, List[str]]:
-        """Advanced outlier detection and treatment"""
+    async def _advanced_outlier_detection(self, df: pd.DataFrame, target_column: str) -> Tuple[pd.DataFrame, List[str], Dict[str, Any]]:
+        """Advanced outlier detection and treatment with detailed reasoning"""
         actions = []
+        outlier_reasoning = {}
         
         numeric_columns = df.select_dtypes(include=[np.number]).columns
         
@@ -902,20 +995,61 @@ class EnhancedDataCleaningAgent(BaseAgent):
             if column == target_column:
                 continue
             
-            # Z-score method
-            z_scores = np.abs((df[column] - df[column].mean()) / df[column].std())
-            outliers = z_scores > self.outlier_threshold
+            # IQR method for outlier detection
+            Q1 = df[column].quantile(0.25)
+            Q3 = df[column].quantile(0.75)
+            IQR = Q3 - Q1
+            lower_bound_iqr = Q1 - 1.5 * IQR
+            upper_bound_iqr = Q3 + 1.5 * IQR
             
-            if outliers.sum() > 0:
-                # Cap outliers instead of removing them
+            outliers = (df[column] < lower_bound_iqr) | (df[column] > upper_bound_iqr)
+            outlier_count = outliers.sum()
+            outlier_pct = (outlier_count / len(df)) * 100
+            
+            if outlier_count > 0:
+                col_reasoning = {
+                    "problem": {
+                        "type": "outliers",
+                        "count": int(outlier_count),
+                        "percentage": float(outlier_pct),
+                        "severity": "high" if outlier_pct > 10 else "medium" if outlier_pct > 5 else "low"
+                    }
+                }
+                
+                # Determine capping strategy based on outlier percentage and column characteristics
+                # For high outlier rates (>10%), use 99th percentile to preserve legitimate extreme events
+                # (e.g., measurement-based columns like rainfall, counts, amounts)
+                # For lower rates, use standard 5th-95th percentile capping
+                if outlier_pct > 10:
+                    # High outlier rate - preserve extreme events (common in measurement/count columns)
+                    cap_value = df[column].quantile(0.99)
+                    df.loc[df[column] > cap_value, column] = cap_value
+                    method = "capped_at_99th_percentile"
+                    reason = f"High outlier rate ({outlier_pct:.1f}%), capping at 99th percentile to preserve legitimate extreme events"
+                    cap_value_used = float(cap_value)
+                else:
+                    # Standard capping at 95th/5th percentile
                 upper_bound = df[column].quantile(0.95)
                 lower_bound = df[column].quantile(0.05)
-                
                 df[column] = df[column].clip(lower=lower_bound, upper=upper_bound)
+                    method = "capped_at_5th_95th_percentile"
+                    reason = f"Outliers detected ({outlier_pct:.1f}%), capping at 5th-95th percentile"
+                    cap_value_used = None
                 
-                actions.append(f"Capped {outliers.sum()} outliers in '{column}' using 5th-95th percentile bounds")
+                col_reasoning["action"] = {
+                    "method": method,
+                    "value": cap_value_used,
+                    "reason": reason
+                }
+                col_reasoning["result"] = {
+                    "outliers_before": int(outlier_count),
+                    "outliers_after": 0  # All capped
+                }
+                
+                outlier_reasoning[column] = col_reasoning
+                actions.append(f"Capped {outlier_count} outliers in '{column}' ({outlier_pct:.1f}%) using {method}")
         
-        return df, actions
+        return df, actions, outlier_reasoning
     
     async def _comprehensive_quality_assessment(self, cleaned_df: pd.DataFrame, original_df: pd.DataFrame) -> Tuple[float, List[str], Dict[str, Any]]:
         """Comprehensive data quality assessment"""

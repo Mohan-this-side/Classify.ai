@@ -43,6 +43,11 @@ from app.services.sandbox_executor import SandboxExecutor
 # Import enhanced workflow tracker
 from enhanced_workflow_tracker import DatasetProblemAnalyzer, AgentSolutionTracker, WorkflowProgressTracker
 
+# Import reasoning extraction and visualization
+from reasoning_extractor import AgentReasoningExtractor
+from reasoning_plot_generator import ReasoningPlotGenerator
+from evaluation_generator import EvaluationGenerator
+
 # Import visualization modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
 try:
@@ -59,15 +64,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(str(Path(__file__).parent.parent / 'logs' / 'full_workflow_weatherAUS.log')),
-        logging.StreamHandler()
-    ]
-)
+# Note: Logging will be set up in test_full_workflow with timestamp-based log file
 
 logger = logging.getLogger(__name__)
 
@@ -476,6 +473,30 @@ async def test_agent_with_tracking(
         state = await agent.execute(state)
         execution_time = time.time() - start_time
         
+        # Extract reasoning after agent execution
+        if hasattr(tracker, 'reasoning_extractor'):
+            try:
+                agent_reasoning = {}
+                if agent_name == "Data Cleaning":
+                    agent_reasoning = tracker.reasoning_extractor.extract_cleaning_reasoning(state, agent_name)
+                elif agent_name == "Feature Engineering":
+                    agent_reasoning = tracker.reasoning_extractor.extract_feature_engineering_reasoning(state)
+                elif agent_name == "EDA Analysis":
+                    # EDA reasoning is extracted later from problem_detection
+                    pass
+                elif agent_name == "ML Building":
+                    agent_reasoning = {
+                        "imbalance": tracker.reasoning_extractor.extract_imbalance_reasoning(state),
+                        "temporal": tracker.reasoning_extractor.extract_temporal_reasoning(state),
+                        "model_selection": tracker.reasoning_extractor.extract_model_selection_reasoning(state)
+                    }
+                
+                if agent_reasoning:
+                    tracker.reasoning_tracking[agent_name] = agent_reasoning
+                    logger.info(f"✅ Extracted reasoning for {agent_name}")
+            except Exception as e:
+                logger.warning(f"Could not extract reasoning for {agent_name}: {e}")
+        
         # Get state keys after execution
         keys_after = set(state.keys())
         new_keys = list(keys_after - keys_before)
@@ -571,19 +592,19 @@ async def test_agent_with_tracking(
             if 'layer2_sandbox_status' in key_lower:
                 layer2_executed = True
                 if value == 'SUCCESS':
-                    layer2_indicators.append(True)
+                        layer2_indicators.append(True)
                     docker_indicators.append(True)
             
             # Check for layer2 success indicators
             if 'layer2' in key_lower and 'success' in key_lower:
                 if value is True:
                     layer2_executed = True
-                    layer2_indicators.append(True)
+                        layer2_indicators.append(True)
                     docker_indicators.append(True)
-            
+        
             # Check for sandbox execution time
             if 'sandbox_execution_time' in key_lower and value is not None:
-                layer2_executed = True
+            layer2_executed = True
                 layer2_indicators.append(True)
                 docker_indicators.append(True)
         
@@ -591,7 +612,7 @@ async def test_agent_with_tracking(
         if layer2_executed or any(layer2_indicators):
             layer2_executed = True
             if any(docker_indicators):
-                docker_success = True
+            docker_success = True
         
         # Track agent execution
         tracker.track_agent(
@@ -713,7 +734,43 @@ async def test_full_workflow():
     logger.info("Target: RainTomorrow")
     logger.info("="*80)
     
+    # Create timestamp-based output directory
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_base = Path(__file__).parent.parent / "results" / timestamp
+    output_base.mkdir(parents=True, exist_ok=True)
+    
+    # Create subdirectories
+    plots_dir = output_base / "plots"
+    reports_dir = output_base / "reports"
+    tables_dir = output_base / "tables"
+    logs_dir = output_base / "logs"
+    
+    plots_dir.mkdir(exist_ok=True)
+    reports_dir.mkdir(exist_ok=True)
+    tables_dir.mkdir(exist_ok=True)
+    logs_dir.mkdir(exist_ok=True)
+    
+    logger.info(f"📁 Output directory: {output_base}")
+    
     tracker = WorkflowTracker()
+    tracker.output_base = output_base  # Store for later use
+    
+    # Initialize reasoning extractor
+    reasoning_extractor = AgentReasoningExtractor()
+    tracker.reasoning_extractor = reasoning_extractor
+    tracker.reasoning_tracking = {}  # Store reasoning for each agent
+    
+    # Set up logging with timestamp-based log file
+    log_file = logs_dir / f'full_workflow_weatherAUS_{timestamp}.log'
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(str(log_file)),
+            logging.StreamHandler()
+        ],
+        force=True  # Force reconfiguration
+    )
     
     # Step 1: Check Docker
     tracker.track_step("Docker Check", "STARTED")
@@ -766,7 +823,11 @@ async def test_full_workflow():
     
     # Step 3: Initialize State
     tracker.track_step("State Initialization", "STARTED")
-    base_test = BaseAgentTest()
+    
+    # Fix config path - use absolute path from script location
+    eval_folder = Path(__file__).parent.parent.parent
+    config_path = eval_folder / "config" / "evaluation_config.yaml"
+    base_test = BaseAgentTest(config_path=str(config_path))
     state = base_test.create_state(df, target_col)
     state['target_column'] = target_col
     
@@ -798,18 +859,18 @@ async def test_full_workflow():
         ("Technical Reporter", TechnicalReporterAgent()),
     ]
     
-    # Execute agents sequentially
+    # Execute agents sequentially - continue even if one fails
     for agent_name, agent in agents:
         try:
             state = await test_agent_with_tracking(agent, agent_name, state, tracker)
             await asyncio.sleep(1)  # Small delay between agents
         except Exception as e:
-            logger.error(f"Workflow stopped at {agent_name}: {e}")
-            tracker.track_step("Agent Execution", "FAILED", {
-                "failed_at": agent_name,
+            logger.error(f"⚠️ Agent {agent_name} failed: {e}", exc_info=True)
+            tracker.track_step(f"Agent {agent_name}", "FAILED", {
                 "error": str(e)
             })
-            break
+            # Continue to next agent instead of breaking
+            continue
     
     tracker.track_step("Agent Execution", "COMPLETED")
     
@@ -856,14 +917,21 @@ async def test_full_workflow():
         report['solution_summary'] = tracker.solution_tracker.get_solution_summary()
     if hasattr(tracker, 'progress_tracker'):
         report['workflow_progress'] = tracker.progress_tracker.get_progress_summary()
+    if hasattr(tracker, 'before_after_states'):
+        report['before_after_states'] = tracker.before_after_states
     
-    # Save report
-    report_path = Path(__file__).parent.parent / "results" / "reports" / "full_workflow_weatherAUS_report.json"
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(report_path, 'w') as f:
-        json.dump(report, f, indent=2, default=str)
+    # Extract comprehensive reasoning from final state
+    if hasattr(tracker, 'reasoning_extractor'):
+        try:
+            comprehensive_reasoning = tracker.reasoning_extractor.extract_comprehensive_reasoning(state)
+            report['comprehensive_reasoning'] = comprehensive_reasoning
+            tracker.reasoning_tracking['comprehensive'] = comprehensive_reasoning
+            logger.info("✅ Extracted comprehensive reasoning from final state")
+        except Exception as e:
+            logger.warning(f"Could not extract comprehensive reasoning: {e}")
     
-    logger.info(f"\n📊 Report saved to: {report_path}")
+    # Save report (will be updated with comprehensive evaluation later)
+    report_path = reports_dir / "full_workflow_weatherAUS_report.json"
     
     tracker.track_step("Report Generation", "COMPLETED", {"report_path": str(report_path)})
     
@@ -889,70 +957,116 @@ async def test_full_workflow():
                     }
                 }
             
-            # Generate plots
-            plot_gen = PlotGenerator(output_dir=str(Path(__file__).parent.parent / "results" / "plots"))
+            # Generate basic performance plots
+            if PlotGenerator:
+                plot_gen = PlotGenerator(output_dir=str(plots_dir))
             plot_gen.generate_agent_scorecard_heatmap(agent_results_for_plots, "agent_performance_heatmap.png")
-            
-            # Create execution timeline plot
-            agent_names = list(tracker.agent_results.keys())
-            execution_times = [tracker.agent_results[agent]['execution_time'] for agent in agent_names]
-            
-            plt.figure(figsize=(12, 6))
-            bars = plt.bar(range(len(agent_names)), execution_times, color=['#2ecc71' if tracker.agent_results[agent]['layer2_docker_success'] else '#e74c3c' for agent in agent_names])
-            plt.xlabel('Agent', fontsize=12, fontweight='bold')
-            plt.ylabel('Execution Time (seconds)', fontsize=12, fontweight='bold')
-            plt.title('Agent Execution Times - Full Workflow Test', fontsize=14, fontweight='bold', pad=15)
-            plt.xticks(range(len(agent_names)), agent_names, rotation=45, ha='right')
-            plt.grid(axis='y', alpha=0.3)
-            
-            # Add value labels on bars
-            for i, (bar, time) in enumerate(zip(bars, execution_times)):
-                plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(execution_times)*0.01,
-                        f'{time:.1f}s', ha='center', va='bottom', fontsize=9)
-            
-            plt.tight_layout()
-            plt.savefig(str(Path(__file__).parent.parent / "results" / "plots" / "execution_timeline.png"), dpi=300, bbox_inches='tight')
-            plt.close()
-            
-            # Create Layer 1 vs Layer 2 comparison plot
-            layer1_success = [tracker.agent_results[agent]['layer1_executed'] for agent in agent_names]
-            layer2_success = [tracker.agent_results[agent]['layer2_docker_success'] for agent in agent_names]
-            
-            x = np.arange(len(agent_names))
-            width = 0.35
-            
-            fig, ax = plt.subplots(figsize=(12, 6))
-            bars1 = ax.bar(x - width/2, [1 if s else 0 for s in layer1_success], width, label='Layer 1', color='#3498db')
-            bars2 = ax.bar(x + width/2, [1 if s else 0 for s in layer2_success], width, label='Layer 2', color='#9b59b6')
-            
-            ax.set_xlabel('Agent', fontsize=12, fontweight='bold')
-            ax.set_ylabel('Success (1=Yes, 0=No)', fontsize=12, fontweight='bold')
-            ax.set_title('Layer 1 vs Layer 2 Success Comparison', fontsize=14, fontweight='bold', pad=15)
-            ax.set_xticks(x)
-            ax.set_xticklabels(agent_names, rotation=45, ha='right')
-            ax.legend()
-            ax.grid(axis='y', alpha=0.3)
-            ax.set_ylim([0, 1.2])
-            
-            plt.tight_layout()
-            plt.savefig(str(Path(__file__).parent.parent / "results" / "plots" / "layer_comparison.png"), dpi=300, bbox_inches='tight')
-            plt.close()
-            
+        
+        # Create execution timeline plot
+        agent_names = list(tracker.agent_results.keys())
+        execution_times = [tracker.agent_results[agent]['execution_time'] for agent in agent_names]
+        
+        plt.figure(figsize=(12, 6))
+        bars = plt.bar(range(len(agent_names)), execution_times, color=['#2ecc71' if tracker.agent_results[agent]['layer2_docker_success'] else '#e74c3c' for agent in agent_names])
+        plt.xlabel('Agent', fontsize=12, fontweight='bold')
+        plt.ylabel('Execution Time (seconds)', fontsize=12, fontweight='bold')
+        plt.title('Agent Execution Times - Full Workflow Test', fontsize=14, fontweight='bold', pad=15)
+        plt.xticks(range(len(agent_names)), agent_names, rotation=45, ha='right')
+        plt.grid(axis='y', alpha=0.3)
+        
+        # Add value labels on bars
+        for i, (bar, time) in enumerate(zip(bars, execution_times)):
+            plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(execution_times)*0.01,
+                    f'{time:.1f}s', ha='center', va='bottom', fontsize=9)
+        
+        plt.tight_layout()
+            plt.savefig(str(plots_dir / "execution_timeline.png"), dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        # Create Layer 1 vs Layer 2 comparison plot
+        layer1_success = [tracker.agent_results[agent]['layer1_executed'] for agent in agent_names]
+        layer2_success = [tracker.agent_results[agent]['layer2_docker_success'] for agent in agent_names]
+        
+        x = np.arange(len(agent_names))
+        width = 0.35
+        
+        fig, ax = plt.subplots(figsize=(12, 6))
+        bars1 = ax.bar(x - width/2, [1 if s else 0 for s in layer1_success], width, label='Layer 1', color='#3498db')
+        bars2 = ax.bar(x + width/2, [1 if s else 0 for s in layer2_success], width, label='Layer 2', color='#9b59b6')
+        
+        ax.set_xlabel('Agent', fontsize=12, fontweight='bold')
+        ax.set_ylabel('Success (1=Yes, 0=No)', fontsize=12, fontweight='bold')
+        ax.set_title('Layer 1 vs Layer 2 Success Comparison', fontsize=14, fontweight='bold', pad=15)
+        ax.set_xticks(x)
+        ax.set_xticklabels(agent_names, rotation=45, ha='right')
+        ax.legend()
+        ax.grid(axis='y', alpha=0.3)
+        ax.set_ylim([0, 1.2])
+        
+        plt.tight_layout()
+            plt.savefig(str(plots_dir / "layer_comparison.png"), dpi=300, bbox_inches='tight')
+        plt.close()
+        
             # Generate enhanced problem-solving workflow visualizations
             if hasattr(tracker, 'problem_analysis') and hasattr(tracker, 'solution_tracker'):
-                _generate_problem_solving_visualizations(tracker, Path(__file__).parent.parent / "results" / "plots")
+                _generate_problem_solving_visualizations(tracker, plots_dir)
             
-            logger.info("✅ Plots generated successfully")
+            # CRITICAL: Generate comprehensive reasoning plots
+            if hasattr(tracker, 'reasoning_tracking') and 'comprehensive' in tracker.reasoning_tracking:
+                logger.info("📊 Generating comprehensive reasoning plots...")
+                reasoning_plot_gen = ReasoningPlotGenerator(plots_dir)
+                reasoning_plots = reasoning_plot_gen.generate_all_plots(tracker.reasoning_tracking['comprehensive'])
+                logger.info(f"✅ Generated {len(reasoning_plots)} reasoning plots")
+            
+            logger.info("✅ All plots generated successfully")
+        
+        # Step 9: Generate Comprehensive Evaluation
+        tracker.track_step("Comprehensive Evaluation", "STARTED")
+        try:
+            logger.info("📊 Generating comprehensive agent-wise and system-level evaluation...")
+            eval_generator = EvaluationGenerator(output_base)
+            
+            # Ensure we have valid data
+            problem_analysis_data = tracker.problem_analysis if hasattr(tracker, 'problem_analysis') and tracker.problem_analysis else {}
+            reasoning_data = tracker.reasoning_tracking.get('comprehensive', {}) if hasattr(tracker, 'reasoning_tracking') and tracker.reasoning_tracking else {}
+            
+            comprehensive_eval = eval_generator.generate_comprehensive_evaluation(
+                tracker=tracker,
+                state=state,
+                problem_analysis=problem_analysis_data,
+                reasoning_data=reasoning_data
+            )
+            
+            # Add evaluation to report
+            report['comprehensive_evaluation'] = comprehensive_eval
+            
+            logger.info(f"✅ Comprehensive evaluation generated: {comprehensive_eval.get('report_path')}")
+            tracker.track_step("Comprehensive Evaluation", "COMPLETED", {
+                "agent_evaluation": len(comprehensive_eval.get('agent_evaluation', {})),
+                "system_score": comprehensive_eval.get('system_evaluation', {}).get('system_score', 0),
+                "report_path": comprehensive_eval.get('report_path')
+            })
+        except Exception as e:
+            logger.error(f"Error generating comprehensive evaluation: {e}", exc_info=True)
+            tracker.track_step("Comprehensive Evaluation", "FAILED", {"error": str(e)})
         
     except Exception as e:
         logger.error(f"Error generating plots: {e}", exc_info=True)
+    
+    # Generate agent plots from report JSON
+    try:
+        from generate_agent_plots_from_report import main as generate_agent_plots
+        logger.info("📊 Generating agent-level plots from report JSON...")
+        report_path = reports_dir / "full_workflow_weatherAUS_report.json"
+        generate_agent_plots(report_path=report_path, plots_dir=plots_dir)
+        logger.info("✅ Agent-level plots generated successfully")
+    except Exception as e:
+        logger.warning(f"Could not generate agent plots from report: {e}", exc_info=True)
     
     # Generate tables
     try:
         if TableGenerator:
             table_gen = TableGenerator()
-            tables_dir = Path(__file__).parent.parent / "results" / "tables"
-            tables_dir.mkdir(parents=True, exist_ok=True)
         
         # Create agent performance table
         table_data = []
@@ -1010,38 +1124,72 @@ async def test_full_workflow():
         logger.info(f"  Execution Time: {result['execution_time']:.2f}s")
         logger.info(f"  State Keys Added: {len(result['state_keys_added'])}")
     
-    logger.info("\n" + "-"*80)
-    logger.info("FINAL OUTPUTS")
-    logger.info("-"*80)
-    
-    for key, value in outputs.items():
-        logger.info(f"  {key}: {'✓' if value else '✗'}")
+    # Extract final metrics
+    model_metrics = state.get("evaluation_metrics", {})
+    data_quality_score = state.get("data_quality_score")
     
     logger.info("\n" + "-"*80)
     logger.info("FINAL METRICS")
     logger.info("-"*80)
     
-    if final_metrics.get("model_metrics"):
-        logger.info(f"  Model Metrics: {final_metrics['model_metrics']}")
-    if final_metrics.get("data_quality_score"):
-        logger.info(f"  Data Quality Score: {final_metrics['data_quality_score']}")
-    if final_metrics.get("workflow_status"):
-        logger.info(f"  Workflow Status: {final_metrics['workflow_status']}")
+    if model_metrics:
+        logger.info(f"  Accuracy: {model_metrics.get('accuracy', 'N/A'):.4f}" if isinstance(model_metrics.get('accuracy'), (int, float)) else f"  Accuracy: {model_metrics.get('accuracy', 'N/A')}")
+        logger.info(f"  Precision: {model_metrics.get('precision', 'N/A'):.4f}" if isinstance(model_metrics.get('precision'), (int, float)) else f"  Precision: {model_metrics.get('precision', 'N/A')}")
+        logger.info(f"  Recall: {model_metrics.get('recall', 'N/A'):.4f}" if isinstance(model_metrics.get('recall'), (int, float)) else f"  Recall: {model_metrics.get('recall', 'N/A')}")
+        logger.info(f"  F1 Score: {model_metrics.get('f1_score', 'N/A'):.4f}" if isinstance(model_metrics.get('f1_score'), (int, float)) else f"  F1 Score: {model_metrics.get('f1_score', 'N/A')}")
+        if 'roc_auc' in model_metrics:
+            logger.info(f"  ROC-AUC: {model_metrics.get('roc_auc', 'N/A'):.4f}" if isinstance(model_metrics.get('roc_auc'), (int, float)) else f"  ROC-AUC: {model_metrics.get('roc_auc', 'N/A')}")
+    
+    if data_quality_score:
+        logger.info(f"  Data Quality Score: {data_quality_score:.2f}" if isinstance(data_quality_score, (int, float)) else f"  Data Quality Score: {data_quality_score}")
+    
+    logger.info(f"  Workflow Status: {state.get('workflow_status', 'unknown')}")
+    
+    # Print reasoning summary
+    if hasattr(tracker, 'reasoning_tracking') and tracker.reasoning_tracking:
+    logger.info("\n" + "-"*80)
+        logger.info("REASONING TRACKING SUMMARY")
+    logger.info("-"*80)
+        logger.info(f"  Agents with reasoning extracted: {len([k for k in tracker.reasoning_tracking.keys() if k != 'comprehensive'])}")
+        if 'comprehensive' in tracker.reasoning_tracking:
+            comp_reasoning = tracker.reasoning_tracking['comprehensive']
+            problems = comp_reasoning.get('all_problems', {})
+            logger.info(f"  Problems detected: {len(problems)}")
+            logger.info(f"  Problems addressed: {sum(1 for p in problems.values() if p.get('detected', False))}")
     
     logger.info("\n" + "="*80)
     logger.info("✅ FULL WORKFLOW TEST COMPLETED")
     logger.info("="*80)
+    # Final save of report (with all evaluations included)
+    with open(report_path, 'w') as f:
+        json.dump(report, f, indent=2, default=str)
+    
+    logger.info(f"\n📊 Final report saved to: {report_path}")
+    
+    logger.info(f"\n📁 All outputs saved to: {output_base}")
+    logger.info(f"  - Reports: {reports_dir}")
+    logger.info(f"  - Plots: {plots_dir}")
+    logger.info(f"  - Tables: {tables_dir}")
+    logger.info(f"  - Logs: {logs_dir}")
+    
+    # Print evaluation summary
+    if 'comprehensive_evaluation' in report:
+        eval_data = report['comprehensive_evaluation']
+        logger.info("\n" + "="*80)
+        logger.info("EVALUATION SUMMARY")
+        logger.info("="*80)
+        logger.info(f"System Score: {eval_data.get('system_evaluation', {}).get('system_score', 0):.3f} ({eval_data.get('system_evaluation', {}).get('system_grade', 'N/A')})")
+        logger.info(f"Agent Evaluations: {len(eval_data.get('agent_evaluation', {}))} agents evaluated")
+        logger.info(f"Problem-Solving Score: {eval_data.get('problem_solving_evaluation', {}).get('overall_score', 0):.3f} ({eval_data.get('problem_solving_evaluation', {}).get('grade', 'N/A')})")
+    logger.info("="*80)
     
     return {
         "success": True,
-        "report": report,
-        "final_state": {
-            "keys": list(state.keys()),
-            "workflow_status": state.get("workflow_status"),
-            "completed_agents": state.get("completed_agents", [])
-        },
-        "outputs": outputs,
-        "metrics": final_metrics
+        "tracker": tracker,
+        "state": state,
+        "model_metrics": model_metrics,
+        "output_directory": str(output_base),
+        "evaluation": report.get('comprehensive_evaluation', {})
     }
 
 

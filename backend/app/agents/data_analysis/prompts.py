@@ -87,9 +87,9 @@ def advanced_discovery_analysis(df):
         "recommendations": [],
         "domain_insights": []
     }}
-    
+
     try:
-        # Your advanced analysis code here
+    # Your advanced analysis code here
         # Test normality for numeric columns
         numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
         for col in numeric_cols[:5]:  # Limit to first 5 columns
@@ -103,7 +103,7 @@ def advanced_discovery_analysis(df):
         
     except Exception as e:
         results["error"] = str(e)
-    
+
     return results
 
 # Execute the function

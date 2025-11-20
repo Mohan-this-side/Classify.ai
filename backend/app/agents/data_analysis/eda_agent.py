@@ -229,6 +229,11 @@ class EDAAgent(BaseAgent):
             "duplicate_rows": df.duplicated().sum()
         }
 
+        # 7. CRITICAL: Detect all 10 problems for weatherAUS dataset
+        self.logger.info("  🔍 Detecting critical dataset problems...")
+        problem_detection = self._detect_critical_problems(df, target_column)
+        results["problem_detection"] = problem_detection
+
         # Convert plot file paths to API-accessible URLs
         plot_list = []
         for plot_path in plot_paths:
@@ -442,7 +447,7 @@ class EDAAgent(BaseAgent):
         }
 
     def _analyze_target_relationships(self, df: pd.DataFrame, target_column: str) -> Dict[str, Any]:
-        """Analyze relationships with target variable"""
+        """Analyze relationships with target variable with comprehensive imbalance detection"""
         if target_column not in df.columns:
             return {"error": "Target column not found"}
 
@@ -459,9 +464,34 @@ class EDAAgent(BaseAgent):
         if target_series.dtype in ['object', 'category'] or target_series.nunique() <= 10:
             analysis["task_type"] = "classification"
             class_counts = target_series.value_counts()
+            majority_class = class_counts.idxmax()
+            minority_class = class_counts.idxmin()
+            imbalance_ratio = float(class_counts.min() / class_counts.max()) if len(class_counts) > 1 else 1.0
+            is_balanced = imbalance_ratio > 0.5
+            
+            # Enhanced class imbalance analysis
             analysis["class_balance"] = {
-                "is_balanced": (class_counts.max() - class_counts.min()) / class_counts.max() < 0.1,
-                "balance_ratio": float(class_counts.min() / class_counts.max()) if len(class_counts) > 1 else 1.0
+                "is_balanced": is_balanced,
+                "balance_ratio": imbalance_ratio,
+                "majority_class": str(majority_class),
+                "minority_class": str(minority_class),
+                "majority_count": int(class_counts[majority_class]),
+                "minority_count": int(class_counts[minority_class]),
+                "majority_percentage": float(class_counts[majority_class] / len(target_series) * 100),
+                "minority_percentage": float(class_counts[minority_class] / len(target_series) * 100),
+                "severity": "high" if imbalance_ratio < 0.3 else "medium" if imbalance_ratio < 0.5 else "low",
+                "recommendation": "Use SMOTE or class weights" if not is_balanced else "No balancing needed"
+            }
+            
+            # Store detailed imbalance analysis for reasoning
+            analysis["class_imbalance_analysis"] = {
+                "imbalance_detected": not is_balanced,
+                "ratio": imbalance_ratio,
+                "majority_class": str(majority_class),
+                "minority_class": str(minority_class),
+                "distribution": class_counts.to_dict(),
+                "recommendation": "SMOTE" if imbalance_ratio < 0.5 else "class_weights" if imbalance_ratio < 0.7 else "none",
+                "rationale": f"Class imbalance ratio {imbalance_ratio:.3f} ({majority_class}:{minority_class} = {class_counts[majority_class]}:{class_counts[minority_class]})"
             }
         else:
             analysis["task_type"] = "regression"
@@ -472,6 +502,161 @@ class EDAAgent(BaseAgent):
             }
 
         return analysis
+    
+    def _detect_critical_problems(self, df: pd.DataFrame, target_column: str) -> Dict[str, Any]:
+        """Detect all 10 critical problems for comprehensive evaluation"""
+        problems = {}
+        
+        # 1. Multicollinearity Detection (correlation >0.8)
+        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        if target_column in numeric_cols:
+            numeric_cols.remove(target_column)
+        
+        if len(numeric_cols) > 1:
+            corr_matrix = df[numeric_cols].corr().abs()
+            high_corr_pairs = []
+            for i in range(len(corr_matrix.columns)):
+                for j in range(i+1, len(corr_matrix.columns)):
+                    corr_val = corr_matrix.iloc[i, j]
+                    if corr_val > 0.8:  # High correlation threshold
+                        high_corr_pairs.append({
+                            "col1": corr_matrix.columns[i],
+                            "col2": corr_matrix.columns[j],
+                            "correlation": float(corr_val),
+                            "severity": "high" if corr_val > 0.95 else "medium"
+                        })
+            
+            if high_corr_pairs:
+                problems["multicollinearity"] = {
+                    "detected": True,
+                    "high_corr_pairs": high_corr_pairs[:10],  # Top 10 pairs
+                    "count": len(high_corr_pairs),
+                    "recommendation": "Remove redundant features (keep one from each high-correlation pair)"
+                }
+        
+        # 2. Data Leakage Detection - Check for features that might leak target information
+        # Look for features with names suggesting temporal relationship (Today/Tomorrow, Current/Future, etc.)
+        leakage_candidates = []
+        for col in df.columns:
+            if col == target_column:
+                continue
+            # Check for common temporal leakage patterns in column names
+            col_lower = col.lower()
+            target_lower = target_column.lower()
+            
+            # Pattern: feature with "today"/"current"/"now" and target with "tomorrow"/"future"/"next"
+            temporal_patterns = [
+                ("today", "tomorrow"), ("current", "future"), ("now", "next"),
+                ("today", "next"), ("current", "next"), ("present", "future")
+            ]
+            
+            is_temporal_candidate = False
+            for pattern1, pattern2 in temporal_patterns:
+                if pattern1 in col_lower and pattern2 in target_lower:
+                    is_temporal_candidate = True
+                    break
+            
+            if is_temporal_candidate:
+                leakage_candidates.append(col)
+        
+        # Check correlation of potential leakage features with target
+        if leakage_candidates and target_column in df.columns:
+            for leak_feature in leakage_candidates[:5]:  # Check top 5 candidates
+                try:
+                    feature_series = df[leak_feature]
+                    target_series = df[target_column]
+                    
+                    # Encode categorical if needed
+                    if feature_series.dtype == 'object':
+                        # Try common encoding patterns
+                        feature_encoded = feature_series.map({"Yes": 1, "No": 0, "yes": 1, "no": 0, 
+                                                             "True": 1, "False": 0, "true": 1, "false": 0}).fillna(0)
+                    else:
+                        feature_encoded = feature_series
+                    
+                    if target_series.dtype == 'object':
+                        target_encoded = target_series.map({"Yes": 1, "No": 0, "yes": 1, "no": 0,
+                                                           "True": 1, "False": 0, "true": 1, "false": 0}).fillna(0)
+                    else:
+                        target_encoded = target_series
+                    
+                    corr_leakage = abs(feature_encoded.corr(target_encoded))
+                    
+                    if corr_leakage > 0.3:
+                        problems["data_leakage"] = {
+                            "detected": True,
+                            "feature": leak_feature,
+                            "correlation": float(corr_leakage),
+                            "risk": "moderate" if corr_leakage < 0.5 else "high",
+                            "recommendation": f"Verify {leak_feature} is from a different time period than target, not same period"
+                        }
+                        break  # Report first detected leakage
+                except Exception as e:
+                    self.logger.debug(f"Could not check leakage for {leak_feature}: {e}")
+                    continue
+        
+        # 3. Temporal Pattern Detection
+        if "Date" in df.columns:
+            try:
+                df["Date"] = pd.to_datetime(df["Date"])
+                date_range = {
+                    "start": str(df["Date"].min()),
+                    "end": str(df["Date"].max()),
+                    "span_days": int((df["Date"].max() - df["Date"].min()).days),
+                    "span_years": float((df["Date"].max() - df["Date"].min()).days / 365.25)
+                }
+                problems["temporal_patterns"] = {
+                    "detected": True,
+                    "date_range": date_range,
+                    "recommendation": "Use time-based train-test split instead of random split"
+                }
+            except Exception as e:
+                self.logger.warning(f"Could not analyze temporal patterns: {e}")
+        
+        # 4. Location-Specific Missing Patterns
+        if "Location" in df.columns:
+            try:
+                location_missing = df.groupby("Location").apply(lambda x: x.isnull().sum().sum() / (len(x) * len(x.columns)) * 100)
+                high_missing_locations = location_missing[location_missing > 30].to_dict()
+                
+                if high_missing_locations:
+                    problems["location_missing_patterns"] = {
+                        "detected": True,
+                        "high_missing_locations": {k: float(v) for k, v in list(high_missing_locations.items())[:10]},
+                        "count": len(high_missing_locations),
+                        "recommendation": "Consider location-specific imputation or dropping locations with >30% missing data"
+                    }
+            except Exception as e:
+                self.logger.warning(f"Could not analyze location patterns: {e}")
+        
+        # 5. Weak Feature Correlations with Target
+        if target_column in df.columns:
+            try:
+                numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+                if target_column in numeric_cols:
+                    numeric_cols.remove(target_column)
+                
+                target_correlations = {}
+                for col in numeric_cols:
+                    try:
+                        corr_val = abs(df[col].corr(df[target_column]))
+                        target_correlations[col] = float(corr_val)
+                    except:
+                        pass
+                
+                sorted_corrs = sorted(target_correlations.items(), key=lambda x: x[1], reverse=True)
+                strongest = sorted_corrs[0][1] if sorted_corrs else 0
+                
+                problems["weak_feature_correlations"] = {
+                    "detected": strongest < 0.5,
+                    "strongest_correlation": float(strongest),
+                    "top_5_features": [{"feature": k, "correlation": float(v)} for k, v in sorted_corrs[:5]],
+                    "recommendation": "Consider ensemble methods or feature engineering given weak individual correlations"
+                }
+            except Exception as e:
+                self.logger.warning(f"Could not analyze feature correlations: {e}")
+        
+        return problems
 
     def _generate_correlation_heatmap(self, df: pd.DataFrame, plots_dir: Path) -> Optional[str]:
         """Generate correlation heatmap"""
@@ -715,7 +900,7 @@ class EDAAgent(BaseAgent):
 
         # Call parent validation
         try:
-            results = super().process_sandbox_results(sandbox_output, layer1_results, state)
+        results = super().process_sandbox_results(sandbox_output, layer1_results, state)
         except Exception as e:
             # If parent processing fails, log and return Layer 1 results
             self.logger.warning(f"Parent process_sandbox_results failed: {e}")
@@ -729,7 +914,7 @@ class EDAAgent(BaseAgent):
 
         # Validate plots were generated - be lenient
         plot_paths = results.get("plot_paths", [])
-        
+
         # If no plot_paths, check if we have raw_output that might contain plot info
         if not plot_paths:
             raw_output = results.get("raw_output", "")
