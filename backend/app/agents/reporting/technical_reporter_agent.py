@@ -3791,7 +3791,7 @@ probabilities = model.predict_proba(new_data)  # if available
             
             # Data quality recommendations
             quality_score = state.get("data_quality_score", 0.0)
-            if quality_score < 0.8:
+            if quality_score is not None and quality_score < 0.8:
                 recommendations.append("Consider improving data quality through better data collection processes")
             
             # Feature engineering recommendations

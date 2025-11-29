@@ -166,7 +166,16 @@ class EDAAgent(BaseAgent):
 
         # Create session-specific plots directory with proper path
         # Use backend/plots/{workflow_id}/ structure for web serving
-        base_plots_dir = Path("backend/plots")
+        # Check current working directory and adjust path accordingly
+        import os
+        cwd = os.getcwd()
+        if cwd.endswith('/backend'):
+            # If running from backend directory, use relative path
+            base_plots_dir = Path("plots")
+        else:
+            # If running from project root, use backend/plots/
+            base_plots_dir = Path("backend/plots")
+        
         session_plots_dir = base_plots_dir / session_id
         session_plots_dir.mkdir(parents=True, exist_ok=True)
         
@@ -900,7 +909,7 @@ class EDAAgent(BaseAgent):
 
         # Call parent validation
         try:
-        results = super().process_sandbox_results(sandbox_output, layer1_results, state)
+            results = super().process_sandbox_results(sandbox_output, layer1_results, state)
         except Exception as e:
             # If parent processing fails, log and return Layer 1 results
             self.logger.warning(f"Parent process_sandbox_results failed: {e}")

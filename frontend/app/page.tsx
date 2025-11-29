@@ -31,6 +31,17 @@ export default function ClassifyAI() {
   const [results, setResults] = useState<any>(null)
   const [workflowCompletedNotified, setWorkflowCompletedNotified] = useState(false) // ✅ FIX: Track if completion notification shown
 
+  // ✅ Function to navigate to workflow view
+  const navigateToWorkflowView = () => {
+    console.log('🔄 Navigating to workflow view...')
+    // Set workflow view immediately
+    setActiveView('workflow')
+    // Scroll to top to ensure workflow view is visible
+    setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }, 100)
+  }
+
   const parseCSVHeaders = async (file: File) => {
     return new Promise<string[]>((resolve, reject) => {
       const reader = new FileReader()
@@ -84,6 +95,10 @@ export default function ClassifyAI() {
         apiKeyLength: apiKey.length
       })
 
+      // ✅ Navigate to workflow view immediately (before backend response)
+      // This gives immediate feedback to the user
+      navigateToWorkflowView()
+
       // Create FormData for file upload
       const formData = new FormData()
       formData.append('file', file!)
@@ -131,8 +146,8 @@ export default function ClassifyAI() {
         { id: 'pm', label: 'PM', status: 'active', time: '' },
       ])
 
-      // Switch to workflow view
-      setActiveView('workflow')
+      // Note: Navigation already happened at the start of the function
+      // This ensures user sees workflow page immediately
       toast.success('Workflow started successfully!')
 
       // Start polling for status
@@ -197,9 +212,37 @@ export default function ClassifyAI() {
         }
         
         // ✅ Update pending approval from backend
-        if (data.pending_approval) {
+        const hasPendingApproval = !!data.pending_approval
+        if (hasPendingApproval && !pendingApproval) {
+          // Approval gate just appeared - notify user
           setPendingApproval(true)
-        } else {
+          
+          // Request browser notification permission if not already granted
+          if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission()
+          }
+          
+          // Show browser notification if permission granted
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('⏸️ Approval Required', {
+              body: 'The workflow is paused and waiting for your approval. Click to review.',
+              icon: '/favicon.ico',
+              tag: 'approval-gate',
+              requireInteraction: true
+            })
+          }
+          
+          // Show toast notification
+          toast.warning('⏸️ Approval Required - Workflow is paused', {
+            duration: 10000,
+            position: 'top-right'
+          })
+          
+          // Auto-expand PM chat if minimized to show approval gate
+          if (!pmExpanded) {
+            setPmExpanded(true)
+          }
+        } else if (!hasPendingApproval && pendingApproval) {
           setPendingApproval(false)
         }
 
@@ -275,6 +318,9 @@ export default function ClassifyAI() {
       
       console.log('Structured results:', structuredResults) // Debug
       
+      // Store workflow ID in results for use in ResultsView
+      structuredResults.workflow_id = wfId
+      
       setResults(structuredResults)
       setActiveView('results')
       
@@ -308,7 +354,13 @@ export default function ClassifyAI() {
 
   // ✅ Handle approval gate responses
   const handleApprovalResponse = async (action: 'approve' | 'reject' | 'modify', comment?: string) => {
-    if (!workflowId) return
+    if (!workflowId) {
+      console.error('❌ No workflowId available for approval')
+      toast.error('Workflow ID not found. Please refresh the page.')
+      return
+    }
+    
+    console.log(`🔄 Handling approval: ${action} for workflow ${workflowId}`)
     
     try {
       const response = await fetch(`http://localhost:8000/api/workflow/${workflowId}/pm/approval`, {
@@ -322,15 +374,25 @@ export default function ClassifyAI() {
         })
       })
       
+      console.log(`✅ Approval response status: ${response.status}`)
+      
       if (response.ok) {
+        const data = await response.json()
+        console.log('✅ Approval successful:', data)
         toast.success(`Approval ${action}d successfully`)
         setPendingApproval(false)
+        // Refresh workflow status after approval
+        if (workflowId) {
+          pollWorkflowStatus(workflowId)
+        }
       } else {
-        toast.error(`Failed to ${action} workflow`)
+        const errorText = await response.text()
+        console.error('❌ Approval failed:', errorText)
+        toast.error(`Failed to ${action} workflow: ${response.status}`)
       }
-    } catch (error) {
-      console.error('Error handling approval:', error)
-      toast.error('Failed to process approval')
+    } catch (error: any) {
+      console.error('❌ Error handling approval:', error)
+      toast.error(`Failed to process approval: ${error.message || error}`)
     }
   }
 
@@ -422,12 +484,33 @@ export default function ClassifyAI() {
           pmMessages={pmMessages}
           sandboxMetrics={sandboxMetrics}
           workflowStatus={workflowStatus}
+          workflowId={workflowId}
           onApprovalResponse={handleApprovalResponse}
           onPMQuestion={handlePMQuestion}
+          onCancelWorkflow={async () => {
+            if (workflowId && (workflowStatus === 'running' || workflowStatus === 'paused')) {
+              try {
+                const response = await fetch(`http://localhost:8000/api/workflow/${workflowId}`, {
+                  method: 'DELETE'
+                })
+                if (response.ok) {
+                  toast.success('Workflow cancelled')
+                  setWorkflowStatus('cancelled')
+                  setWorkflowId(null)
+                  setActiveView('upload')
+                } else {
+                  toast.error('Failed to cancel workflow')
+                }
+              } catch (error) {
+                console.error('Error cancelling workflow:', error)
+                toast.error('Failed to cancel workflow')
+              }
+            }
+          }}
         />
       )}
       
-      {activeView === 'results' && <ResultsView results={results} />}
+      {activeView === 'results' && <ResultsView results={results} workflowId={workflowId} />}
     </div>
   )
 }
@@ -533,17 +616,44 @@ function UploadView({ file, handleFileChange, targetColumn, setTargetColumn, des
 
         {/* Start Button */}
         <button
-          onClick={(e) => {
+          type="button"
+          onClick={async (e) => {
             e.preventDefault()
-            console.log('Button clicked!', {
+            e.stopPropagation()
+            console.log('🔵🔵🔵 Button clicked!', {
               file: !!file,
               targetColumn: !!targetColumn,
-              description: !!description && description.trim() !== '',
-              apiKey: !!apiKey && apiKey.trim() !== ''
+              description: !!(description && description.trim()),
+              apiKey: !!(apiKey && apiKey.trim()),
+              onStartType: typeof onStart,
+              onStartExists: !!onStart
             })
-            onStart()
+            
+            // Validate fields
+            if (!file || !targetColumn || !(description && description.trim()) || !(apiKey && apiKey.trim())) {
+              console.error('❌ Validation failed')
+              toast.error('Please fill in all required fields')
+              return
+            }
+            
+            // Call onStart function directly
+            console.log('✅ About to call onStart function...')
+            if (onStart && typeof onStart === 'function') {
+              console.log('✅ Calling onStart function...')
+              try {
+                const result = await onStart()
+                console.log('✅ onStart completed:', result)
+              } catch (error: any) {
+                console.error('❌ Error in onStart:', error)
+                toast.error(`Failed to start workflow: ${error.message || error}`)
+              }
+            } else {
+              console.error('❌ onStart is not a function:', typeof onStart, onStart)
+              toast.error('Workflow start function not available. Please refresh the page.')
+            }
           }}
-          disabled={!file || !targetColumn || !description || !description.trim() || !apiKey || !apiKey.trim()}
+          disabled={!file || !targetColumn || !(description && description.trim()) || !(apiKey && apiKey.trim())}
+          style={{ pointerEvents: 'auto', cursor: 'pointer', zIndex: 10 }}
           className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-4 rounded-lg font-semibold text-lg hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl flex items-center justify-center space-x-2"
         >
           <Play className="w-6 h-6" />
@@ -553,7 +663,7 @@ function UploadView({ file, handleFileChange, targetColumn, setTargetColumn, des
         {/* Debug info */}
         {process.env.NODE_ENV === 'development' && (
           <div className="text-xs text-gray-400 mt-2">
-            Debug: File={file ? '✓' : '✗'} | Target={targetColumn ? '✓' : '✗'} | Desc={description?.trim() ? '✓' : '✗'} | API={apiKey?.trim() ? '✓' : '✗'}
+            Debug: File={file ? '✓' : '✗'} | Target={targetColumn ? '✓' : '✗'} | Desc={description?.trim() ? '✓' : '✗'} | API={apiKey?.trim() ? '✓' : '✗'} | Button Disabled={(!file || !targetColumn || !description || !description.trim() || !apiKey || !apiKey.trim()) ? 'YES' : 'NO'} | onStart={typeof onStart}
           </div>
         )}
       </div>
@@ -561,7 +671,7 @@ function UploadView({ file, handleFileChange, targetColumn, setTargetColumn, des
   )
 }
 
-function WorkflowView({ agents, pmExpanded, setPmExpanded, pendingApproval, setPendingApproval, pmMessages, sandboxMetrics, workflowStatus, onApprovalResponse, onPMQuestion }: any) {
+function WorkflowView({ agents, pmExpanded, setPmExpanded, pendingApproval, setPendingApproval, pmMessages, sandboxMetrics, workflowStatus, workflowId, onApprovalResponse, onPMQuestion, onCancelWorkflow }: any) {
   // Map agent IDs to icons and labels
   const iconMap: any = {
     discovery: TrendingUp,
@@ -608,6 +718,26 @@ function WorkflowView({ agents, pmExpanded, setPmExpanded, pendingApproval, setP
     <div className="flex-1 flex overflow-hidden">
       {/* Main Content */}
       <div className={`flex-1 flex flex-col transition-all ${pmExpanded ? 'mr-96' : 'mr-0'}`}>
+        {/* Workflow Header with Cancel Button */}
+        {(workflowStatus === 'running' || workflowStatus === 'paused') && workflowId && (
+          <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shadow-sm">
+            <div className="flex items-center space-x-4">
+              <div className={`w-3 h-3 rounded-full ${workflowStatus === 'running' ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`}></div>
+              <span className="text-sm font-medium text-gray-700">
+                {workflowStatus === 'running' ? 'Workflow Running' : 'Workflow Paused'}
+              </span>
+            </div>
+            {onCancelWorkflow && (
+              <button
+                onClick={onCancelWorkflow}
+                className="px-4 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-medium hover:bg-red-200 transition-colors flex items-center space-x-2"
+              >
+                <span>✕</span>
+                <span>Cancel Workflow</span>
+              </button>
+            )}
+          </div>
+        )}
         {/* Timeline */}
         <div className="bg-white border-b border-gray-200 px-6 py-6 overflow-x-auto shadow-sm">
           <div className="flex items-center justify-between min-w-max max-w-6xl mx-auto">
@@ -732,7 +862,10 @@ function WorkflowView({ agents, pmExpanded, setPmExpanded, pendingApproval, setP
   )
 }
 
-function ResultsView({ results }: any) {
+function ResultsView({ results, workflowId }: any) {
+  // Get workflowId from props or from results
+  const currentWorkflowId = workflowId || results?.workflow_id || null
+  
   if (!results) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -854,14 +987,14 @@ function ResultsView({ results }: any) {
                   name={file.name || `file_${idx + 1}`} 
                   size={file.size || 'Unknown'} 
                   downloadUrl={file.path || file.url}
-                  workflowId={workflowId}
+                  workflowId={currentWorkflowId || undefined}
                 />
               ))
             ) : (
               <>
-                <DeliverableItem name="cleaned_dataset.csv" size="Processing..." workflowId={workflowId} />
-                <DeliverableItem name="trained_model.joblib" size="Processing..." workflowId={workflowId} />
-                <DeliverableItem name="analysis_notebook.ipynb" size="Processing..." workflowId={workflowId} />
+                <DeliverableItem name="cleaned_dataset.csv" size="Processing..." workflowId={currentWorkflowId || undefined} />
+                <DeliverableItem name="trained_model.joblib" size="Processing..." workflowId={currentWorkflowId || undefined} />
+                <DeliverableItem name="analysis_notebook.ipynb" size="Processing..." workflowId={currentWorkflowId || undefined} />
               </>
             )}
           </div>
@@ -1026,6 +1159,28 @@ function PMMessage({ agent, time, message, type }: any) {
 
 // ✅ Approval Gate Component
 function ApprovalGate({ onApprovalResponse }: any) {
+  const [isProcessing, setIsProcessing] = useState(false)
+  
+  const handleApproval = async (action: 'approve' | 'reject' | 'modify') => {
+    if (isProcessing) return // Prevent double clicks
+    
+    setIsProcessing(true)
+    console.log(`🔄 Processing approval: ${action}`)
+    
+    try {
+      if (onApprovalResponse && typeof onApprovalResponse === 'function') {
+        await onApprovalResponse(action)
+      } else {
+        console.error('onApprovalResponse is not a function:', typeof onApprovalResponse)
+      }
+    } catch (error) {
+      console.error('Error in approval handler:', error)
+    } finally {
+      // Reset after a short delay to allow UI update
+      setTimeout(() => setIsProcessing(false), 1000)
+    }
+  }
+  
   return (
     <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-5 space-y-4">
       <div className="flex items-start space-x-3">
@@ -1045,20 +1200,41 @@ function ApprovalGate({ onApprovalResponse }: any) {
 
           <div className="grid grid-cols-3 gap-2">
             <button
-              onClick={() => onApprovalResponse('approve')}
-              className="bg-green-600 text-white py-2.5 px-4 rounded-lg text-sm font-semibold hover:bg-green-700 transition-colors"
+              type="button"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                handleApproval('approve')
+              }}
+              disabled={isProcessing}
+              style={{ pointerEvents: isProcessing ? 'none' : 'auto', cursor: isProcessing ? 'wait' : 'pointer' }}
+              className="bg-green-600 text-white py-2.5 px-4 rounded-lg text-sm font-semibold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              ✓ Approve
+              {isProcessing ? 'Processing...' : '✓ Approve'}
             </button>
             <button
-              onClick={() => onApprovalResponse('modify')}
-              className="bg-gray-200 text-gray-700 py-2.5 px-4 rounded-lg text-sm font-semibold hover:bg-gray-300 transition-colors"
+              type="button"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                handleApproval('modify')
+              }}
+              disabled={isProcessing}
+              style={{ pointerEvents: isProcessing ? 'none' : 'auto', cursor: isProcessing ? 'wait' : 'pointer' }}
+              className="bg-gray-200 text-gray-700 py-2.5 px-4 rounded-lg text-sm font-semibold hover:bg-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Modify
             </button>
             <button
-              onClick={() => onApprovalResponse('reject')}
-              className="bg-red-100 text-red-700 py-2.5 px-4 rounded-lg text-sm font-semibold hover:bg-red-200 transition-colors"
+              type="button"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                handleApproval('reject')
+              }}
+              disabled={isProcessing}
+              style={{ pointerEvents: isProcessing ? 'none' : 'auto', cursor: isProcessing ? 'wait' : 'pointer' }}
+              className="bg-red-100 text-red-700 py-2.5 px-4 rounded-lg text-sm font-semibold hover:bg-red-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Reject
             </button>

@@ -959,9 +959,9 @@ y_test = pd.read_csv('y_test.csv').iloc[:, 0]   # First column
             
             if not use_temporal_split:
                 # Use random stratified split
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=0.2, random_state=42, stratify=y if len(y.unique()) > 1 else None
-            )
+                X_train, X_test, y_train, y_test = train_test_split(
+                    X, y, test_size=0.2, random_state=42, stratify=y if len(y.unique()) > 1 else None
+                )
                 temporal_info = {"split_method": "random_stratified", "test_size": 0.2}
             
             # Analyze data for model selection

@@ -319,7 +319,7 @@ Generate the code now:
         
         # If still no code found, return original response
         if not code or len(code) < 50:
-        return response.strip()
+            return response.strip()
         
         return code
     

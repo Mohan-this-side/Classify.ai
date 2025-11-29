@@ -106,9 +106,10 @@ def _get_educational_message(agent_name: str, status: str, state: Optional[Dict[
     return template
 
 
-def _generate_pm_answer(question: str, state: Dict[str, Any]) -> str:
-    """Generate context-aware answer to user's question with comprehensive knowledge (synchronous for immediate response)"""
+async def _generate_pm_answer(question: str, state: Dict[str, Any]) -> str:
+    """Generate context-aware answer to user's question with comprehensive knowledge using LLM service"""
     import re
+    from ..services.llm_service import get_llm_service, LLMProvider
     
     question_lower = question.lower()
     
@@ -200,8 +201,99 @@ def _generate_pm_answer(question: str, state: Dict[str, Any]) -> str:
         agents = ["Data Discovery", "EDA", "Data Cleaning", "Feature Engineering", "Model Building", "Evaluation", "Reporting"]
         return f"🔄 Workflow: Our pipeline has {len(agents)} main steps: {', '.join(agents)}. Each agent performs specialized tasks and shares knowledge with others. The Project Manager coordinates everything and provides updates."
     
-    # General/default - use LLM if available
+    # General/default - use LLM for detailed answers
     else:
+        try:
+            # Build comprehensive context from workflow state
+            context_parts = []
+            
+            # Workflow status
+            workflow_status = state.get("workflow_status", "unknown")
+            context_parts.append(f"Workflow Status: {workflow_status}")
+            
+            # Completed agents
+            completed_agents = state.get("completed_agents", [])
+            if completed_agents:
+                context_parts.append(f"Completed Agents: {', '.join(completed_agents)}")
+            
+            # Current agent
+            current_agent = state.get("current_agent", "none")
+            if current_agent:
+                context_parts.append(f"Current Agent: {current_agent}")
+            
+            # Model metrics if available
+            metrics = state.get("evaluation_metrics", {})
+            if metrics:
+                acc = metrics.get("accuracy", 0)
+                context_parts.append(f"Model Accuracy: {acc*100:.1f}%")
+            
+            # Dataset info
+            dataset_shape = state.get("dataset_shape", [])
+            if dataset_shape:
+                context_parts.append(f"Dataset: {dataset_shape[0]} rows × {dataset_shape[1]} columns")
+            
+            # EDA plots
+            eda_plots = state.get("eda_plots", [])
+            if eda_plots:
+                context_parts.append(f"EDA Plots Generated: {len(eda_plots)}")
+            
+            context = "\n".join(context_parts)
+            
+            # Build comprehensive LLM prompt with project context
+            prompt = f"""You are an expert Project Manager AI assistant named "Project Manager" for Classify AI, a multi-agent machine learning classification system.
+
+**Project Context:**
+- Project Owner: Mohan
+- Institution: Northeastern University (Fall 2025)
+- Project Type: DS Capstone Project - Multi-Agent AI System
+- System: Classify AI - Automated ML Pipeline with 8 specialized AI agents
+- Architecture: Double-Layer System (hardcoded analysis + LLM-generated code in Docker sandbox)
+- Purpose: End-to-end classification tasks from data upload to model deployment
+
+**Your Role:**
+You are the Project Manager coordinating all agents. You know everything about:
+- The workflow pipeline (Data Discovery → EDA → Cleaning → Feature Engineering → Model Building → Evaluation → Reporting)
+- Each agent's purpose and current status
+- Data science concepts and ML best practices
+- The double-layer architecture and how it works
+- Project goals and Mohan's requirements
+
+**Current Workflow Context:**
+{context}
+
+**User Question:** {question}
+
+**Instructions:**
+- Answer quickly and knowledgeably as a project coordinator
+- Reference Mohan as the project owner when relevant
+- Be specific about current workflow state
+- Explain data science concepts clearly and educationally
+- Keep answers concise but informative (2-4 sentences)
+- Act as if you know everything about this project and workflow
+
+**Answer:**"""
+            
+            # Get LLM service and generate answer
+            llm_service = get_llm_service()
+            if llm_service and llm_service.clients:
+                # Use LLM to generate detailed answer
+                try:
+                    # Try Gemini first
+                    if LLMProvider.GEMINI in llm_service.clients:
+                        model = llm_service.clients[LLMProvider.GEMINI]
+                        response = model.generate_content(prompt)
+                        answer = response.text.strip()
+                        if answer:
+                            return f"🤖 {answer}"
+                except Exception as e:
+                    logger.warning(f"LLM generation failed: {e}, falling back to default")
+            
+            # Fallback to default answer
+            agent_summary = ", ".join(completed_agents[-3:]) if completed_agents else "just starting"
+            return f"🤔 I'm here to help! I can answer questions about workflow progress, agent status, model performance, data quality, data science concepts, and more. So far, we've completed: {agent_summary}. What would you like to know?"
+        except Exception as e:
+            logger.error(f"Error generating PM answer with LLM: {e}")
+            # Fallback to simple answer
         completed_agents = state.get("completed_agents", [])
         agent_summary = ", ".join(completed_agents[-3:]) if completed_agents else "just starting"
         return f"🤔 I'm here to help! I can answer questions about workflow progress, agent status, model performance, data quality, data science concepts, and more. So far, we've completed: {agent_summary}. What would you like to know?"
@@ -719,14 +811,30 @@ async def get_plot_image(plot_path: str) -> FileResponse:
         Plot image file
     """
     try:
-        # Construct full path from backend/plots/ directory
-        base_plots_dir = Path("backend/plots")
-        full_path = base_plots_dir / plot_path
+        import os
+        # Get absolute path from project root
+        # Try multiple possible locations based on where the API is running from
+        possible_bases = [
+            Path("backend/plots"),  # From project root
+            Path("plots"),  # From backend directory
+            Path("../backend/plots"),  # From backend/app directory
+            Path(os.path.join(os.path.dirname(__file__), "../../plots")),  # Relative to this file
+        ]
         
-        logger.info(f"Attempting to serve plot from: {full_path}")
+        full_path = None
+        for base_dir in possible_bases:
+            candidate = base_dir / plot_path
+            if candidate.exists():
+                full_path = candidate.resolve()  # Use absolute path
+                logger.info(f"✅ Found plot at: {full_path}")
+                break
         
-        if not full_path.exists():
-            logger.error(f"Plot not found at: {full_path}")
+        if not full_path or not full_path.exists():
+            # Log all attempted paths for debugging
+            logger.error(f"Plot not found. Tried paths:")
+            for base_dir in possible_bases:
+                candidate = base_dir / plot_path
+                logger.error(f"  - {candidate.resolve() if candidate.exists() else candidate} (exists: {candidate.exists()})")
             raise HTTPException(status_code=404, detail=f"Plot not found: {plot_path}")
         
         # Determine media type
@@ -896,7 +1004,7 @@ async def list_workflows(
 @router.delete("/{workflow_id}")
 async def cancel_workflow(workflow_id: str) -> Dict[str, Any]:
     """
-    Cancel a running workflow.
+    Cancel a running workflow and clean up resources.
     
     Args:
         workflow_id: The workflow identifier
@@ -905,14 +1013,24 @@ async def cancel_workflow(workflow_id: str) -> Dict[str, Any]:
         Dictionary containing cancellation status
     """
     try:
-        # TODO: Implement actual workflow cancellation
-        # For now, return success message
+        if workflow_id not in workflow_states:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+        
+        # Mark workflow as cancelled
+        workflow_states[workflow_id]["workflow_status"] = WorkflowStatus.CANCELLED
+        workflow_states[workflow_id]["workflow_paused"] = False
+        workflow_states[workflow_id]["pending_approval"] = None
+        
+        logger.info(f"Workflow {workflow_id} cancelled")
+        
         return {
             "workflow_id": workflow_id,
             "status": "cancelled",
-            "message": "Workflow cancellation requested"
+            "message": "Workflow cancelled successfully"
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error cancelling workflow: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to cancel workflow: {str(e)}")
@@ -943,8 +1061,8 @@ async def ask_pm_question(
         
         state = workflow_states[workflow_id]
         
-        # Generate context-aware answer (synchronous for immediate response)
-        answer = _generate_pm_answer(question, state)
+        # Generate context-aware answer using LLM service
+        answer = await _generate_pm_answer(question, state)
         
         # Store Q&A in state
         if "pm_qa_history" not in state:
