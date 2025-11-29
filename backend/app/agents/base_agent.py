@@ -501,15 +501,15 @@ warnings.filterwarnings('ignore', message='.*matplotlib.*cache.*')
                     # Don't raise - continue with execution
                 else:
                     # Actual errors - block execution
-                all_issues = []
-                if validation_result.errors:
-                    all_issues.extend([f"ERROR: {e}" for e in validation_result.errors])
-                if validation_result.security_issues:
-                    all_issues.extend([f"SECURITY: {s}" for s in validation_result.security_issues])
-                
-                error_msg = f"Code validation failed: {'; '.join(all_issues) if all_issues else 'Unknown validation error'}"
-                self.logger.error(error_msg)
-                raise ValueError(error_msg)
+                    all_issues = []
+                    if validation_result.errors:
+                        all_issues.extend([f"ERROR: {e}" for e in validation_result.errors])
+                    if validation_result.security_issues:
+                        all_issues.extend([f"SECURITY: {s}" for s in validation_result.security_issues])
+                    
+                    error_msg = f"Code validation failed: {'; '.join(all_issues) if all_issues else 'Unknown validation error'}"
+                    self.logger.error(error_msg)
+                    raise ValueError(error_msg)
 
             if validation_result.warnings:
                 self.logger.warning(f"  ⚠️ Validation warnings: {len(validation_result.warnings)} warnings")
