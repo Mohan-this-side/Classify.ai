@@ -672,6 +672,7 @@ function UploadView({ file, handleFileChange, targetColumn, setTargetColumn, des
 }
 
 function WorkflowView({ agents, pmExpanded, setPmExpanded, pendingApproval, setPendingApproval, pmMessages, sandboxMetrics, workflowStatus, workflowId, onApprovalResponse, onPMQuestion, onCancelWorkflow }: any) {
+  // Pass workflowId to CompletedAgent components
   // Map agent IDs to icons and labels
   const iconMap: any = {
     discovery: TrendingUp,
@@ -796,6 +797,7 @@ function WorkflowView({ agents, pmExpanded, setPmExpanded, pendingApproval, setP
                 name={agent.label || agent.name} 
                 time={agent.time || 'Completed'}
                 agentId={agent.id}
+                workflowId={workflowId}
               />
             ))}
           </div>
@@ -1045,8 +1047,37 @@ function MetricBar({ label, value, color }: any) {
   )
 }
 
-function CompletedAgent({ icon: Icon, name, time, agentId }: any) {
+function CompletedAgent({ icon: Icon, name, time, agentId, workflowId }: any) {
   const [showDetails, setShowDetails] = useState(false)
+  const [summary, setSummary] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  
+  const fetchSummary = async () => {
+    if (!workflowId || !agentId || summary !== null) return
+    
+    setLoading(true)
+    try {
+      const response = await fetch(`http://localhost:8000/api/workflow/${workflowId}/agent/${agentId}/summary`)
+      if (response.ok) {
+        const data = await response.json()
+        setSummary(data.summary || "Agent execution completed successfully.")
+      } else {
+        setSummary("Agent execution completed successfully. Details will be available in the final report.")
+      }
+    } catch (error) {
+      console.error('Error fetching agent summary:', error)
+      setSummary("Agent execution completed successfully. Details will be available in the final report.")
+    } finally {
+      setLoading(false)
+    }
+  }
+  
+  const handleToggleDetails = () => {
+    if (!showDetails && summary === null) {
+      fetchSummary()
+    }
+    setShowDetails(!showDetails)
+  }
   
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:shadow-md transition-all">
@@ -1059,7 +1090,7 @@ function CompletedAgent({ icon: Icon, name, time, agentId }: any) {
           </div>
         </div>
         <button 
-          onClick={() => setShowDetails(!showDetails)}
+          onClick={handleToggleDetails}
           className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
         >
           {showDetails ? 'Hide Details' : 'View Details'}
@@ -1067,9 +1098,31 @@ function CompletedAgent({ icon: Icon, name, time, agentId }: any) {
       </div>
       {showDetails && (
         <div className="mt-4 pt-4 border-t border-gray-200">
-          <p className="text-sm text-gray-600">
-            Agent execution completed successfully. Details will be available in the final report.
-          </p>
+          {loading ? (
+            <div className="flex items-center space-x-2 text-sm text-gray-600">
+              <Loader className="w-4 h-4 animate-spin" />
+              <span>Loading summary...</span>
+            </div>
+          ) : summary ? (
+            <div className="text-sm text-gray-700 whitespace-pre-line space-y-2">
+              {summary.split('\n').map((line, idx) => {
+                // Format markdown-style headers
+                if (line.startsWith('**') && line.endsWith('**')) {
+                  return <h5 key={idx} className="font-bold text-gray-900 mt-3 mb-1">{line.replace(/\*\*/g, '')}</h5>
+                }
+                // Format bullet points
+                if (line.startsWith('- ')) {
+                  return <div key={idx} className="ml-4">{line}</div>
+                }
+                // Regular text
+                return <p key={idx}>{line}</p>
+              })}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-600">
+              Agent execution completed successfully. Details will be available in the final report.
+            </p>
+          )}
         </div>
       )}
     </div>

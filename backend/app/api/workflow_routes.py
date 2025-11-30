@@ -1036,6 +1036,63 @@ async def cancel_workflow(workflow_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Failed to cancel workflow: {str(e)}")
 
 
+@router.get("/{workflow_id}/agent/{agent_name}/summary")
+async def get_agent_summary(
+    workflow_id: str,
+    agent_name: str
+) -> Dict[str, Any]:
+    """
+    Get a human-readable summary of an agent's execution.
+    
+    Args:
+        workflow_id: The workflow identifier
+        agent_name: Name of the agent (e.g., 'eda_analysis', 'data_cleaning')
+        
+    Returns:
+        Agent execution summary
+    """
+    try:
+        if workflow_id not in workflow_states:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+        
+        state = workflow_states[workflow_id]
+        
+        # Map frontend agent IDs to backend agent names
+        agent_mapping = {
+            "discovery": "data_discovery",
+            "eda": "eda_analysis",
+            "cleaning": "data_cleaning",
+            "feature": "feature_engineering",
+            "model": "ml_building",
+            "eval": "model_evaluation",
+            "report": "technical_reporter"
+        }
+        
+        backend_agent_name = agent_mapping.get(agent_name, agent_name)
+        
+        # Generate summary using service
+        from ..services.agent_summary_service import agent_summary_service
+        summary = await agent_summary_service.generate_summary(
+            backend_agent_name,
+            state,
+            workflow_id
+        )
+        
+        return {
+            "workflow_id": workflow_id,
+            "agent_name": agent_name,
+            "backend_agent_name": backend_agent_name,
+            "summary": summary,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting agent summary: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get agent summary: {str(e)}")
+
+
 @router.post("/{workflow_id}/pm/question")
 async def ask_pm_question(
     workflow_id: str,
