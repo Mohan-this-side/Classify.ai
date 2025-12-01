@@ -378,7 +378,9 @@ export default function ClassifyAI() {
         // Downloadable files - check top-level first, then nested
         downloadable_files: data.downloadable_files || data.results?.downloadable_files || data.downloads?.downloadable_files || [],
         // Execution info for notification
-        execution_info: data.execution_info || {}
+        execution_info: data.execution_info || {},
+        // ✅ ADD: Workflow summary
+        workflow_summary: data.workflow_summary || ""
       }
       
       console.log('Structured results:', structuredResults) // Debug
@@ -1026,6 +1028,19 @@ function ResultsView({ results, workflowId }: any) {
           </div>
         </div>
 
+        {/* Summary - ✅ ADD: Comprehensive workflow summary */}
+        {results?.workflow_summary && (
+          <div className="bg-white rounded-xl shadow-md border border-gray-200 p-8">
+            <h3 className="text-2xl font-bold text-gray-900 mb-6 flex items-center space-x-3">
+              <FileText className="w-7 h-7 text-blue-600" />
+              <span>Summary</span>
+            </h3>
+            <div className="prose prose-sm max-w-none">
+              <MarkdownContent content={results.workflow_summary} />
+            </div>
+          </div>
+        )}
+
         {/* Feature Importance */}
         <div className="bg-white rounded-xl shadow-md border border-gray-200 p-8">
           <h3 className="text-2xl font-bold text-gray-900 mb-6">Feature Importance</h3>
@@ -1079,6 +1094,110 @@ function ResultsView({ results, workflowId }: any) {
 }
 
 // ========== HELPER COMPONENTS ==========
+
+// ✅ ADD: Markdown content renderer for Summary box
+function MarkdownContent({ content }: { content: string }) {
+  if (!content) return null
+  
+  // Enhanced markdown parser with better table support
+  const parseMarkdown = (text: string) => {
+    let html = text
+    
+    // Process tables first (before other replacements)
+    const tableRegex = /(\|.+\|\n\|[-:|\s]+\|\n(?:\|.+\|\n?)+)/g
+    html = html.replace(tableRegex, (match) => {
+      const lines = match.trim().split('\n').filter(l => l.trim())
+      if (lines.length < 2) return match
+      
+      // Skip separator line
+      const dataLines = lines.filter(l => !l.match(/^\|[-:\s|]+\|$/))
+      
+      let tableHtml = '<div class="overflow-x-auto my-4"><table class="min-w-full border-collapse border border-gray-300 bg-white"><thead><tr class="bg-gray-50">'
+      
+      // Header row
+      const headerCells = dataLines[0].split('|').filter(c => c.trim())
+      headerCells.forEach(cell => {
+        tableHtml += `<th class="px-4 py-3 border border-gray-300 text-left font-semibold text-gray-900">${cell.trim()}</th>`
+      })
+      tableHtml += '</tr></thead><tbody>'
+      
+      // Data rows
+      for (let i = 1; i < dataLines.length; i++) {
+        const cells = dataLines[i].split('|').filter(c => c.trim())
+        tableHtml += '<tr class="hover:bg-gray-50">'
+        cells.forEach(cell => {
+          tableHtml += `<td class="px-4 py-2 border border-gray-300 text-gray-700">${cell.trim()}</td>`
+        })
+        tableHtml += '</tr>'
+      }
+      
+      tableHtml += '</tbody></table></div>'
+      return tableHtml
+    })
+    
+    // Headers
+    html = html.replace(/^### (.*$)/gim, '<h3 class="text-lg font-bold mt-6 mb-3 text-gray-900">$1</h3>')
+    html = html.replace(/^## (.*$)/gim, '<h2 class="text-xl font-bold mt-8 mb-4 text-gray-900">$1</h2>')
+    html = html.replace(/^# (.*$)/gim, '<h1 class="text-2xl font-bold mt-8 mb-4 text-gray-900">$1</h1>')
+    
+    // Bold
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-900">$1</strong>')
+    
+    // Italic
+    html = html.replace(/\*(.*?)\*/g, '<em class="italic text-gray-700">$1</em>')
+    
+    // Bullet points and lists
+    const lines = html.split('\n')
+    let inList = false
+    let listItems: string[] = []
+    let processedLines: string[] = []
+    
+    lines.forEach((line, idx) => {
+      const trimmed = line.trim()
+      const isListItem = trimmed.match(/^[•\-\*]\s+(.+)$/) || trimmed.match(/^\d+\.\s+(.+)$/)
+      
+      if (isListItem) {
+        if (!inList) {
+          inList = true
+          listItems = []
+        }
+        const content = isListItem[1] || trimmed.replace(/^[•\-\*]\s+/, '').replace(/^\d+\.\s+/, '')
+        listItems.push(`<li class="ml-4 mb-2 text-gray-700">${content}</li>`)
+      } else {
+        if (inList && listItems.length > 0) {
+          processedLines.push(`<ul class="list-disc space-y-1 mb-4 ml-6">${listItems.join('')}</ul>`)
+          listItems = []
+          inList = false
+        }
+        if (trimmed && !trimmed.startsWith('<')) {
+          processedLines.push(`<p class="mb-4 text-gray-700 leading-relaxed">${trimmed}</p>`)
+        } else if (trimmed) {
+          processedLines.push(line)
+        }
+      }
+    })
+    
+    if (inList && listItems.length > 0) {
+      processedLines.push(`<ul class="list-disc space-y-1 mb-4 ml-6">${listItems.join('')}</ul>`)
+    }
+    
+    html = processedLines.join('\n')
+    
+    // Clean up multiple consecutive <p> tags
+    html = html.replace(/<\/p>\n<p class="mb-4 text-gray-700 leading-relaxed">/g, '<br />')
+    
+    return html
+  }
+  
+  const htmlContent = parseMarkdown(content)
+  
+  return (
+    <div 
+      className="markdown-content text-gray-800 prose prose-sm max-w-none"
+      dangerouslySetInnerHTML={{ __html: htmlContent }}
+    />
+  )
+}
 
 function AgentStep({ icon: Icon, label, status, time }: any) {
   const colors = {

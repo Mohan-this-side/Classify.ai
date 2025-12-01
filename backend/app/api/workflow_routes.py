@@ -724,6 +724,14 @@ async def get_workflow_results(workflow_id: str) -> Dict[str, Any]:
                 return tuple(convert_numpy_types(item) for item in obj)
             return obj
         
+        def _extract_workflow_summary(state: Dict[str, Any]) -> Optional[str]:
+            """Extract workflow summary from PM messages"""
+            pm_messages = state.get("pm_messages", [])
+            for msg in reversed(pm_messages):  # Get the most recent completion summary
+                if msg.get("type") == "completion_summary":
+                    return msg.get("content", "")
+            return None
+        
         # ✅ FIX: Extract evaluation metrics properly (check multiple locations)
         eval_metrics = state.get("evaluation_metrics") or {}
         if not eval_metrics and "model_evaluation" in state:
@@ -862,6 +870,8 @@ async def get_workflow_results(workflow_id: str) -> Dict[str, Any]:
             },
             # ✅ FIX: Top-level downloadable_files for frontend convenience
             "downloadable_files": downloadable_files,
+            # ✅ ADD: Workflow summary from PM messages
+            "workflow_summary": _extract_workflow_summary(state),
             "execution_info": {
                 "start_time": state.get("start_time"),
                 "end_time": state.get("end_time"),

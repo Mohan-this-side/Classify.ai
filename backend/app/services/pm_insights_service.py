@@ -93,40 +93,78 @@ class PMInsightsService:
             context = "\n".join(context_parts)
             
             # Build comprehensive prompt for LLM
-            prompt = f"""You are a senior data scientist explaining classification results to a non-expert user. Generate a comprehensive summary with actionable insights.
+            prompt = f"""You are a senior data scientist explaining classification results to a non-expert user. Generate a comprehensive, well-formatted summary with actionable insights.
 
 **Classification Task Context:**
 {context}
 
 **Your Task:**
-1. Provide a clear, simple summary of what was accomplished (2-3 sentences)
-2. Explain the key findings in plain language that anyone can understand
-3. List 3-5 actionable insights about what matters in their dataset
-4. For each insight, explain:
-   - What feature/pattern was found (use actual feature names from the dataset)
-   - How it affects the target variable (use specific numbers/percentages if available)
-   - Why it matters (in simple terms)
-   - What action they should take (be specific and actionable)
+Generate a comprehensive summary that includes:
 
-**Format:**
-Start with: "✅ Workflow Complete! We've successfully analyzed your dataset and built a classification model..."
+1. **Executive Summary** (2-3 sentences): What was accomplished
+2. **Model Performance Table**: Create a markdown table showing key metrics
+3. **Key Insights** (3-5 insights): Each insight should include:
+   - Feature name and its impact
+   - Specific numbers/percentages
+   - Why it matters
+   - Actionable recommendation
+4. **Top Features Table**: Table showing top 5-10 most important features
+5. **Action Items**: Bulleted list of next steps
 
-Then list insights as:
-"• [Feature Name] significantly affects [target variable]. [Specific finding, e.g., 'Employees with master's degrees are X% more likely to leave']. [Simple explanation of why this matters]. Focus on: [Specific actionable recommendation]."
+**Format Requirements:**
+- Use markdown formatting (headers, tables, bullet points)
+- Use proper markdown table syntax for tables
+- Make it readable and professional
+- Include specific numbers and percentages
+- Use clear section headers (## for main sections, ### for subsections)
 
 **Example Format:**
-"✅ Workflow Complete! We've successfully analyzed your dataset and built a classification model with [accuracy]% accuracy. Here are the key insights:
 
-• Master's education level significantly affects employee leaving decisions. Employees with master's degrees are [X]% more likely to leave than those without. This suggests that higher education may correlate with better job opportunities elsewhere. Focus on: Understanding why higher education correlates with turnover and consider retention strategies specifically for this group, such as career development programs or competitive compensation packages.
+## Executive Summary
 
-• [Another insight with specific feature name and impact]..."
+✅ Workflow Complete! We've successfully analyzed your dataset ({dataset_shape[0] if dataset_shape else 'N/A'} rows × {dataset_shape[1] if dataset_shape else 'N/A'} columns) and built a classification model for '{target_column}'. The model achieved {metrics.get('accuracy', 0)*100:.1f}% accuracy, demonstrating strong predictive capability.
+
+## Model Performance
+
+| Metric | Value |
+|--------|-------|
+| Accuracy | {metrics.get('accuracy', 0)*100:.1f}% |
+| F1 Score | {metrics.get('f1_weighted', 0):.3f} |
+| Precision | {metrics.get('precision_weighted', 0)*100:.1f}% |
+| Recall | {metrics.get('recall_weighted', 0)*100:.1f}% |
+
+## Key Insights
+
+### 1. [Feature Name] Impact
+[Feature Name] significantly affects {target_column}. [Specific finding with numbers]. [Simple explanation]. 
+
+**Action Item:** [Specific actionable recommendation]
+
+### 2. [Another Feature]
+[Description with numbers and impact]
+
+**Action Item:** [Recommendation]
+
+## Top Important Features
+
+| Feature | Importance | Impact |
+|---------|------------|--------|
+| [Feature 1] | [Value] | [Description] |
+| [Feature 2] | [Value] | [Description] |
+
+## Recommended Next Steps
+
+• [Action item 1]
+• [Action item 2]
+• [Action item 3]
 
 **Important:**
 - Use actual feature names from the dataset
 - Include specific numbers/percentages when available
 - Make explanations simple and accessible
 - Provide actionable recommendations
-- Focus on what matters most for the classification task
+- Format tables properly using markdown syntax
+- Use proper markdown headers and formatting
 
 **Generate the summary now:**"""
             
@@ -158,32 +196,90 @@ Then list insights as:
             return self._generate_fallback_summary(state)
     
     def _generate_fallback_summary(self, state: Dict[str, Any]) -> str:
-        """Generate fallback summary without LLM"""
+        """Generate fallback summary without LLM - formatted with markdown"""
         dataset_shape = state.get("dataset_shape", [])
         target_column = state.get("target_column", "")
         metrics = state.get("evaluation_metrics", {})
         feature_importance = state.get("feature_importance_model", {})
+        best_model = state.get("best_model", "Unknown")
+        cleaning_actions = state.get("cleaning_actions_taken", [])
         
         summary_parts = [
-            f"✅ Workflow Complete!",
-            f"\nWe've successfully analyzed your dataset ({dataset_shape[0]} rows × {dataset_shape[1]} columns) and built a classification model for '{target_column}'."
+            "## Executive Summary",
+            "",
+            f"✅ **Workflow Complete!** We've successfully analyzed your dataset ({dataset_shape[0] if dataset_shape else 'N/A'} rows × {dataset_shape[1] if dataset_shape else 'N/A'} columns) and built a classification model for **{target_column}**."
         ]
         
         if metrics:
             accuracy = metrics.get("accuracy", 0)
-            summary_parts.append(f"\nModel Performance: {accuracy*100:.1f}% accuracy")
+            f1 = metrics.get("f1_weighted", metrics.get("f1_score", 0))
+            precision = metrics.get("precision_weighted", metrics.get("precision_score", 0))
+            recall = metrics.get("recall_weighted", metrics.get("recall_score", 0))
+            
+            summary_parts.extend([
+                "",
+                "## Model Performance",
+                "",
+                "| Metric | Value |",
+                "|--------|-------|",
+                f"| Accuracy | {accuracy*100:.1f}% |",
+                f"| F1 Score | {f1:.3f} |",
+                f"| Precision | {precision*100:.1f}% |",
+                f"| Recall | {recall*100:.1f}% |",
+                ""
+            ])
+        
+        if best_model and best_model != "Unknown":
+            summary_parts.extend([
+                f"**Best Model:** {best_model}",
+                ""
+            ])
         
         if feature_importance:
             top_features = sorted(
                 feature_importance.items(),
                 key=lambda x: abs(x[1]) if isinstance(x[1], (int, float)) else 0,
                 reverse=True
-            )[:5]
-            summary_parts.append(f"\nKey Insights:")
-            for feat, imp in top_features:
-                summary_parts.append(f"• {feat} is a key factor (importance: {imp:.3f})")
+            )[:10]
+            
+            summary_parts.extend([
+                "## Top Important Features",
+                "",
+                "| Feature | Importance |",
+                "|---------|------------|"
+            ])
+            
+            for feat, imp in top_features[:10]:
+                summary_parts.append(f"| {feat} | {imp:.3f} |")
+            
+            summary_parts.extend([
+                "",
+                "## Key Insights",
+                ""
+            ])
+            
+            for i, (feat, imp) in enumerate(top_features[:5], 1):
+                summary_parts.append(f"### {i}. {feat} Impact")
+                summary_parts.append(f"{feat} is a key factor in predicting {target_column} with an importance score of {imp:.3f}. This feature significantly influences the model's predictions.")
+                summary_parts.append("")
         
-        summary_parts.append(f"\nYou can now ask me questions about feature importance, model performance, or next steps!")
+        if cleaning_actions:
+            summary_parts.extend([
+                "## Data Quality Improvements",
+                ""
+            ])
+            for action in cleaning_actions[:5]:
+                summary_parts.append(f"• {action}")
+            summary_parts.append("")
+        
+        summary_parts.extend([
+            "## Recommended Next Steps",
+            "",
+            "• Review the model performance metrics above",
+            "• Examine the feature importance rankings to understand key drivers",
+            "• Download the trained model and cleaned dataset for further analysis",
+            "• Use the generated notebook to explore the analysis in detail"
+        ])
         
         return "\n".join(summary_parts)
     
