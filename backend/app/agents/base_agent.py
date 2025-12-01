@@ -120,6 +120,7 @@ class BaseAgent(ABC):
 
         try:
             # Initialize LLM service (Gemini by default)
+            # Note: API key will be set from state during execute() if available
             self.llm_service = get_llm_service(LLMProvider.GEMINI)
             self.logger.info("LLMService initialized successfully")
         except Exception as e:
@@ -339,6 +340,15 @@ class BaseAgent(ABC):
             Updated workflow state with results
         """
         self.logger.info(f"Starting double-layer execution for {self.agent_name}")
+
+        # ✅ FIX: Update LLM service with user-provided API key from state if available
+        api_key = state.get("api_key")
+        if api_key and api_key != "dummy_key" and self.enable_layer2:
+            try:
+                self.llm_service = get_llm_service(LLMProvider.GEMINI, api_key=api_key)
+                self.logger.info("✅ Updated LLM service with user-provided API key")
+            except Exception as e:
+                self.logger.warning(f"Failed to update LLM service with user API key: {e}")
 
         # Track which layer was used
         layer_used = "layer1"

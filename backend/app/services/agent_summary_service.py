@@ -17,8 +17,15 @@ logger = logging.getLogger(__name__)
 class AgentSummaryService:
     """Service to generate comprehensive summaries for agent executions"""
     
-    def __init__(self):
-        self.llm_service = get_llm_service()
+    def __init__(self, api_key: Optional[str] = None):
+        """
+        Initialize agent summary service.
+        
+        Args:
+            api_key: User-provided API key (optional, uses environment if not provided)
+        """
+        self.api_key = api_key
+        self.llm_service = get_llm_service(api_key=api_key) if api_key else get_llm_service()
     
     async def generate_summary(
         self,
@@ -419,5 +426,28 @@ Format each insight as a bullet point (1-2 sentences). Be specific and actionabl
 
 
 # Singleton instance
+# Singleton instance (for backward compatibility)
+_agent_summary_service = None
+
+def get_agent_summary_service(api_key: Optional[str] = None) -> AgentSummaryService:
+    """
+    Get agent summary service instance.
+    
+    Args:
+        api_key: User-provided API key (creates new instance if provided)
+    
+    Returns:
+        AgentSummaryService instance
+    """
+    global _agent_summary_service
+    # If API key is provided, create a new instance
+    if api_key:
+        return AgentSummaryService(api_key=api_key)
+    # Otherwise use singleton for backward compatibility
+    if _agent_summary_service is None:
+        _agent_summary_service = AgentSummaryService()
+    return _agent_summary_service
+
+# Backward compatibility singleton
 agent_summary_service = AgentSummaryService()
 

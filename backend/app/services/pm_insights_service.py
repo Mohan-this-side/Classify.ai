@@ -12,8 +12,15 @@ logger = logging.getLogger(__name__)
 class PMInsightsService:
     """Service to generate comprehensive insights and action items for workflows"""
     
-    def __init__(self):
-        self.llm_service = get_llm_service()
+    def __init__(self, api_key: Optional[str] = None):
+        """
+        Initialize PM insights service.
+        
+        Args:
+            api_key: User-provided API key (optional, uses environment if not provided)
+        """
+        self.api_key = api_key
+        self.llm_service = get_llm_service(api_key=api_key) if api_key else get_llm_service()
     
     async def generate_workflow_summary(self, state: Dict[str, Any]) -> str:
         """
@@ -277,6 +284,28 @@ Then list insights as:
         return "I can help you understand feature importance. Please ask a specific question about your model's features."
 
 
-# Singleton instance
+# Singleton instance (for backward compatibility, will be created with API key when needed)
+_pm_insights_service = None
+
+def get_pm_insights_service(api_key: Optional[str] = None) -> PMInsightsService:
+    """
+    Get PM insights service instance.
+    
+    Args:
+        api_key: User-provided API key (creates new instance if provided)
+    
+    Returns:
+        PMInsightsService instance
+    """
+    global _pm_insights_service
+    # If API key is provided, create a new instance
+    if api_key:
+        return PMInsightsService(api_key=api_key)
+    # Otherwise use singleton for backward compatibility
+    if _pm_insights_service is None:
+        _pm_insights_service = PMInsightsService()
+    return _pm_insights_service
+
+# Backward compatibility singleton
 pm_insights_service = PMInsightsService()
 

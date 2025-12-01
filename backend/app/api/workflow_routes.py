@@ -223,13 +223,17 @@ async def _generate_pm_answer(question: str, state: Dict[str, Any]) -> str:
         
         # For completed workflows, use enhanced PM insights service
         if is_completed:
-            from ..services.pm_insights_service import pm_insights_service
+            from ..services.pm_insights_service import get_pm_insights_service
+            
+            # ✅ FIX: Get API key from workflow state
+            api_key = state.get("api_key") or (workflow_states.get(workflow_id, {}).get("api_key") if workflow_id in workflow_states else None)
+            pm_service = get_pm_insights_service(api_key=api_key) if api_key and api_key != "dummy_key" else get_pm_insights_service()
             
             # Check if question is about features/insights
             question_lower = question.lower()
             if any(word in question_lower for word in ["feature", "important", "focus", "insight", "finding", "what matters", "key", "top"]):
                 # Use feature insights service
-                answer = await pm_insights_service.generate_feature_insights(state, question)
+                answer = await pm_service.generate_feature_insights(state, question)
                 return f"🤖 {answer}"
         
         # Build comprehensive LLM prompt with project context
@@ -544,6 +548,7 @@ async def start_workflow(
             "filename": file.filename,
             "target_column": target_column,
             "description": description,
+            "api_key": api_key,  # ✅ FIX: Store user-provided API key
             "dataset_shape": df.shape,
             "start_time": datetime.now().isoformat(),
             "status": WorkflowStatus.RUNNING,
@@ -567,6 +572,9 @@ async def start_workflow(
         
         # Store in memory
         workflow_states[workflow_id] = workflow_info
+        
+        # ✅ FIX: Store API key in workflow state before starting background task
+        workflow_states[workflow_id]["api_key"] = api_key
         
         # Execute workflow asynchronously
         background_tasks.add_task(
@@ -1133,8 +1141,11 @@ async def get_agent_summary(
         backend_agent_name = agent_mapping.get(agent_name, agent_name)
         
         # Generate summary using service
-        from ..services.agent_summary_service import agent_summary_service
-        summary = await agent_summary_service.generate_summary(
+        from ..services.agent_summary_service import get_agent_summary_service
+        # ✅ FIX: Get API key from workflow state
+        api_key = state.get("api_key") or (workflow_states.get(workflow_id, {}).get("api_key") if workflow_id in workflow_states else None)
+        summary_service = get_agent_summary_service(api_key=api_key) if api_key and api_key != "dummy_key" else get_agent_summary_service()
+        summary = await summary_service.generate_summary(
             backend_agent_name,
             state,
             workflow_id
@@ -1313,7 +1324,8 @@ async def execute_workflow_with_progress(
     target_column: str,
     description: str,
     user_id: Optional[str],
-    workflow_id: str
+    workflow_id: str,
+    api_key: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Execute workflow with progress updates.
@@ -1359,12 +1371,14 @@ async def execute_workflow_with_progress(
         
         # Create initial state
         from ..workflows.state_management import state_manager
+        # ✅ FIX: Use user-provided API key (from parameter or workflow state)
+        user_api_key = api_key or (workflow_states[workflow_id].get("api_key", "dummy_key") if workflow_id in workflow_states else "dummy_key")
         initial_state = state_manager.initialize_state(
             session_id=workflow_id,
             dataset_id=f"dataset_{workflow_id}",
             target_column=target_column,
             user_description=description,
-            api_key="dummy_key",
+            api_key=user_api_key,
             original_dataset=dataset
         )
         
@@ -1415,7 +1429,8 @@ async def execute_workflow_with_progress(
                 # This ensures results from agents are accessible via the API
                 logger.info(f"📦 Copying state keys to workflow_states for {agent_name}")
                 copied_keys = []
-                skip_keys = {"session_id", "user_id", "workflow_status", "api_key", "original_dataset", "dataset", "processed_dataset"}
+                # ✅ FIX: Keep api_key in workflow_states so it's available for all services
+                skip_keys = {"session_id", "user_id", "workflow_status", "original_dataset", "dataset", "processed_dataset"}
                 
                 for key, value in current_state.items():
                     if key not in skip_keys and value is not None:
@@ -1666,8 +1681,11 @@ async def execute_workflow_with_progress(
         
         # ✅ ADD: Generate and send workflow completion summary with actionable insights
         try:
-            from ..services.pm_insights_service import pm_insights_service
-            completion_summary = await pm_insights_service.generate_workflow_summary(workflow_states[workflow_id])
+            from ..services.pm_insights_service import get_pm_insights_service
+            # ✅ FIX: Get API key from workflow state
+            api_key = workflow_states[workflow_id].get("api_key")
+            pm_service = get_pm_insights_service(api_key=api_key) if api_key and api_key != "dummy_key" else get_pm_insights_service()
+            completion_summary = await pm_service.generate_workflow_summary(workflow_states[workflow_id])
             
             # Add summary to PM messages
             if "pm_messages" not in workflow_states[workflow_id]:
@@ -1762,7 +1780,7 @@ async def execute_workflow_background(
         
         # Execute the workflow with progress updates
         result = await execute_workflow_with_progress(
-            workflow, dataset, target_column, description, user_id, workflow_id
+            workflow, dataset, target_column, description, user_id, workflow_id, api_key
         )
         
         # Update final status

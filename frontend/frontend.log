@@ -8,25 +8,13 @@
  ⚠ Invalid next.config.js options detected: 
  ⚠     Unrecognized key(s) in object: 'appDir' at "experimental"
  ⚠ See more info here: https://nextjs.org/docs/messages/invalid-next-config
- ✓ Ready in 1601ms
+ ✓ Ready in 1992ms
  ○ Compiling / ...
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
- ✓ Compiled / in 2.7s (478 modules)
+ ✓ Compiled / in 2.1s (469 modules)
  ⚠ Unsupported metadata viewport is configured in metadata export in /. Please move it to viewport export instead.
 Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
- ✓ Compiled in 215ms (242 modules)
- ✓ Compiled in 584ms (469 modules)
- ⚠ Unsupported metadata viewport is configured in metadata export in /?_rsc=1xuj0. Please move it to viewport export instead.
-Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
- ✓ Compiled in 284ms (469 modules)
- ⚠ Unsupported metadata viewport is configured in metadata export in /?_rsc=1xuj0. Please move it to viewport export instead.
-Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
- ⚠ Unsupported metadata viewport is configured in metadata export in /. Please move it to viewport export instead.
-Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
- ⚠ Unsupported metadata viewport is configured in metadata export in /. Please move it to viewport export instead.
-Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
- ✓ Compiled in 1018ms (469 modules)
- ✓ Compiled in 311ms (469 modules)
+ ✓ Compiled in 270ms (242 modules)
  ⚠ Unsupported metadata viewport is configured in metadata export in /. Please move it to viewport export instead.
 Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
  ⚠ Unsupported metadata viewport is configured in metadata export in /. Please move it to viewport export instead.
