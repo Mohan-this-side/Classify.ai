@@ -217,8 +217,49 @@ async def _generate_pm_answer(question: str, state: Dict[str, Any]) -> str:
         
         context = "\n".join(context_parts)
         
+        # Check if workflow is completed - use enhanced insights service
+        workflow_status = state.get("workflow_status", "unknown")
+        is_completed = workflow_status == "completed" or workflow_status == WorkflowStatus.COMPLETED
+        
+        # For completed workflows, use enhanced PM insights service
+        if is_completed:
+            from ..services.pm_insights_service import pm_insights_service
+            
+            # Check if question is about features/insights
+            question_lower = question.lower()
+            if any(word in question_lower for word in ["feature", "important", "focus", "insight", "finding", "what matters", "key", "top"]):
+                # Use feature insights service
+                answer = await pm_insights_service.generate_feature_insights(state, question)
+                return f"🤖 {answer}"
+        
         # Build comprehensive LLM prompt with project context
-        prompt = f"""You are an expert Project Manager AI assistant named "Project Manager" for Classify AI, a multi-agent machine learning classification system.
+        # Enhanced prompt for completed workflows
+        role_description = """You are a senior data scientist and Project Manager AI assistant named "Project Manager" for Classify AI, a multi-agent machine learning classification system. You act as both a project coordinator AND a senior data scientist mentor, helping users understand their classification results and make data-driven decisions.""" if is_completed else """You are an expert Project Manager AI assistant named "Project Manager" for Classify AI, a multi-agent machine learning classification system."""
+        
+        instructions = """**Instructions:**
+- Answer as a senior data scientist mentor would explain to a non-expert user
+- Be SPECIFIC about findings from the analysis (use actual feature names, numbers, percentages from the context)
+- Provide actionable insights and recommendations based on the classification results
+- Explain which features matter most and WHY (in simple terms)
+- For feature importance questions, explain the impact on the target variable with specific examples
+- Use simple language but include specific numbers and impacts from the analysis
+- Provide actionable next steps based on findings (what should the user focus on?)
+- Reference actual findings from the analysis (correlations, feature importance rankings, model performance metrics)
+- If asked "what features are important" or "what should I focus on", list the top features with their importance scores and explain their impact
+- If asked "what matters in my dataset", provide insights about key patterns and their effects on the target variable
+- Keep answers informative but accessible (3-5 sentences for complex topics, use bullet points for lists)
+- Act as a mentor helping the user understand their data and make data-driven decisions""" if is_completed else """**Instructions:**
+- Answer quickly and knowledgeably as a project coordinator
+- Reference Mohan as the project owner when relevant
+- Be SPECIFIC about the CURRENT dataset and workflow state
+- If asked "what the data is about" or "what have you found", provide DETAILED insights about the dataset based on the context above
+- If asked "who are you", explain your role as Project Manager for this system
+- Explain data science concepts clearly and educationally
+- Keep answers concise but informative (2-4 sentences)
+- Act as if you know everything about this project, workflow, and dataset
+- Use the dataset information provided to give specific answers"""
+        
+        prompt = f"""{role_description}
 
 **Project Context:**
 - Project Owner: Mohan
@@ -236,22 +277,14 @@ You are the Project Manager coordinating all agents. You know everything about:
 - The double-layer architecture and how it works
 - Project goals and Mohan's requirements
 - The CURRENT dataset being analyzed
+- Classification results, feature importance, and model performance
 
 **Current Workflow Context:**
 {context}
 
 **User Question:** {question}
 
-**Instructions:**
-- Answer quickly and knowledgeably as a project coordinator
-- Reference Mohan as the project owner when relevant
-- Be SPECIFIC about the CURRENT dataset and workflow state
-- If asked "what the data is about" or "what have you found", provide DETAILED insights about the dataset based on the context above
-- If asked "who are you", explain your role as Project Manager for this system
-- Explain data science concepts clearly and educationally
-- Keep answers concise but informative (2-4 sentences)
-- Act as if you know everything about this project, workflow, and dataset
-- Use the dataset information provided to give specific answers
+{instructions}
 
 **Answer:**"""
         
@@ -273,10 +306,11 @@ You are the Project Manager coordinating all agents. You know everything about:
                 if LLMProvider.OPENAI in llm_service.clients:
                     import openai
                     client = llm_service.clients[LLMProvider.OPENAI]
+                    max_tokens = 500 if is_completed else 300
                     response = client.chat.completions.create(
                         model="gpt-3.5-turbo",
                         messages=[{"role": "user", "content": prompt}],
-                        max_tokens=300
+                        max_tokens=max_tokens
                     )
                     answer = response.choices[0].message.content.strip()
                     if answer:
@@ -285,9 +319,10 @@ You are the Project Manager coordinating all agents. You know everything about:
                 # Try Anthropic if others fail
                 if LLMProvider.ANTHROPIC in llm_service.clients:
                     client = llm_service.clients[LLMProvider.ANTHROPIC]
+                    max_tokens = 500 if is_completed else 300
                     response = client.messages.create(
                         model="claude-3-haiku-20240307",
-                        max_tokens=300,
+                        max_tokens=max_tokens,
                         messages=[{"role": "user", "content": prompt}]
                     )
                     answer = response.content[0].text.strip()
@@ -300,154 +335,29 @@ You are the Project Manager coordinating all agents. You know everything about:
                 completed_agents = state.get("completed_agents", [])
                 dataset_shape = state.get("dataset_shape", [])
                 if dataset_shape:
-                    return f"🤖 I'm analyzing a dataset with {dataset_shape[0]} rows and {dataset_shape[1]} columns. {'We've completed: ' + ', '.join(completed_agents) if completed_agents else 'The workflow is in progress.'} Please check back in a moment or ask a more specific question."
-                return f"🤖 {'We've completed: ' + ', '.join(completed_agents) if completed_agents else 'The workflow is running.'} What would you like to know?"
+                    agents_text = ', '.join(completed_agents) if completed_agents else 'The workflow is in progress.'
+                    return f"🤖 I'm analyzing a dataset with {dataset_shape[0]} rows and {dataset_shape[1]} columns. We've completed: {agents_text} Please check back in a moment or ask a more specific question."
+                agents_text = ', '.join(completed_agents) if completed_agents else 'The workflow is running.'
+                return f"🤖 We've completed: {agents_text} What would you like to know?"
         
         # If no LLM available, provide contextual answer
         completed_agents = state.get("completed_agents", [])
         dataset_shape = state.get("dataset_shape", [])
         if dataset_shape:
-            return f"🤖 I'm analyzing a dataset with {dataset_shape[0]} rows and {dataset_shape[1]} columns. {'We've completed: ' + ', '.join(completed_agents) if completed_agents else 'The workflow is in progress.'} What would you like to know?"
-        return f"🤖 {'We've completed: ' + ', '.join(completed_agents) if completed_agents else 'The workflow is running.'} What would you like to know?"
+            agents_text = ', '.join(completed_agents) if completed_agents else 'The workflow is in progress.'
+            return f"🤖 I'm analyzing a dataset with {dataset_shape[0]} rows and {dataset_shape[1]} columns. We've completed: {agents_text} What would you like to know?"
+        agents_text = ', '.join(completed_agents) if completed_agents else 'The workflow is running.'
+        return f"🤖 We've completed: {agents_text} What would you like to know?"
     except Exception as e:
         logger.error(f"Error generating PM answer with LLM: {e}")
         # Fallback with context
         completed_agents = state.get("completed_agents", [])
         dataset_shape = state.get("dataset_shape", [])
         if dataset_shape:
-            return f"🤖 I'm analyzing a dataset with {dataset_shape[0]} rows and {dataset_shape[1]} columns. {'We've completed: ' + ', '.join(completed_agents) if completed_agents else 'The workflow is in progress.'} What would you like to know?"
-        return f"🤖 {'We've completed: ' + ', '.join(completed_agents) if completed_agents else 'The workflow is running.'} What would you like to know?"
-        try:
-            # Build comprehensive context from workflow state
-            context_parts = []
-            
-            # Workflow status
-            workflow_status = state.get("workflow_status", "unknown")
-            context_parts.append(f"Workflow Status: {workflow_status}")
-            
-            # Completed agents
-            completed_agents = state.get("completed_agents", [])
-            if completed_agents:
-                context_parts.append(f"Completed Agents: {', '.join(completed_agents)}")
-            
-            # Current agent
-            current_agent = state.get("current_agent", "none")
-            if current_agent:
-                context_parts.append(f"Current Agent: {current_agent}")
-            
-            # Model metrics if available
-            metrics = state.get("evaluation_metrics", {})
-            if metrics:
-                acc = metrics.get("accuracy", 0)
-                context_parts.append(f"Model Accuracy: {acc*100:.1f}%")
-            
-            # Dataset info
-            dataset_shape = state.get("dataset_shape", [])
-            if dataset_shape:
-                context_parts.append(f"Dataset: {dataset_shape[0]} rows × {dataset_shape[1]} columns")
-            
-            # EDA plots
-            eda_plots = state.get("eda_plots", [])
-            if eda_plots:
-                context_parts.append(f"EDA Plots Generated: {len(eda_plots)}")
-            
-            # Add more context
-            cleaning_actions = state.get("cleaning_actions_taken", [])
-            if cleaning_actions:
-                context_parts.append(f"Data Cleaning Actions: {len(cleaning_actions)} actions taken")
-            
-            engineered_features = state.get("engineered_features", [])
-            if engineered_features:
-                context_parts.append(f"Engineered Features: {len(engineered_features)} features created")
-            
-            best_model = state.get("best_model")
-            if best_model:
-                context_parts.append(f"Best Model: {best_model}")
-            
-            context = "\n".join(context_parts)
-            
-            # Build comprehensive LLM prompt with project context
-            prompt = f"""You are an expert Project Manager AI assistant named "Project Manager" for Classify AI, a multi-agent machine learning classification system.
-
-**Project Context:**
-- Project Owner: Mohan
-- Institution: Northeastern University (Fall 2025)
-- Project Type: DS Capstone Project - Multi-Agent AI System
-- System: Classify AI - Automated ML Pipeline with 8 specialized AI agents
-- Architecture: Double-Layer System (hardcoded analysis + LLM-generated code in Docker sandbox)
-- Purpose: End-to-end classification tasks from data upload to model deployment
-
-**Your Role:**
-You are the Project Manager coordinating all agents. You know everything about:
-- The workflow pipeline (Data Discovery → EDA → Cleaning → Feature Engineering → Model Building → Evaluation → Reporting)
-- Each agent's purpose and current status
-- Data science concepts and ML best practices
-- The double-layer architecture and how it works
-- Project goals and Mohan's requirements
-
-**Current Workflow Context:**
-{context}
-
-**User Question:** {question}
-
-**Instructions:**
-- Answer quickly and knowledgeably as a project coordinator
-- Reference Mohan as the project owner when relevant
-- Be specific about current workflow state
-- Explain data science concepts clearly and educationally
-- Keep answers concise but informative (2-4 sentences)
-- Act as if you know everything about this project and workflow
-- If asked "what have you found" or "what", provide a comprehensive summary of current findings
-
-**Answer:**"""
-            
-            # Get LLM service and generate answer - ALWAYS use LLM
-            llm_service = get_llm_service()
-            if llm_service and llm_service.clients:
-                # Use LLM to generate detailed answer
-                try:
-                    # Try Gemini first
-                    if LLMProvider.GEMINI in llm_service.clients:
-                        model = llm_service.clients[LLMProvider.GEMINI]
-                        response = model.generate_content(prompt)
-                        answer = response.text.strip()
-                        if answer:
-                            # Remove any markdown formatting from LLM response
-                            answer = answer.replace("**", "").replace("*", "")
-                            return f"🤖 {answer}"
-                    # Try OpenAI if Gemini fails
-                    elif LLMProvider.OPENAI in llm_service.clients:
-                        import openai
-                        client = llm_service.clients[LLMProvider.OPENAI]
-                        response = client.chat.completions.create(
-                            model="gpt-3.5-turbo",
-                            messages=[{"role": "user", "content": prompt}],
-                            max_tokens=200
-                        )
-                        answer = response.choices[0].message.content.strip()
-                        if answer:
-                            answer = answer.replace("**", "").replace("*", "")
-                            return f"🤖 {answer}"
-                except Exception as e:
-                    logger.warning(f"LLM generation failed: {e}")
-                    # Even if LLM fails, provide a contextual answer
-                    completed_agents = state.get("completed_agents", [])
-                    if completed_agents:
-                        return f"🤖 Based on the current workflow, we've completed: {', '.join(completed_agents)}. The system is analyzing your dataset and generating insights. Would you like to know more about any specific agent or the overall progress?"
-                    return "🤖 I'm processing your question. The workflow is currently running and analyzing your dataset."
-            
-            # If no LLM available, provide contextual answer
-            completed_agents = state.get("completed_agents", [])
-            if completed_agents:
-                return f"🤖 Based on the current workflow, we've completed: {', '.join(completed_agents)}. The system is analyzing your dataset and generating insights. Would you like to know more about any specific agent or the overall progress?"
-            return "🤖 I'm processing your question. The workflow is currently running and analyzing your dataset."
-        except Exception as e:
-            logger.error(f"Error generating PM answer with LLM: {e}")
-            # Fallback with context
-            completed_agents = state.get("completed_agents", [])
-            if completed_agents:
-                return f"🤖 We've completed: {', '.join(completed_agents)}. The workflow is progressing. What would you like to know?"
-            return "🤖 The workflow is running. What would you like to know?"
+            agents_text = ', '.join(completed_agents) if completed_agents else 'The workflow is in progress.'
+            return f"🤖 I'm analyzing a dataset with {dataset_shape[0]} rows and {dataset_shape[1]} columns. We've completed: {agents_text} What would you like to know?"
+        agents_text = ', '.join(completed_agents) if completed_agents else 'The workflow is running.'
+        return f"🤖 We've completed: {agents_text} What would you like to know?"
 
 
 def _should_trigger_approval_gate(agent_name: str, state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -1753,6 +1663,26 @@ async def execute_workflow_with_progress(
             workflow_states[workflow_id]["status"] = WorkflowStatus.COMPLETED
             workflow_states[workflow_id]["workflow_status"] = "completed"  # Add this field for results endpoint
             workflow_states[workflow_id]["end_time"] = datetime.now().isoformat()
+        
+        # ✅ ADD: Generate and send workflow completion summary with actionable insights
+        try:
+            from ..services.pm_insights_service import pm_insights_service
+            completion_summary = await pm_insights_service.generate_workflow_summary(workflow_states[workflow_id])
+            
+            # Add summary to PM messages
+            if "pm_messages" not in workflow_states[workflow_id]:
+                workflow_states[workflow_id]["pm_messages"] = []
+            
+            workflow_states[workflow_id]["pm_messages"].append({
+                "type": "completion_summary",
+                "agent": "Project Manager",
+                "content": completion_summary,
+                "timestamp": datetime.now().isoformat()
+            })
+            
+            logger.info("✅ Generated workflow completion summary with actionable insights")
+        except Exception as e:
+            logger.warning(f"Failed to generate workflow completion summary: {e}")
         
         # Emit WebSocket event for workflow completion
         try:
