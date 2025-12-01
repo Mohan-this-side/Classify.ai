@@ -121,11 +121,16 @@ class BaseAgent(ABC):
         try:
             # Initialize LLM service (Gemini by default)
             # Note: API key will be set from state during execute() if available
+            # Don't disable Layer 2 if LLM service init fails - it will be retried with API key during execute()
             self.llm_service = get_llm_service(LLMProvider.GEMINI)
-            self.logger.info("LLMService initialized successfully")
+            if self.llm_service and self.llm_service.clients:
+                self.logger.info("LLMService initialized successfully")
+            else:
+                self.logger.info("LLMService initialized (will be updated with API key during execution)")
         except Exception as e:
-            self.logger.warning(f"Failed to initialize LLMService: {e}")
-            self.enable_layer2 = False
+            self.logger.warning(f"LLMService initialization warning (will retry with API key): {e}")
+            # Don't disable Layer 2 - API key will be provided during execute()
+            self.llm_service = None
 
         if not self.enable_layer2:
             self.logger.warning("⚠️ LAYER 2 DISABLED due to service initialization failures")
@@ -343,10 +348,17 @@ class BaseAgent(ABC):
 
         # ✅ FIX: Update LLM service with user-provided API key from state if available
         api_key = state.get("api_key")
-        if api_key and api_key != "dummy_key" and self.enable_layer2:
+        if api_key and api_key != "dummy_key":
             try:
                 self.llm_service = get_llm_service(LLMProvider.GEMINI, api_key=api_key)
-                self.logger.info("✅ Updated LLM service with user-provided API key")
+                if self.llm_service and self.llm_service.clients:
+                    self.logger.info("✅ Updated LLM service with user-provided API key - Layer 2 ready")
+                    # Re-enable Layer 2 if it was disabled due to missing API key
+                    if not self.enable_layer2:
+                        self.enable_layer2 = True
+                        self.logger.info("✅ Layer 2 re-enabled after API key update")
+                else:
+                    self.logger.warning("LLM service updated but no clients available")
             except Exception as e:
                 self.logger.warning(f"Failed to update LLM service with user API key: {e}")
 

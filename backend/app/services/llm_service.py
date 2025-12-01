@@ -94,7 +94,7 @@ class LLMService:
             self.logger.warning("⚠️ OpenAI API key not found. Set OPENAI_API_KEY environment variable, or provide via frontend.")
         
         # Initialize Anthropic - prioritize user-provided API key if it looks like Anthropic key
-        anthropic_key = self.user_api_key if (self.user_api_key and self.user_api_key.startswith("sk-ant-")) else settings.anthropic_api_key
+        anthropic_key = self.user_api_key if (self.user_api_key and self.user_api_key.startswith("sk-ant-")) else getattr(settings, 'anthropic_api_key', None)
         if Anthropic and anthropic_key:
             try:
                 self.clients[LLMProvider.ANTHROPIC] = Anthropic(api_key=anthropic_key)

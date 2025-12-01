@@ -238,7 +238,17 @@ async def _generate_pm_answer(question: str, state: Dict[str, Any]) -> str:
         
         # Build comprehensive LLM prompt with project context
         # Enhanced prompt for completed workflows
-        role_description = """You are a senior data scientist and Project Manager AI assistant named "Project Manager" for Classify AI, a multi-agent machine learning classification system. You act as both a project coordinator AND a senior data scientist mentor, helping users understand their classification results and make data-driven decisions.""" if is_completed else """You are an expert Project Manager AI assistant named "Project Manager" for Classify AI, a multi-agent machine learning classification system."""
+        role_description = """You are a senior data scientist and Project Manager AI assistant named "Project Manager" for Classify AI, a multi-agent machine learning classification system. You act as both a project coordinator AND a senior data scientist mentor, helping users understand their classification results and make data-driven decisions.
+
+IMPORTANT: You have access to the complete workflow results including:
+- Model performance metrics (accuracy, F1, precision, recall)
+- Feature importance rankings
+- EDA findings and correlations
+- Data cleaning actions taken
+- Engineered features
+- Model selection results
+
+Use this information to provide SPECIFIC, ACTIONABLE insights. Do NOT repeat generic information. Answer questions directly and specifically."""
         
         instructions = """**Instructions:**
 - Answer as a senior data scientist mentor would explain to a non-expert user
@@ -249,10 +259,13 @@ async def _generate_pm_answer(question: str, state: Dict[str, Any]) -> str:
 - Use simple language but include specific numbers and impacts from the analysis
 - Provide actionable next steps based on findings (what should the user focus on?)
 - Reference actual findings from the analysis (correlations, feature importance rankings, model performance metrics)
-- If asked "what features are important" or "what should I focus on", list the top features with their importance scores and explain their impact
-- If asked "what matters in my dataset", provide insights about key patterns and their effects on the target variable
+- If asked "what features are important" or "what should I focus on", list the top 3-5 features with their importance scores and explain their impact on the target variable with specific numbers
+- If asked "what matters in my dataset" or "what can we understand", provide insights about key patterns, their effects on the target variable, and actionable recommendations
+- If asked "what should we focus on", prioritize features by importance and explain WHY they matter and WHAT actions to take
+- DO NOT repeat the same generic response - each answer should be unique and contextual
 - Keep answers informative but accessible (3-5 sentences for complex topics, use bullet points for lists)
-- Act as a mentor helping the user understand their data and make data-driven decisions""" if is_completed else """**Instructions:**
+- Act as a mentor helping the user understand their data and make data-driven decisions
+- Always reference specific metrics, feature names, and numbers from the workflow results""" if is_completed else """**Instructions:**
 - Answer quickly and knowledgeably as a project coordinator
 - Reference Mohan as the project owner when relevant
 - Be SPECIFIC about the CURRENT dataset and workflow state
@@ -261,7 +274,8 @@ async def _generate_pm_answer(question: str, state: Dict[str, Any]) -> str:
 - Explain data science concepts clearly and educationally
 - Keep answers concise but informative (2-4 sentences)
 - Act as if you know everything about this project, workflow, and dataset
-- Use the dataset information provided to give specific answers"""
+- Use the dataset information provided to give specific answers
+- DO NOT repeat generic information - be specific and contextual"""
         
         prompt = f"""{role_description}
 
@@ -292,8 +306,9 @@ You are the Project Manager coordinating all agents. You know everything about:
 
 **Answer:**"""
         
-        # Get LLM service and generate answer - ALWAYS use LLM
-        llm_service = get_llm_service()
+        # ✅ FIX: Get LLM service with user-provided API key from workflow state
+        api_key = state.get("api_key") or (workflow_states.get(workflow_id, {}).get("api_key") if workflow_id in workflow_states else None)
+        llm_service = get_llm_service(api_key=api_key) if api_key and api_key != "dummy_key" else get_llm_service()
         if llm_service and llm_service.clients:
             # Use LLM to generate detailed answer
             try:
@@ -1412,6 +1427,7 @@ async def execute_workflow_with_progress(
         # 5. ML Building - Train models
         # 6. Model Evaluation - Evaluate performance
         # 7. Technical Reporter - Generate final report
+        # Agents already have Layer 2 enabled by default in their __init__ methods
         agents = {
             "data_discovery": DataDiscoveryAgent(),
             "eda_analysis": EDAAgent(),

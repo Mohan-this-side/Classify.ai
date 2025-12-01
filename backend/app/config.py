@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     google_api_key: Optional[str] = Field(default=None, env="GOOGLE_API_KEY")
     langsmith_api_key: Optional[str] = Field(default=None, env="LANGSMITH_API_KEY")
     openai_api_key: Optional[str] = Field(default=None, env="OPENAI_API_KEY")
+    anthropic_api_key: Optional[str] = Field(default=None, env="ANTHROPIC_API_KEY")
     
     # Database settings
     database_url: str = Field(default="postgresql://user:password@localhost/ds_capstone", env="DATABASE_URL")
