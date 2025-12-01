@@ -1084,12 +1084,30 @@ async def cancel_workflow(workflow_id: str) -> Dict[str, Any]:
     """
     try:
         if workflow_id not in workflow_states:
-            raise HTTPException(status_code=404, detail="Workflow not found")
+            # ✅ FIX: Don't raise error if workflow not found (might have been cleaned up)
+            logger.warning(f"Workflow {workflow_id} not found for cancellation")
+            return {
+                "workflow_id": workflow_id,
+                "status": "cancelled",
+                "message": "Workflow not found (may have been already cancelled or completed)"
+            }
         
         # Mark workflow as cancelled
         workflow_states[workflow_id]["workflow_status"] = WorkflowStatus.CANCELLED
+        workflow_states[workflow_id]["status"] = WorkflowStatus.CANCELLED
         workflow_states[workflow_id]["workflow_paused"] = False
         workflow_states[workflow_id]["pending_approval"] = None
+        
+        # ✅ FIX: Emit cancellation event
+        try:
+            from ..services.realtime import emit
+            await emit(workflow_id, "workflow_cancelled", {
+                "workflow_id": workflow_id,
+                "status": "cancelled",
+                "message": "Workflow cancelled by user"
+            })
+        except Exception as e:
+            logger.warning(f"Failed to emit cancellation event: {e}")
         
         logger.info(f"Workflow {workflow_id} cancelled")
         
@@ -1104,6 +1122,41 @@ async def cancel_workflow(workflow_id: str) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error cancelling workflow: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to cancel workflow: {str(e)}")
+
+
+@router.delete("/cancel-all")
+async def cancel_all_workflows() -> Dict[str, Any]:
+    """
+    Cancel all running workflows (useful for cleanup on page refresh).
+    
+    Returns:
+        Dictionary containing cancellation status
+    """
+    try:
+        cancelled_count = 0
+        cancelled_ids = []
+        
+        for workflow_id, state in list(workflow_states.items()):
+            workflow_status = state.get("workflow_status") or state.get("status")
+            if workflow_status == WorkflowStatus.RUNNING or workflow_status == "running":
+                workflow_states[workflow_id]["workflow_status"] = WorkflowStatus.CANCELLED
+                workflow_states[workflow_id]["status"] = WorkflowStatus.CANCELLED
+                workflow_states[workflow_id]["workflow_paused"] = False
+                workflow_states[workflow_id]["pending_approval"] = None
+                cancelled_ids.append(workflow_id)
+                cancelled_count += 1
+        
+        logger.info(f"Cancelled {cancelled_count} running workflow(s)")
+        
+        return {
+            "cancelled_count": cancelled_count,
+            "cancelled_workflows": cancelled_ids,
+            "message": f"Successfully cancelled {cancelled_count} workflow(s)"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error cancelling all workflows: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to cancel workflows: {str(e)}")
 
 
 @router.get("/{workflow_id}/agent/{agent_name}/summary")
@@ -1387,6 +1440,20 @@ async def execute_workflow_with_progress(
         agent_names = list(agents.keys())
         
         for i, (agent_name, agent) in enumerate(agents.items()):
+            # ✅ FIX: Check if workflow was cancelled before starting each agent
+            if workflow_id in workflow_states:
+                workflow_status_check = workflow_states[workflow_id].get("workflow_status")
+                if workflow_status_check == WorkflowStatus.CANCELLED or workflow_status_check == "cancelled":
+                    logger.info(f"Workflow {workflow_id} was cancelled, stopping execution")
+                    return {
+                        "status": WorkflowStatus.CANCELLED,
+                        "results": {
+                            "message": "Workflow was cancelled",
+                            "agents_completed": i,
+                            "total_agents": len(agents)
+                        }
+                    }
+            
             logger.info(f"Starting agent: {agent_name} for workflow {workflow_id}")
             
             # Update current agent
@@ -1421,8 +1488,23 @@ async def execute_workflow_with_progress(
                 except Exception as e:
                     logger.warning(f"Failed to emit PM message: {e}")
                 
+                # ✅ FIX: Check if workflow was cancelled before executing agent
+                if workflow_id in workflow_states:
+                    workflow_status_check = workflow_states[workflow_id].get("workflow_status")
+                    if workflow_status_check == WorkflowStatus.CANCELLED or workflow_status_check == "cancelled":
+                        logger.info(f"Workflow {workflow_id} was cancelled during agent {agent_name} execution")
+                        break  # Exit agent loop
+                
                 # Execute the actual agent
                 current_state = await agent.execute(current_state)
+                
+                # ✅ FIX: Check again after agent execution
+                if workflow_id in workflow_states:
+                    workflow_status_check = workflow_states[workflow_id].get("workflow_status")
+                    if workflow_status_check == WorkflowStatus.CANCELLED or workflow_status_check == "cancelled":
+                        logger.info(f"Workflow {workflow_id} was cancelled after agent {agent_name} execution")
+                        break  # Exit agent loop
+                
                 logger.info(f"Completed agent: {agent_name} for workflow {workflow_id}")
                 
                 # ✅ CRITICAL FIX: Copy ALL state keys to workflow_states

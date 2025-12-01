@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { toast } from 'react-hot-toast'
 import { 
   Upload, CheckCircle, Loader, Circle, Play, Download, MessageSquare, 
@@ -30,6 +30,71 @@ export default function ClassifyAI() {
   const [sandboxMetrics, setSandboxMetrics] = useState({ cpu: 0, memory: 0, time: 0 })
   const [results, setResults] = useState<any>(null)
   const [workflowCompletedNotified, setWorkflowCompletedNotified] = useState(false) // ✅ FIX: Track if completion notification shown
+
+  // ✅ FIX: Reset state function (memoized with useCallback)
+  const resetAppState = useCallback(() => {
+    console.log('🔄 Resetting app state...')
+    setActiveView('upload')
+    setWorkflowId(null)
+    setWorkflowStatus('idle')
+    setAgents([])
+    setPmMessages([])
+    setSandboxMetrics({ cpu: 0, memory: 0, time: 0 })
+    setResults(null)
+    setWorkflowCompletedNotified(false)
+    setPendingApproval(false)
+    setFile(null)
+    setTargetColumn('')
+    setDescription('')
+    setApiKey('')
+    setColumnOptions([])
+  }, [])
+
+  // ✅ FIX: Cancel any running workflows and reset state on page load/refresh
+  useEffect(() => {
+    const cancelRunningWorkflows = async () => {
+      try {
+        // Use the cancel-all endpoint for efficiency
+        const response = await fetch('http://localhost:8000/api/workflow/cancel-all', {
+          method: 'DELETE'
+        })
+        if (response.ok) {
+          const data = await response.json()
+          if (data.cancelled_count > 0) {
+            console.log(`✅ Cancelled ${data.cancelled_count} running workflow(s) on page load`)
+          }
+        }
+      } catch (error) {
+        console.error('Error cancelling running workflows:', error)
+        // Try individual cancellation as fallback
+        try {
+          const listResponse = await fetch('http://localhost:8000/api/workflow/list?status=running&limit=10')
+          if (listResponse.ok) {
+            const data = await listResponse.json()
+            const runningWorkflows = data.workflows || []
+            for (const workflow of runningWorkflows) {
+              if (workflow.workflow_id) {
+                try {
+                  await fetch(`http://localhost:8000/api/workflow/${workflow.workflow_id}`, {
+                    method: 'DELETE'
+                  })
+                } catch (e) {
+                  // Ignore individual errors
+                }
+              }
+            }
+          }
+        } catch (e) {
+          // Ignore fallback errors
+        }
+      }
+      
+      // Reset frontend state
+      resetAppState()
+    }
+
+    cancelRunningWorkflows()
+  }, [resetAppState]) // Run once on mount
 
   // ✅ Function to navigate to workflow view
   const navigateToWorkflowView = () => {
@@ -495,15 +560,16 @@ export default function ClassifyAI() {
                 })
                 if (response.ok) {
                   toast.success('Workflow cancelled')
-                  setWorkflowStatus('cancelled')
-                  setWorkflowId(null)
-                  setActiveView('upload')
+                  // ✅ FIX: Reset all state on cancel
+                  resetAppState()
                 } else {
                   toast.error('Failed to cancel workflow')
                 }
               } catch (error) {
                 console.error('Error cancelling workflow:', error)
                 toast.error('Failed to cancel workflow')
+                // Still reset state even if cancel request fails
+                resetAppState()
               }
             }
           }}
