@@ -35,7 +35,7 @@ class SandboxExecutor:
     
     def __init__(
         self,
-        sandbox_image: str = "ds-capstone-ml-sandbox",
+        sandbox_image: str = "ds-capstone-ml-sandbox:latest",
         code_volume: str = "sandbox_code",
         results_volume: str = "sandbox_results",
         data_volume: str = "sandbox_data",
@@ -45,6 +45,9 @@ class SandboxExecutor:
         enable_gpu: bool = False,
         gpu_count: int = 1,
     ):
+        # Ensure image name includes tag
+        if ":" not in sandbox_image:
+            sandbox_image = f"{sandbox_image}:latest"
         self.sandbox_image = sandbox_image
         self.code_volume = code_volume
         self.results_volume = results_volume
@@ -253,15 +256,31 @@ class SandboxExecutor:
         
         # Run the container
         try:
-            subprocess.run(cmd, check=True)
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            logger.info(f"✅ Sandbox container started: {container_name}")
         except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to start sandbox container: {str(e)}")
+            error_msg = e.stderr if hasattr(e, 'stderr') and e.stderr else (e.stdout if hasattr(e, 'stdout') and e.stdout else str(e))
+            logger.error(f"❌ Failed to start sandbox container: {error_msg}")
+            logger.error(f"Command: {' '.join(cmd)}")
             # If GPU fails, retry without GPU
             if self.enable_gpu:
                 logger.warning("Retrying without GPU support")
                 self.enable_gpu = False
                 self._start_sandbox(container_name)
             else:
+                # Check if image exists
+                try:
+                    check_image = subprocess.run(
+                        ["docker", "images", "-q", self.sandbox_image],
+                        capture_output=True,
+                        text=True,
+                        check=True
+                    )
+                    if not check_image.stdout.strip():
+                        logger.error(f"❌ Sandbox image '{self.sandbox_image}' not found. Please build it first.")
+                        logger.info(f"💡 To build: docker build -t {self.sandbox_image} -f docker/Dockerfile.sandbox backend/")
+                except Exception as img_check_error:
+                    logger.warning(f"Could not check image existence: {img_check_error}")
                 raise
     
     def _stop_sandbox(self, container_name: str) -> None:
