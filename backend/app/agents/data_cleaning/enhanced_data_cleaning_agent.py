@@ -1029,9 +1029,9 @@ class EnhancedDataCleaningAgent(BaseAgent):
                     cap_value_used = float(cap_value)
                 else:
                     # Standard capping at 95th/5th percentile
-                upper_bound = df[column].quantile(0.95)
-                lower_bound = df[column].quantile(0.05)
-                df[column] = df[column].clip(lower=lower_bound, upper=upper_bound)
+                    upper_bound = df[column].quantile(0.95)
+                    lower_bound = df[column].quantile(0.05)
+                    df[column] = df[column].clip(lower=lower_bound, upper=upper_bound)
                     method = "capped_at_5th_95th_percentile"
                     reason = f"Outliers detected ({outlier_pct:.1f}%), capping at 5th-95th percentile"
                     cap_value_used = None

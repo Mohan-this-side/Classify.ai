@@ -900,7 +900,7 @@ class EDAAgent(BaseAgent):
 
         # Call parent validation
         try:
-        results = super().process_sandbox_results(sandbox_output, layer1_results, state)
+            results = super().process_sandbox_results(sandbox_output, layer1_results, state)
         except Exception as e:
             # If parent processing fails, log and return Layer 1 results
             self.logger.warning(f"Parent process_sandbox_results failed: {e}")
