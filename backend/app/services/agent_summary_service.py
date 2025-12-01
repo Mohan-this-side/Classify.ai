@@ -105,51 +105,53 @@ class AgentSummaryService:
             if plots and self.llm_service:
                 plot_insights = await self._analyze_plots_with_llm(plots, workflow_id, context_parts)
             
-            # Build comprehensive summary
+            # Build comprehensive summary (without markdown formatting)
             summary_parts = [
-                f"📊 **Exploratory Data Analysis Complete**",
-                f"\n**Dataset Overview:**",
+                f"📊 Exploratory Data Analysis Complete",
+                f"\nDataset Overview:",
                 f"- Analyzed {dataset_shape[0] if dataset_shape else 'N/A'} rows and {dataset_shape[1] if dataset_shape else 'N/A'} columns"
             ]
             
             if statistical_summary:
-                summary_parts.append(f"\n**Key Statistics:**")
+                summary_parts.append(f"\nKey Statistics:")
                 summary_parts.append(f"- Generated comprehensive statistical summaries for all features")
             
             if correlation_analysis:
-                summary_parts.append(f"\n**Correlation Analysis:**")
+                summary_parts.append(f"\nCorrelation Analysis:")
                 top_corr = correlation_analysis.get("top_correlations", [])
                 if top_corr:
                     summary_parts.append(f"- Identified {len(top_corr)} strong feature correlations")
                     summary_parts.append(f"- Strongest correlations help identify feature relationships")
             
             if distribution_analysis:
-                summary_parts.append(f"\n**Distribution Analysis:**")
+                summary_parts.append(f"\nDistribution Analysis:")
                 summary_parts.append(f"- Analyzed feature distributions to understand data patterns")
                 summary_parts.append(f"- Identified normal vs. skewed distributions")
             
             if outlier_analysis:
                 outlier_count = outlier_analysis.get("outlier_count", 0)
-                summary_parts.append(f"\n**Outlier Detection:**")
+                summary_parts.append(f"\nOutlier Detection:")
                 summary_parts.append(f"- Detected {outlier_count} potential outliers")
                 summary_parts.append(f"- Outliers may need special handling during modeling")
             
             if plots:
-                summary_parts.append(f"\n**Visualizations Generated:**")
+                summary_parts.append(f"\nVisualizations Generated:")
                 summary_parts.append(f"- Created {len(plots)} comprehensive plots")
                 summary_parts.append(f"- Plots include correlation heatmaps, distributions, and outlier visualizations")
                 
                 # Add LLM-generated plot insights
                 if plot_insights:
-                    summary_parts.append(f"\n**Plot Insights:**")
-                    summary_parts.append(plot_insights)
+                    summary_parts.append(f"\nPlot Insights:")
+                    # Remove markdown from plot insights
+                    clean_insights = plot_insights.replace("**", "").replace("*", "")
+                    summary_parts.append(clean_insights)
             
             if target_analysis:
-                summary_parts.append(f"\n**Target Variable Insights:**")
+                summary_parts.append(f"\nTarget Variable Insights:")
                 summary_parts.append(f"- Analyzed target variable distribution and relationships")
                 summary_parts.append(f"- Identified key features correlated with target")
             
-            summary_parts.append(f"\n**Next Steps:**")
+            summary_parts.append(f"\nNext Steps:")
             summary_parts.append(f"- Use these insights to guide feature engineering")
             summary_parts.append(f"- Consider outlier treatment based on findings")
             summary_parts.append(f"- Leverage correlation patterns for feature selection")
@@ -236,25 +238,31 @@ Format each insight as a bullet point (1-2 sentences). Be specific and actionabl
         issues_found = state.get("cleaning_issues_found", [])
         
         summary_parts = [
-            f"🧹 **Data Cleaning Complete**",
-            f"\n**Data Quality Score:** {quality_score*100:.1f}%",
-            f"\n**Issues Found:**",
+            f"🧹 Data Cleaning Complete",
+            f"\nData Quality Assessment:",
         ]
         
+        # Only show quality score if it's meaningful
+        if quality_score and quality_score > 0:
+            summary_parts.append(f"- Data quality score: {quality_score*100:.1f}%")
+        else:
+            summary_parts.append(f"- Data quality has been assessed and improved")
+        
+        summary_parts.append(f"\nIssues Found:")
         if issues_found:
             for issue in issues_found[:5]:
                 summary_parts.append(f"- {issue}")
         else:
             summary_parts.append("- No major issues detected")
         
-        summary_parts.append(f"\n**Actions Taken:**")
+        summary_parts.append(f"\nActions Taken:")
         if actions_taken:
             for action in actions_taken[:5]:
                 summary_parts.append(f"- {action}")
         else:
             summary_parts.append("- Standard data cleaning procedures applied")
         
-        summary_parts.append(f"\n**Result:**")
+        summary_parts.append(f"\nResult:")
         summary_parts.append(f"- Dataset is now clean and ready for feature engineering")
         summary_parts.append(f"- Missing values handled, duplicates removed, data types corrected")
         
@@ -266,8 +274,8 @@ Format each insight as a bullet point (1-2 sentences). Be specific and actionabl
         data_types = state.get("data_types", {})
         
         summary_parts = [
-            f"🔍 **Data Discovery Complete**",
-            f"\n**Dataset Structure:**",
+            f"🔍 Data Discovery Complete",
+            f"\nDataset Structure:",
             f"- {dataset_shape[0] if dataset_shape else 'N/A'} rows × {dataset_shape[1] if dataset_shape else 'N/A'} columns",
         ]
         
@@ -276,7 +284,7 @@ Format each insight as a bullet point (1-2 sentences). Be specific and actionabl
             categorical_count = len(data_types) - numeric_count
             summary_parts.append(f"- {numeric_count} numeric features, {categorical_count} categorical features")
         
-        summary_parts.append(f"\n**Analysis:**")
+        summary_parts.append(f"\nAnalysis:")
         summary_parts.append(f"- Identified data types and column characteristics")
         summary_parts.append(f"- Detected potential ID columns and datetime features")
         summary_parts.append(f"- Analyzed cardinality and unique value patterns")
@@ -289,23 +297,23 @@ Format each insight as a bullet point (1-2 sentences). Be specific and actionabl
         feature_transformations = state.get("feature_transformations", {})
         
         summary_parts = [
-            f"⚙️ **Feature Engineering Complete**",
-            f"\n**Features Created:** {len(engineered_features)}",
+            f"⚙️ Feature Engineering Complete",
+            f"\nFeatures Created: {len(engineered_features)}",
         ]
         
         if engineered_features:
-            summary_parts.append(f"\n**New Features:**")
+            summary_parts.append(f"\nNew Features:")
             for feat in engineered_features[:5]:
                 summary_parts.append(f"- {feat}")
             if len(engineered_features) > 5:
                 summary_parts.append(f"- ... and {len(engineered_features) - 5} more")
         
         if feature_transformations:
-            summary_parts.append(f"\n**Transformations Applied:**")
+            summary_parts.append(f"\nTransformations Applied:")
             for feat, trans in list(feature_transformations.items())[:5]:
                 summary_parts.append(f"- {feat}: {trans}")
         
-        summary_parts.append(f"\n**Impact:**")
+        summary_parts.append(f"\nImpact:")
         summary_parts.append(f"- Enhanced dataset with new predictive features")
         summary_parts.append(f"- Improved model's ability to learn patterns")
         
@@ -318,22 +326,22 @@ Format each insight as a bullet point (1-2 sentences). Be specific and actionabl
         model_selection_results = state.get("model_selection_results", {})
         
         summary_parts = [
-            f"🤖 **Model Building Complete**",
-            f"\n**Best Model Selected:** {best_model}",
+            f"🤖 Model Building Complete",
+            f"\nBest Model Selected: {best_model}",
         ]
         
         if training_metrics:
             test_acc = training_metrics.get("test_accuracy", 0)
-            summary_parts.append(f"\n**Training Performance:**")
+            summary_parts.append(f"\nTraining Performance:")
             summary_parts.append(f"- Test Accuracy: {test_acc*100:.1f}%")
         
         if model_selection_results:
             models_tested = model_selection_results.get("models_tested", [])
             if models_tested:
-                summary_parts.append(f"\n**Models Evaluated:** {len(models_tested)}")
+                summary_parts.append(f"\nModels Evaluated: {len(models_tested)}")
                 summary_parts.append(f"- Tested multiple algorithms including: {', '.join(models_tested[:3])}")
         
-        summary_parts.append(f"\n**Process:**")
+        summary_parts.append(f"\nProcess:")
         summary_parts.append(f"- Trained and evaluated multiple ML algorithms")
         summary_parts.append(f"- Used cross-validation for robust evaluation")
         summary_parts.append(f"- Selected best model based on performance metrics")
@@ -346,7 +354,7 @@ Format each insight as a bullet point (1-2 sentences). Be specific and actionabl
         feature_importance = state.get("feature_importance_model", {})
         
         summary_parts = [
-            f"📈 **Model Evaluation Complete**",
+            f"📈 Model Evaluation Complete",
         ]
         
         if metrics:
@@ -355,7 +363,7 @@ Format each insight as a bullet point (1-2 sentences). Be specific and actionabl
             precision = metrics.get("precision", 0)
             recall = metrics.get("recall", 0)
             
-            summary_parts.append(f"\n**Performance Metrics:**")
+            summary_parts.append(f"\nPerformance Metrics:")
             summary_parts.append(f"- Accuracy: {accuracy*100:.1f}%")
             summary_parts.append(f"- F1 Score: {f1:.3f}")
             summary_parts.append(f"- Precision: {precision*100:.1f}%")
@@ -368,11 +376,11 @@ Format each insight as a bullet point (1-2 sentences). Be specific and actionabl
                 reverse=True
             )[:5]
             
-            summary_parts.append(f"\n**Top Important Features:**")
+            summary_parts.append(f"\nTop Important Features:")
             for feat, importance in top_features:
                 summary_parts.append(f"- {feat}: {importance:.2f}")
         
-        summary_parts.append(f"\n**Assessment:**")
+        summary_parts.append(f"\nAssessment:")
         summary_parts.append(f"- Model performance evaluated on test set")
         summary_parts.append(f"- Feature importance analyzed")
         summary_parts.append(f"- Ready for deployment")
@@ -384,8 +392,8 @@ Format each insight as a bullet point (1-2 sentences). Be specific and actionabl
         downloadable_files = state.get("downloadable_files", [])
         
         summary_parts = [
-            f"📝 **Technical Reporting Complete**",
-            f"\n**Deliverables Generated:**",
+            f"📝 Technical Reporting Complete",
+            f"\nDeliverables Generated:",
         ]
         
         if downloadable_files:
@@ -397,7 +405,7 @@ Format each insight as a bullet point (1-2 sentences). Be specific and actionabl
             summary_parts.append("- Jupyter notebook")
             summary_parts.append("- Model file")
         
-        summary_parts.append(f"\n**Contents:**")
+        summary_parts.append(f"\nContents:")
         summary_parts.append(f"- Comprehensive analysis documentation")
         summary_parts.append(f"- Reproducible Jupyter notebook")
         summary_parts.append(f"- Model performance analysis")

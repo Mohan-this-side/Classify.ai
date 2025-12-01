@@ -177,9 +177,21 @@ class ModelEvaluationAgent(BaseAgent):
             # Handle categorical variables (same as training)
             X = pd.get_dummies(X, drop_first=True)
             
-            # Ensure no missing values
+            # Ensure no missing values - handle both numeric and categorical
+            for col in X.columns:
+                if X[col].isnull().any():
+                    if X[col].dtype in ['int64', 'float64']:
+                        X[col] = X[col].fillna(X[col].mean())
+                    else:
+                        X[col] = X[col].fillna(X[col].mode()[0] if len(X[col].mode()) > 0 else 0)
+            
+            # Final check - replace any remaining NaN with 0
+            X = X.fillna(0)
+            
+            # Verify no NaN values remain
             if X.isnull().any().any():
-                X = X.fillna(X.mean())
+                self.logger.warning(f"Still have NaN values after cleaning: {X.isnull().sum().sum()}")
+                X = X.fillna(0)
             
             return X, y
             

@@ -903,7 +903,9 @@ function ResultsView({ results, workflowId }: any) {
             label="F1 Score" 
             value={(() => {
               const metrics = results?.model_evaluation?.evaluation_metrics || results?.evaluation_metrics || {}
-              return metrics.f1_weighted ? metrics.f1_weighted.toFixed(3) : 'N/A'
+              // Try multiple key variations
+              const f1 = metrics.f1_weighted || metrics.f1_score || metrics.f1 || metrics['f1-weighted'] || 0
+              return f1 ? f1.toFixed(3) : 'N/A'
             })()} 
             gradient="from-green-500 to-green-600" 
           />
@@ -911,7 +913,9 @@ function ResultsView({ results, workflowId }: any) {
             label="Precision" 
             value={(() => {
               const metrics = results?.model_evaluation?.evaluation_metrics || results?.evaluation_metrics || {}
-              return metrics.precision_weighted ? `${(metrics.precision_weighted * 100).toFixed(1)}%` : 'N/A'
+              // Try multiple key variations
+              const precision = metrics.precision_weighted || metrics.precision_score || metrics.precision || metrics['precision-weighted'] || 0
+              return precision ? `${(precision * 100).toFixed(1)}%` : 'N/A'
             })()} 
             gradient="from-purple-500 to-purple-600" 
           />
@@ -919,7 +923,9 @@ function ResultsView({ results, workflowId }: any) {
             label="Recall" 
             value={(() => {
               const metrics = results?.model_evaluation?.evaluation_metrics || results?.evaluation_metrics || {}
-              return metrics.recall_weighted ? `${(metrics.recall_weighted * 100).toFixed(1)}%` : 'N/A'
+              // Try multiple key variations
+              const recall = metrics.recall_weighted || metrics.recall_score || metrics.recall || metrics['recall-weighted'] || 0
+              return recall ? `${(recall * 100).toFixed(1)}%` : 'N/A'
             })()} 
             gradient="from-orange-500 to-orange-600" 
           />
@@ -1196,7 +1202,17 @@ function PMMessage({ agent, time, message, type }: any) {
         return 'bg-white border-gray-200 text-gray-700'
     }
   }
-
+  
+  // Strip markdown formatting from message
+  const cleanMessage = (msg: string) => {
+    if (!msg) return msg
+    // Remove markdown bold (**text**)
+    let cleaned = msg.replace(/\*\*(.*?)\*\*/g, '$1')
+    // Remove single asterisks (*text*)
+    cleaned = cleaned.replace(/\*(.*?)\*/g, '$1')
+    return cleaned
+  }
+  
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
@@ -1204,7 +1220,7 @@ function PMMessage({ agent, time, message, type }: any) {
         <span className="text-xs text-gray-400">{time}</span>
       </div>
       <div className={`rounded-lg p-4 text-sm leading-relaxed shadow-sm border ${getMessageStyle()}`}>
-        {message}
+        {cleanMessage(message)}
       </div>
     </div>
   )

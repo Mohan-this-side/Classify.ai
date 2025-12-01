@@ -68,30 +68,40 @@ class LLMService:
         """Initialize LLM clients for all available providers"""
         self.clients = {}
         
-        # Initialize Gemini
-        if genai and settings.google_api_key:
+        # Initialize Gemini - check both gemini_api_key and google_api_key
+        api_key = settings.gemini_api_key or settings.google_api_key
+        if genai and api_key:
             try:
-                genai.configure(api_key=settings.google_api_key)
+                genai.configure(api_key=api_key)
                 self.clients[LLMProvider.GEMINI] = genai.GenerativeModel('models/gemini-flash-latest')
-                self.logger.info("Gemini client initialized")
+                self.logger.info("✅ Gemini client initialized")
             except Exception as e:
                 self.logger.warning(f"Failed to initialize Gemini: {e}")
+        elif genai:
+            self.logger.warning("⚠️ Gemini API key not found. Set GEMINI_API_KEY or GOOGLE_API_KEY environment variable.")
         
         # Initialize OpenAI
         if OpenAI and settings.openai_api_key:
             try:
                 self.clients[LLMProvider.OPENAI] = OpenAI(api_key=settings.openai_api_key)
-                self.logger.info("OpenAI client initialized")
+                self.logger.info("✅ OpenAI client initialized")
             except Exception as e:
                 self.logger.warning(f"Failed to initialize OpenAI: {e}")
+        elif OpenAI:
+            self.logger.warning("⚠️ OpenAI API key not found. Set OPENAI_API_KEY environment variable.")
         
         # Initialize Anthropic
         if Anthropic and settings.anthropic_api_key:
             try:
                 self.clients[LLMProvider.ANTHROPIC] = Anthropic(api_key=settings.anthropic_api_key)
-                self.logger.info("Anthropic client initialized")
+                self.logger.info("✅ Anthropic client initialized")
             except Exception as e:
                 self.logger.warning(f"Failed to initialize Anthropic: {e}")
+        elif Anthropic:
+            self.logger.warning("⚠️ Anthropic API key not found. Set ANTHROPIC_API_KEY environment variable.")
+        
+        if not self.clients:
+            self.logger.warning("⚠️ No LLM providers initialized. Layer 2 (LLM code generation) will not work. Please set at least one API key (GEMINI_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY).")
     
     async def generate_code(
         self,

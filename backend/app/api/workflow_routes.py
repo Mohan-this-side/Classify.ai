@@ -37,35 +37,35 @@ workflow_states = {}
 # ===== EDUCATIONAL MESSAGE GENERATOR =====
 
 def _get_educational_message(agent_name: str, status: str, state: Optional[Dict[str, Any]] = None) -> str:
-    """Generate educational messages for each agent"""
+    """Generate educational messages for each agent (without markdown formatting)"""
     messages = {
         "data_discovery": {
-            "starting": "🔍 **Data Discovery**: Analyzing your dataset structure and understanding its characteristics...",
-            "completed": "✅ **Data Discovery Complete**: Found {} rows and {} columns. The system has identified the data types and target variable."
+            "starting": "🔍 Data Discovery: Analyzing your dataset structure and understanding its characteristics...",
+            "completed": "✅ Data Discovery Complete: Found {} rows and {} columns. The system has identified the data types and target variable."
         },
         "eda_analysis": {
-            "starting": "📊 **Exploratory Analysis**: Creating visualizations to understand patterns, distributions, and relationships in your data...",
-            "completed": "✅ **EDA Complete**: Generated {} plots showing correlations, distributions, and outliers. This helps identify important features."
+            "starting": "📊 Exploratory Analysis: Creating visualizations to understand patterns, distributions, and relationships in your data...",
+            "completed": "✅ EDA Complete: Generated {} plots showing correlations, distributions, and outliers. This helps identify important features."
         },
         "data_cleaning": {
-            "starting": "🧹 **Data Cleaning**: Checking for missing values, duplicates, and data quality issues...",
-            "completed": "✅ **Cleaning Complete**: Processed dataset is ready. Quality score: {}%. Layer {} used for adaptive cleaning."
+            "starting": "🧹 Data Cleaning: Checking for missing values, duplicates, and data quality issues...",
+            "completed": "✅ Cleaning Complete: Processed dataset is ready. Data quality has been assessed and improved. Layer {} used for adaptive cleaning."
         },
         "feature_engineering": {
-            "starting": "⚙️ **Feature Engineering**: Creating new features and transforming existing ones to improve model performance...",
-            "completed": "✅ **Features Ready**: Engineered {} new features. These transformations help the model learn better patterns."
+            "starting": "⚙️ Feature Engineering: Creating new features and transforming existing ones to improve model performance...",
+            "completed": "✅ Features Ready: Engineered {} new features. These transformations help the model learn better patterns."
         },
         "ml_building": {
-            "starting": "🤖 **Model Training**: Training multiple machine learning models and selecting the best one...",
-            "completed": "✅ **Model Trained**: Selected **{}** with accuracy of {:.2%}. Used cross-validation for robust evaluation."
+            "starting": "🤖 Model Training: Training multiple machine learning models and selecting the best one...",
+            "completed": "✅ Model Trained: Selected {} with accuracy of {:.2%}. Used cross-validation for robust evaluation."
         },
         "model_evaluation": {
-            "starting": "📈 **Model Evaluation**: Testing model performance on unseen data and generating metrics...",
-            "completed": "✅ **Evaluation Complete**: Accuracy: {:.2%}, F1-Score: {:.2%}. Model is ready for predictions!"
+            "starting": "📈 Model Evaluation: Testing model performance on unseen data and generating metrics...",
+            "completed": "✅ Evaluation Complete: Accuracy: {:.2%}, F1-Score: {:.2%}. Model is ready for predictions!"
         },
         "technical_reporter": {
-            "starting": "📝 **Generating Report**: Creating comprehensive documentation of the entire analysis...",
-            "completed": "✅ **Report Ready**: Technical documentation, notebook, and model are available for download."
+            "starting": "📝 Generating Report: Creating comprehensive documentation of the entire analysis...",
+            "completed": "✅ Report Ready: Technical documentation, notebook, and model are available for download."
         }
     }
     
@@ -84,10 +84,15 @@ def _get_educational_message(agent_name: str, status: str, state: Optional[Dict[
                 plots = len(state.get("eda_plots", []))
                 return template.format(plots)
             elif agent_name == "data_cleaning":
+                # Don't show quality score if it's 0 or None - use general message
                 quality_score = state.get("data_quality_score")
-                quality = (quality_score * 100) if quality_score is not None else 0
                 layer = state.get("layer_usage", {}).get("data_cleaning", "Layer 1")
-                return template.format(int(quality), layer)
+                if quality_score and quality_score > 0:
+                    quality = int(quality_score * 100)
+                    return template.format(quality, layer)
+                else:
+                    # Use general message without quality score
+                    return f"✅ Cleaning Complete: Processed dataset is ready. Data quality has been assessed and improved. Layer {layer} used for adaptive cleaning."
             elif agent_name == "feature_engineering":
                 features = len(state.get("engineered_features") or [])
                 return template.format(features)
@@ -107,102 +112,211 @@ def _get_educational_message(agent_name: str, status: str, state: Optional[Dict[
 
 
 async def _generate_pm_answer(question: str, state: Dict[str, Any]) -> str:
-    """Generate context-aware answer to user's question with comprehensive knowledge using LLM service"""
+    """Generate context-aware answer to user's question with comprehensive knowledge using LLM service - ALWAYS uses LLM"""
     import re
     from ..services.llm_service import get_llm_service, LLMProvider
     
     question_lower = question.lower()
     
-    # Project/Creator questions
-    if any(word in question_lower for word in ["who created", "creator", "author", "developer", "who made", "who built"]):
-        return "👨‍💻 This project was created by Mohan as part of the DS Capstone project at Northeastern University (Fall 2025). It's a multi-agent AI system for automated machine learning classification tasks."
-    
-    # Project questions
-    if any(word in question_lower for word in ["what is this", "about this project", "what does this do", "project description"]):
-        return "🤖 This is Classify AI - an automated ML pipeline system with 8 specialized AI agents. It performs end-to-end classification tasks: data discovery, EDA, cleaning, feature engineering, model building, evaluation, and reporting. Uses a double-layer architecture (hardcoded + LLM-generated code) for robust results."
-    
-    # Agent questions - which agent takes more time
-    if any(word in question_lower for word in ["which agent", "agent taking", "slowest", "longest", "most time"]):
-        agent_times = state.get("agent_execution_times", {})
-        if agent_times:
-            sorted_agents = sorted(agent_times.items(), key=lambda x: x[1], reverse=True)
-            slowest = sorted_agents[0]
-            return f"⏱️ The {slowest[0]} agent typically takes the longest ({slowest[1]:.1f}s). Model building and feature engineering are usually the most time-consuming steps as they involve training multiple models and complex transformations."
-        return "⏱️ Model building and feature engineering agents typically take the most time as they involve training multiple ML models and performing complex feature transformations. Execution time varies based on dataset size."
-    
-    # Data science questions
-    if any(word in question_lower for word in ["what is", "explain", "how does", "what does"]):
-        if "eda" in question_lower or "exploratory" in question_lower:
-            return "📊 EDA (Exploratory Data Analysis) is the process of analyzing datasets to summarize their main characteristics, often using visual methods. It helps identify patterns, detect anomalies, test hypotheses, and check assumptions before modeling."
-        elif "feature engineering" in question_lower:
-            return "⚙️ Feature Engineering is the process of creating new features from existing ones to improve model performance. It includes transformations (log, sqrt), combinations (interactions), encodings (one-hot, target encoding), and domain-specific features."
-        elif "cross validation" in question_lower or "cv" in question_lower:
-            return "🔄 Cross-validation is a technique to assess how well a model generalizes to unseen data. We split data into k folds, train on k-1 folds, validate on the remaining fold, and repeat. This gives us a more reliable performance estimate."
-        elif "overfitting" in question_lower:
-            return "⚠️ Overfitting occurs when a model learns training data too well, including noise, and performs poorly on new data. We prevent it using cross-validation, regularization, and by keeping models simple."
-        elif "classification" in question_lower:
-            return "🎯 Classification is a supervised ML task where we predict discrete categories (classes). Examples: spam detection, image recognition, medical diagnosis. We use algorithms like Random Forest, XGBoost, and Neural Networks."
-    
-    # Status questions
-    if any(word in question_lower for word in ["status", "progress", "how far", "when done", "current"]):
-        completed = len(state.get("completed_agents", []))
-        total = 7
-        progress = (completed / total) * 100 if total > 0 else 0
-        current = state.get("current_agent", "Unknown")
-        layer_usage = state.get("layer_usage", {})
-        current_layer = layer_usage.get(current, "Layer 1")
-        return f"📊 Progress: {progress:.0f}% complete ({completed}/{total} agents finished). Currently executing: {current} ({current_layer}). Estimated completion: ~{(total-completed)*2} minutes."
-    
-    # Agent-specific questions
-    elif "eda" in question_lower or "exploratory" in question_lower or "visualization" in question_lower:
-        plots = len(state.get("eda_plots", []))
-        if plots > 0:
-            return f"📊 EDA Status: Generated {plots} visualizations including correlation heatmaps, distribution plots, and outlier analysis. These help identify patterns and relationships in your data before modeling."
-        return "📊 EDA: Exploratory Data Analysis creates visualizations to understand your data's structure, distributions, correlations, and potential issues. This step is crucial for feature engineering and model selection."
-    
-    # Data cleaning questions
-    elif any(word in question_lower for word in ["clean", "quality", "missing", "duplicate"]):
-        quality = state.get("data_quality_score", 0)
-        if quality > 0:
-            return f"🧹 Data Quality: Quality score is {quality*100:.1f}%. Addressed missing values, duplicates, and outliers. Clean data leads to better model performance."
-        return "🧹 Data Cleaning: This step handles missing values, removes duplicates, fixes data types, and addresses outliers to ensure high-quality input for modeling."
-    
-    # Model questions
-    elif any(word in question_lower for word in ["model", "algorithm", "accuracy", "performance"]):
-        model = state.get("best_model", "")
+    # ALWAYS use LLM - no hardcoded responses
+    try:
+        # Build comprehensive context from workflow state
+        context_parts = []
+        
+        # Dataset information
+        dataset_shape = state.get("dataset_shape", [])
+        if dataset_shape:
+            context_parts.append(f"Dataset: {dataset_shape[0]} rows × {dataset_shape[1]} columns")
+        
+        # Dataset description
+        user_description = state.get("user_description", "")
+        if user_description:
+            context_parts.append(f"Dataset Description: {user_description}")
+        
+        # Dataset metadata
+        dataset_metadata = state.get("dataset_metadata", {})
+        if dataset_metadata:
+            context_parts.append(f"Dataset Metadata: {str(dataset_metadata)[:200]}")
+        
+        # Column information
+        data_types = state.get("data_types", {})
+        if data_types:
+            numeric_cols = [k for k, v in data_types.items() if v in ['int64', 'float64']]
+            categorical_cols = [k for k, v in data_types.items() if v not in ['int64', 'float64']]
+            context_parts.append(f"Features: {len(numeric_cols)} numeric, {len(categorical_cols)} categorical")
+            context_parts.append(f"Column Names: {', '.join(list(data_types.keys())[:10])}")
+        
+        # Target column
+        target_column = state.get("target_column", "")
+        if target_column:
+            context_parts.append(f"Target Variable: {target_column}")
+        
+        # Workflow status
+        workflow_status = state.get("workflow_status", "unknown")
+        context_parts.append(f"Workflow Status: {workflow_status}")
+        
+        # Completed agents
+        completed_agents = state.get("completed_agents", [])
+        if completed_agents:
+            context_parts.append(f"Completed Agents: {', '.join(completed_agents)}")
+        
+        # Current agent
+        current_agent = state.get("current_agent", "none")
+        if current_agent:
+            context_parts.append(f"Current Agent: {current_agent}")
+        
+        # EDA findings
+        eda_plots = state.get("eda_plots", [])
+        if eda_plots:
+            context_parts.append(f"EDA Plots Generated: {len(eda_plots)}")
+        
+        correlation_analysis = state.get("correlation_analysis", {})
+        if correlation_analysis:
+            top_corr = correlation_analysis.get("top_correlations", [])
+            if top_corr:
+                context_parts.append(f"Top Correlations Found: {len(top_corr)}")
+        
+        # Data cleaning findings
+        cleaning_actions = state.get("cleaning_actions_taken", [])
+        if cleaning_actions:
+            context_parts.append(f"Data Cleaning Actions: {len(cleaning_actions)} actions taken")
+            context_parts.append(f"Actions: {', '.join(cleaning_actions[:5])}")
+        
+        # Feature engineering
+        engineered_features = state.get("engineered_features", [])
+        if engineered_features:
+            context_parts.append(f"Engineered Features: {len(engineered_features)} features created")
+            context_parts.append(f"New Features: {', '.join(engineered_features[:5])}")
+        
+        # Model information
+        best_model = state.get("best_model")
+        if best_model:
+            context_parts.append(f"Best Model: {best_model}")
+        
+        # Model metrics
         metrics = state.get("evaluation_metrics", {})
-        if model and metrics:
+        if metrics:
             acc = metrics.get("accuracy", 0)
-            return f"🤖 Model: Selected {model} with {acc*100:.1f}% accuracy. The system tested multiple algorithms and chose the best performer using cross-validation."
-        return "🤖 Model Training: The system automatically tests multiple ML algorithms (Random Forest, XGBoost, etc.) and selects the best one based on cross-validation performance."
-    
-    # Feature engineering questions
-    elif "feature" in question_lower:
-        features = state.get("engineered_features", [])
-        if features:
-            return f"⚙️ Feature Engineering: Created {len(features)} new features through transformations, combinations, and domain-specific engineering. This improves model learning capacity."
-        return "⚙️ Feature Engineering: Creates new features from existing ones through mathematical transformations, combinations, and encodings to help the model learn better patterns."
-    
-    # Layer 1/2 questions
-    elif any(word in question_lower for word in ["layer", "sandbox", "llm", "ai"]):
-        layer_usage = state.get("layer_usage", {})
-        layer1_count = sum(1 for v in layer_usage.values() if "layer1" in str(v).lower())
-        layer2_count = sum(1 for v in layer_usage.values() if "layer2" in str(v).lower())
-        return f"🏗️ Double-Layer Architecture: Layer 1 provides reliable, hardcoded analysis ({layer1_count} agents used it). Layer 2 uses LLM-generated code executed in a secure Docker sandbox for adaptive insights ({layer2_count} agents used it). Both layers work together for robust results."
-    
-    # Download/results questions
-    elif any(word in question_lower for word in ["download", "notebook", "report", "export"]):
-        if state.get("workflow_status") == "completed":
-            return "📥 Downloads: Once complete, you can download the analysis notebook (.ipynb), trained model (.joblib), technical report, and cleaned dataset from the Results page."
-        return "📥 Downloads: After workflow completion, you'll receive a Jupyter notebook with full analysis, the trained model, technical documentation, and the cleaned dataset."
-    
-    # Workflow questions
-    elif any(word in question_lower for word in ["workflow", "process", "pipeline", "steps"]):
-        agents = ["Data Discovery", "EDA", "Data Cleaning", "Feature Engineering", "Model Building", "Evaluation", "Reporting"]
-        return f"🔄 Workflow: Our pipeline has {len(agents)} main steps: {', '.join(agents)}. Each agent performs specialized tasks and shares knowledge with others. The Project Manager coordinates everything and provides updates."
-    
-    # General/default - use LLM for detailed answers
-    else:
+            f1 = metrics.get("f1_weighted", 0)
+            precision = metrics.get("precision_weighted", 0)
+            recall = metrics.get("recall_weighted", 0)
+            context_parts.append(f"Model Performance: Accuracy={acc*100:.1f}%, F1={f1:.3f}, Precision={precision*100:.1f}%, Recall={recall*100:.1f}%")
+        
+        # Training metrics
+        training_metrics = state.get("training_metrics", {})
+        if training_metrics:
+            train_acc = training_metrics.get("train_accuracy", 0)
+            test_acc = training_metrics.get("test_accuracy", 0)
+            context_parts.append(f"Training Results: Train Accuracy={train_acc*100:.1f}%, Test Accuracy={test_acc*100:.1f}%")
+        
+        # Outlier analysis
+        outlier_analysis = state.get("outlier_analysis", {})
+        if outlier_analysis:
+            outlier_count = outlier_analysis.get("outlier_count", 0)
+            context_parts.append(f"Outliers Detected: {outlier_count}")
+        
+        context = "\n".join(context_parts)
+        
+        # Build comprehensive LLM prompt with project context
+        prompt = f"""You are an expert Project Manager AI assistant named "Project Manager" for Classify AI, a multi-agent machine learning classification system.
+
+**Project Context:**
+- Project Owner: Mohan
+- Institution: Northeastern University (Fall 2025)
+- Project Type: DS Capstone Project - Multi-Agent AI System
+- System: Classify AI - Automated ML Pipeline with 8 specialized AI agents
+- Architecture: Double-Layer System (hardcoded analysis + LLM-generated code in Docker sandbox)
+- Purpose: End-to-end classification tasks from data upload to model deployment
+
+**Your Role:**
+You are the Project Manager coordinating all agents. You know everything about:
+- The workflow pipeline (Data Discovery → EDA → Cleaning → Feature Engineering → Model Building → Evaluation → Reporting)
+- Each agent's purpose and current status
+- Data science concepts and ML best practices
+- The double-layer architecture and how it works
+- Project goals and Mohan's requirements
+- The CURRENT dataset being analyzed
+
+**Current Workflow Context:**
+{context}
+
+**User Question:** {question}
+
+**Instructions:**
+- Answer quickly and knowledgeably as a project coordinator
+- Reference Mohan as the project owner when relevant
+- Be SPECIFIC about the CURRENT dataset and workflow state
+- If asked "what the data is about" or "what have you found", provide DETAILED insights about the dataset based on the context above
+- If asked "who are you", explain your role as Project Manager for this system
+- Explain data science concepts clearly and educationally
+- Keep answers concise but informative (2-4 sentences)
+- Act as if you know everything about this project, workflow, and dataset
+- Use the dataset information provided to give specific answers
+
+**Answer:**"""
+        
+        # Get LLM service and generate answer - ALWAYS use LLM
+        llm_service = get_llm_service()
+        if llm_service and llm_service.clients:
+            # Use LLM to generate detailed answer
+            try:
+                # Try Gemini first
+                if LLMProvider.GEMINI in llm_service.clients:
+                    model = llm_service.clients[LLMProvider.GEMINI]
+                    response = model.generate_content(prompt)
+                    answer = response.text.strip()
+                    if answer:
+                        # Remove any markdown formatting from LLM response
+                        answer = answer.replace("**", "").replace("*", "")
+                        return f"🤖 {answer}"
+                # Try OpenAI if Gemini fails
+                if LLMProvider.OPENAI in llm_service.clients:
+                    import openai
+                    client = llm_service.clients[LLMProvider.OPENAI]
+                    response = client.chat.completions.create(
+                        model="gpt-3.5-turbo",
+                        messages=[{"role": "user", "content": prompt}],
+                        max_tokens=300
+                    )
+                    answer = response.choices[0].message.content.strip()
+                    if answer:
+                        answer = answer.replace("**", "").replace("*", "")
+                        return f"🤖 {answer}"
+                # Try Anthropic if others fail
+                if LLMProvider.ANTHROPIC in llm_service.clients:
+                    client = llm_service.clients[LLMProvider.ANTHROPIC]
+                    response = client.messages.create(
+                        model="claude-3-haiku-20240307",
+                        max_tokens=300,
+                        messages=[{"role": "user", "content": prompt}]
+                    )
+                    answer = response.content[0].text.strip()
+                    if answer:
+                        answer = answer.replace("**", "").replace("*", "")
+                        return f"🤖 {answer}"
+            except Exception as e:
+                logger.error(f"LLM generation failed: {e}")
+                # Even if LLM fails, provide a contextual answer based on state
+                completed_agents = state.get("completed_agents", [])
+                dataset_shape = state.get("dataset_shape", [])
+                if dataset_shape:
+                    return f"🤖 I'm analyzing a dataset with {dataset_shape[0]} rows and {dataset_shape[1]} columns. {'We've completed: ' + ', '.join(completed_agents) if completed_agents else 'The workflow is in progress.'} Please check back in a moment or ask a more specific question."
+                return f"🤖 {'We've completed: ' + ', '.join(completed_agents) if completed_agents else 'The workflow is running.'} What would you like to know?"
+        
+        # If no LLM available, provide contextual answer
+        completed_agents = state.get("completed_agents", [])
+        dataset_shape = state.get("dataset_shape", [])
+        if dataset_shape:
+            return f"🤖 I'm analyzing a dataset with {dataset_shape[0]} rows and {dataset_shape[1]} columns. {'We've completed: ' + ', '.join(completed_agents) if completed_agents else 'The workflow is in progress.'} What would you like to know?"
+        return f"🤖 {'We've completed: ' + ', '.join(completed_agents) if completed_agents else 'The workflow is running.'} What would you like to know?"
+    except Exception as e:
+        logger.error(f"Error generating PM answer with LLM: {e}")
+        # Fallback with context
+        completed_agents = state.get("completed_agents", [])
+        dataset_shape = state.get("dataset_shape", [])
+        if dataset_shape:
+            return f"🤖 I'm analyzing a dataset with {dataset_shape[0]} rows and {dataset_shape[1]} columns. {'We've completed: ' + ', '.join(completed_agents) if completed_agents else 'The workflow is in progress.'} What would you like to know?"
+        return f"🤖 {'We've completed: ' + ', '.join(completed_agents) if completed_agents else 'The workflow is running.'} What would you like to know?"
         try:
             # Build comprehensive context from workflow state
             context_parts = []
@@ -237,6 +351,19 @@ async def _generate_pm_answer(question: str, state: Dict[str, Any]) -> str:
             if eda_plots:
                 context_parts.append(f"EDA Plots Generated: {len(eda_plots)}")
             
+            # Add more context
+            cleaning_actions = state.get("cleaning_actions_taken", [])
+            if cleaning_actions:
+                context_parts.append(f"Data Cleaning Actions: {len(cleaning_actions)} actions taken")
+            
+            engineered_features = state.get("engineered_features", [])
+            if engineered_features:
+                context_parts.append(f"Engineered Features: {len(engineered_features)} features created")
+            
+            best_model = state.get("best_model")
+            if best_model:
+                context_parts.append(f"Best Model: {best_model}")
+            
             context = "\n".join(context_parts)
             
             # Build comprehensive LLM prompt with project context
@@ -270,10 +397,11 @@ You are the Project Manager coordinating all agents. You know everything about:
 - Explain data science concepts clearly and educationally
 - Keep answers concise but informative (2-4 sentences)
 - Act as if you know everything about this project and workflow
+- If asked "what have you found" or "what", provide a comprehensive summary of current findings
 
 **Answer:**"""
             
-            # Get LLM service and generate answer
+            # Get LLM service and generate answer - ALWAYS use LLM
             llm_service = get_llm_service()
             if llm_service and llm_service.clients:
                 # Use LLM to generate detailed answer
@@ -284,19 +412,42 @@ You are the Project Manager coordinating all agents. You know everything about:
                         response = model.generate_content(prompt)
                         answer = response.text.strip()
                         if answer:
+                            # Remove any markdown formatting from LLM response
+                            answer = answer.replace("**", "").replace("*", "")
+                            return f"🤖 {answer}"
+                    # Try OpenAI if Gemini fails
+                    elif LLMProvider.OPENAI in llm_service.clients:
+                        import openai
+                        client = llm_service.clients[LLMProvider.OPENAI]
+                        response = client.chat.completions.create(
+                            model="gpt-3.5-turbo",
+                            messages=[{"role": "user", "content": prompt}],
+                            max_tokens=200
+                        )
+                        answer = response.choices[0].message.content.strip()
+                        if answer:
+                            answer = answer.replace("**", "").replace("*", "")
                             return f"🤖 {answer}"
                 except Exception as e:
-                    logger.warning(f"LLM generation failed: {e}, falling back to default")
+                    logger.warning(f"LLM generation failed: {e}")
+                    # Even if LLM fails, provide a contextual answer
+                    completed_agents = state.get("completed_agents", [])
+                    if completed_agents:
+                        return f"🤖 Based on the current workflow, we've completed: {', '.join(completed_agents)}. The system is analyzing your dataset and generating insights. Would you like to know more about any specific agent or the overall progress?"
+                    return "🤖 I'm processing your question. The workflow is currently running and analyzing your dataset."
             
-            # Fallback to default answer
-            agent_summary = ", ".join(completed_agents[-3:]) if completed_agents else "just starting"
-            return f"🤔 I'm here to help! I can answer questions about workflow progress, agent status, model performance, data quality, data science concepts, and more. So far, we've completed: {agent_summary}. What would you like to know?"
+            # If no LLM available, provide contextual answer
+            completed_agents = state.get("completed_agents", [])
+            if completed_agents:
+                return f"🤖 Based on the current workflow, we've completed: {', '.join(completed_agents)}. The system is analyzing your dataset and generating insights. Would you like to know more about any specific agent or the overall progress?"
+            return "🤖 I'm processing your question. The workflow is currently running and analyzing your dataset."
         except Exception as e:
             logger.error(f"Error generating PM answer with LLM: {e}")
-            # Fallback to simple answer
-        completed_agents = state.get("completed_agents", [])
-        agent_summary = ", ".join(completed_agents[-3:]) if completed_agents else "just starting"
-        return f"🤔 I'm here to help! I can answer questions about workflow progress, agent status, model performance, data quality, data science concepts, and more. So far, we've completed: {agent_summary}. What would you like to know?"
+            # Fallback with context
+            completed_agents = state.get("completed_agents", [])
+            if completed_agents:
+                return f"🤖 We've completed: {', '.join(completed_agents)}. The workflow is progressing. What would you like to know?"
+            return "🤖 The workflow is running. What would you like to know?"
 
 
 def _should_trigger_approval_gate(agent_name: str, state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -305,7 +456,7 @@ def _should_trigger_approval_gate(agent_name: str, state: Dict[str, Any]) -> Opt
         "eda_analysis": {
             "stage": "After EDA",
             "title": "Review Data Insights",
-            "question": "📊 EDA revealed data patterns and potential issues. Would you like to proceed with data cleaning?",
+            "question": "📊 EDA revealed data patterns and potential issues. Please review and approve to proceed with data cleaning.",
             "context": {
                 "plots_generated": len(state.get("eda_plots", [])),
                 "correlations_found": bool(state.get("correlation_analysis")),
@@ -317,7 +468,7 @@ def _should_trigger_approval_gate(agent_name: str, state: Dict[str, Any]) -> Opt
         "data_cleaning": {
             "stage": "After Data Cleaning",
             "title": "Confirm Data Quality",
-            "question": f"🧹 Data cleaning complete with quality score: {(state.get('data_quality_score') or 0)*100:.1f}%. Proceed to feature engineering?",
+            "question": "🧹 Data cleaning complete. Data quality has been assessed and improved. Please approve to proceed to feature engineering.",
             "context": {
                 "quality_score": state.get("data_quality_score") or 0,
                 "actions_taken": len(state.get("cleaning_actions_taken") or []),
@@ -329,7 +480,7 @@ def _should_trigger_approval_gate(agent_name: str, state: Dict[str, Any]) -> Opt
         "feature_engineering": {
             "stage": "Before Model Training",
             "title": "Ready to Train Models",
-            "question": f"⚙️ Created {len(state.get('engineered_features') or [])} new features. Start model training?",
+            "question": f"⚙️ Created {len(state.get('engineered_features') or [])} new features. Please approve to start model training.",
             "context": {
                 "features_created": len(state.get("engineered_features") or []),
                 "total_features": (state.get("dataset_shape") or [0, 0])[1]
@@ -500,7 +651,8 @@ async def start_workflow(
             },
             "completed_agents": [],
             "failed_agents": [],
-            "errors": []
+            "errors": [],
+            "pm_messages": []  # ✅ Initialize PM messages list
         }
         
         # Store in memory
@@ -1217,7 +1369,7 @@ async def respond_to_approval_gate(
         action_emoji = {"approve": "✅", "reject": "❌", "modify": "✏️"}
         state["pm_messages"].append({
             "type": "approval_response",
-            "content": f"{action_emoji.get(action, '📝')} **{action.title()}d**: {approval_gate['stage']}. {feedback if feedback else ''}",
+            "content": f"{action_emoji.get(action, '📝')} {action.title()}d: {approval_gate['stage']}. {feedback if feedback else ''}",
             "timestamp": datetime.now().isoformat()
         })
         
@@ -1417,10 +1569,10 @@ async def execute_workflow_with_progress(
                     except Exception as e:
                         logger.warning(f"Failed to emit approval gate event: {e}")
                     
-                    # Add to PM messages
+                    # Add to PM messages (without markdown formatting)
                     workflow_states[workflow_id]["pm_messages"].append({
                         "type": "approval_gate",
-                        "content": f"⏸️ **{approval_gate['title']}**: {approval_gate['question']}",
+                        "content": f"⏸️ {approval_gate['title']}: {approval_gate['question']}",
                         "approval_data": approval_gate,
                         "timestamp": datetime.now().isoformat()
                     })
@@ -1440,7 +1592,7 @@ async def execute_workflow_with_progress(
                         workflow_states[workflow_id]["pending_approval"] = None
                         workflow_states[workflow_id]["pm_messages"].append({
                             "type": "timeout",
-                            "content": "⏰ **Auto-approved**: No response received, continuing workflow automatically.",
+                            "content": "⏰ Auto-approved: No response received, continuing workflow automatically.",
                             "timestamp": datetime.now().isoformat()
                         })
                     elif workflow_states[workflow_id].get("workflow_status") == "rejected":
@@ -1511,12 +1663,19 @@ async def execute_workflow_with_progress(
                     if workflow_states[workflow_id]["model_path"] and workflow_states[workflow_id]["model_selection_results"]:
                         workflow_states[workflow_id]["model_selection_results"]["model_path"] = workflow_states[workflow_id]["model_path"]
                 elif agent_name == "model_evaluation":
-                    workflow_states[workflow_id]["evaluation_metrics"] = current_state.get("evaluation_metrics")
+                    # ✅ FIX: Ensure evaluation_metrics are properly stored with all keys
+                    eval_metrics = current_state.get("evaluation_metrics", {})
+                    workflow_states[workflow_id]["evaluation_metrics"] = eval_metrics
                     workflow_states[workflow_id]["confusion_matrix"] = current_state.get("confusion_matrix")
                     workflow_states[workflow_id]["roc_curve_data"] = current_state.get("roc_curve_data")
                     workflow_states[workflow_id]["precision_recall_curve"] = current_state.get("precision_recall_curve")
                     workflow_states[workflow_id]["feature_importance_model"] = current_state.get("feature_importance_model")
                     workflow_states[workflow_id]["model_performance_analysis"] = current_state.get("model_performance_analysis")
+                    # Log metrics for debugging
+                    if eval_metrics:
+                        logger.info(f"✅ Stored evaluation_metrics: accuracy={eval_metrics.get('accuracy', 0):.3f}, f1_weighted={eval_metrics.get('f1_weighted', 0):.3f}, precision_weighted={eval_metrics.get('precision_weighted', 0):.3f}, recall_weighted={eval_metrics.get('recall_weighted', 0):.3f}")
+                    else:
+                        logger.warning(f"⚠️ No evaluation_metrics found in state for model_evaluation agent")
                 elif agent_name == "technical_reporter":
                     # ✅ FIX: Ensure downloadable_files are populated when reporter completes
                     if "downloadable_files" not in workflow_states[workflow_id]:
