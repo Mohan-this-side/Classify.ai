@@ -298,9 +298,10 @@ export default function ClassifyAI() {
           }
           
           // Show toast notification
-          toast.warning('⏸️ Approval Required - Workflow is paused', {
+          toast('⏸️ Approval Required - Workflow is paused', {
             duration: 10000,
-            position: 'top-right'
+            position: 'top-right',
+            icon: '⏸️'
           })
           
           // Auto-expand PM chat if minimized to show approval gate
@@ -386,7 +387,7 @@ export default function ClassifyAI() {
       console.log('Structured results:', structuredResults) // Debug
       
       // Store workflow ID in results for use in ResultsView
-      structuredResults.workflow_id = wfId
+      ;(structuredResults as any).workflow_id = wfId
       
       setResults(structuredResults)
       setActiveView('results')
@@ -936,6 +937,71 @@ function ResultsView({ results, workflowId }: any) {
   // Get workflowId from props or from results
   const currentWorkflowId = workflowId || results?.workflow_id || null
   
+  // ✅ ADD: Full-screen image viewer state
+  const [fullScreenImage, setFullScreenImage] = useState<string | null>(null)
+  
+  // ✅ ADD: PM chatbot state for results page
+  const [pmExpanded, setPmExpanded] = useState(true)
+  const [pmMessages, setPmMessages] = useState<any[]>([])
+  const [pmQuestion, setPmQuestion] = useState('')
+  
+  // ✅ ADD: Fetch PM messages for results page
+  useEffect(() => {
+    if (currentWorkflowId) {
+      const fetchPMMessages = async () => {
+        try {
+          const response = await fetch(`http://localhost:8000/api/workflow/status/${currentWorkflowId}`)
+          if (response.ok) {
+            const data = await response.json()
+            setPmMessages(data.pm_messages || [])
+          }
+        } catch (error) {
+          console.error('Error fetching PM messages:', error)
+        }
+      }
+      fetchPMMessages()
+    }
+  }, [currentWorkflowId])
+  
+  // ✅ ADD: Handle PM questions on results page
+  const handlePMQuestion = async (question: string) => {
+    if (!currentWorkflowId || !question.trim()) return
+    
+    try {
+      const response = await fetch(`http://localhost:8000/api/workflow/${currentWorkflowId}/pm/question`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question })
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        setPmMessages(prev => [...prev, {
+          type: 'question',
+          content: question,
+          timestamp: new Date().toISOString(),
+          agent: 'You'
+        }, {
+          type: 'answer',
+          content: data.answer,
+          timestamp: new Date().toISOString(),
+          agent: 'Project Manager'
+        }])
+        setPmQuestion('')
+      }
+    } catch (error) {
+      console.error('Error asking PM question:', error)
+    }
+  }
+  
+  // Auto-scroll PM chat to bottom
+  const pmMessagesEndRef = React.useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (pmMessagesEndRef.current) {
+      pmMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [pmMessages])
+  
   if (!results) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -947,8 +1013,10 @@ function ResultsView({ results, workflowId }: any) {
     )
   }
   return (
-    <div className="flex-1 overflow-y-auto p-8 bg-gray-50">
-      <div className="max-w-7xl mx-auto space-y-8">
+    <div className="flex-1 flex overflow-hidden">
+      {/* Main Results Content */}
+      <div className="flex-1 overflow-y-auto p-8 bg-gray-50">
+        <div className="max-w-7xl mx-auto space-y-8">
         <div className="flex items-center justify-between">
           <h2 className="text-4xl font-bold text-gray-900">Analysis Complete! 🎉</h2>
           <button className="flex items-center space-x-2 bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-all shadow-lg">
@@ -1007,25 +1075,52 @@ function ResultsView({ results, workflowId }: any) {
           </h3>
           <div className="grid grid-cols-2 gap-6">
             {results?.eda_analysis?.plots && results.eda_analysis.plots.length > 0 ? (
-              results.eda_analysis.plots.map((plot: any, idx: number) => (
-                <div key={idx} className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg border border-purple-200 p-4">
-                  <p className="font-medium text-sm mb-2">{plot.title || plot.name || `Plot ${idx + 1}`}</p>
-                  <img 
-                    src={`http://localhost:8000${plot.path || plot.url}`} 
-                    alt={plot.title || plot.name || `Plot ${idx + 1}`}
-                    className="w-full h-auto rounded"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iI2Y1ZjVmNSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5QbG90IG5vdCBhdmFpbGFibGU8L3RleHQ+PC9zdmc+'
-                    }}
-                  />
-                </div>
-              ))
+              results.eda_analysis.plots.map((plot: any, idx: number) => {
+                const plotUrl = `http://localhost:8000${plot.path || plot.url}`
+                return (
+                  <div key={idx} className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg border border-purple-200 p-4 cursor-pointer hover:shadow-lg transition-shadow" onClick={() => setFullScreenImage(plotUrl)}>
+                    <p className="font-medium text-sm mb-2">{plot.title || plot.name || `Plot ${idx + 1}`}</p>
+                    <img 
+                      src={plotUrl} 
+                      alt={plot.title || plot.name || `Plot ${idx + 1}`}
+                      className="w-full h-auto rounded"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iI2Y1ZjVmNSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5QbG90IG5vdCBhdmFpbGFibGU8L3RleHQ+PC9zdmc+'
+                      }}
+                    />
+                  </div>
+                )
+              })
             ) : (
               <div className="col-span-2 text-center py-8 text-gray-500">
                 <p>No EDA plots generated. Check backend logs for EDA agent execution.</p>
               </div>
             )}
           </div>
+          
+          {/* ✅ ADD: Full-screen image viewer */}
+          {fullScreenImage && (
+            <div 
+              className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4"
+              onClick={() => setFullScreenImage(null)}
+            >
+              <div className="relative max-w-7xl max-h-full">
+                <button
+                  onClick={() => setFullScreenImage(null)}
+                  className="absolute top-4 right-4 bg-white rounded-full p-2 hover:bg-gray-200 transition-colors z-10"
+                  aria-label="Close"
+                >
+                  <X className="w-6 h-6 text-gray-800" />
+                </button>
+                <img 
+                  src={fullScreenImage} 
+                  alt="Full screen plot"
+                  className="max-w-full max-h-[90vh] object-contain rounded-lg"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Summary - ✅ ADD: Comprehensive workflow summary */}
@@ -1088,7 +1183,81 @@ function ResultsView({ results, workflowId }: any) {
             )}
           </div>
         </div>
+        </div>
       </div>
+      
+      {/* ✅ ADD: PM Chatbot Panel (similar to WorkflowView) */}
+      {pmExpanded && (
+        <div className="w-96 bg-white border-l border-gray-200 flex flex-col shadow-xl">
+          <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-4 flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <MessageSquare className="w-6 h-6" />
+              <h3 className="font-bold text-lg">Project Manager</h3>
+            </div>
+            <button
+              onClick={() => setPmExpanded(false)}
+              className="text-white hover:text-gray-200 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-gray-50">
+            {pmMessages.length === 0 ? (
+              <div className="text-center text-gray-500 py-8">
+                <MessageSquare className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                <p className="text-sm">No messages yet. Ask me anything about your results!</p>
+              </div>
+            ) : (
+              <>
+                {pmMessages.map((message: any, index: number) => (
+                  <PMMessage 
+                    key={index}
+                    agent={message.agent || 'System'} 
+                    time={new Date(message.timestamp).toLocaleTimeString()} 
+                    message={message.content}
+                    type={message.type}
+                  />
+                ))}
+                <div ref={pmMessagesEndRef} />
+              </>
+            )}
+          </div>
+
+          <div className="p-4 border-t border-gray-200 bg-white">
+            <div className="flex space-x-2">
+              <input
+                type="text"
+                value={pmQuestion}
+                onChange={(e) => setPmQuestion(e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && pmQuestion.trim()) {
+                    handlePMQuestion(pmQuestion)
+                  }
+                }}
+                placeholder="Ask about your results..."
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+              <button
+                onClick={() => pmQuestion.trim() && handlePMQuestion(pmQuestion)}
+                className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating PM Button */}
+      {!pmExpanded && (
+        <button
+          onClick={() => setPmExpanded(true)}
+          className="fixed right-6 bottom-6 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-full p-5 shadow-2xl hover:shadow-3xl transition-all hover:scale-110 z-50"
+        >
+          <MessageSquare className="w-7 h-7" />
+        </button>
+      )}
     </div>
   )
 }
@@ -1388,14 +1557,97 @@ function PMMessage({ agent, time, message, type }: any) {
     }
   }
   
-  // Strip markdown formatting from message
-  const cleanMessage = (msg: string) => {
-    if (!msg) return msg
-    // Remove markdown bold (**text**)
-    let cleaned = msg.replace(/\*\*(.*?)\*\*/g, '$1')
-    // Remove single asterisks (*text*)
-    cleaned = cleaned.replace(/\*(.*?)\*/g, '$1')
-    return cleaned
+  // ✅ ENHANCED: Render markdown properly (tables, headers, lists, bold, etc.)
+  const renderMarkdown = (msg: string) => {
+    if (!msg) return ''
+    
+    let html = msg
+    
+    // Process tables first (before other markdown)
+    const tableRegex = /(\|.+\|\n\|[-:|\s]+\|\n(?:\|.+\|\n?)+)/g
+    html = html.replace(tableRegex, (match) => {
+      const rows = match.trim().split('\n').filter(r => r.trim())
+      if (rows.length < 2) return match
+      
+      let tableHtml = '<div class="overflow-x-auto my-4"><table class="min-w-full border-collapse border border-gray-300 bg-white"><thead><tr class="bg-gray-50">'
+      
+      // Header row
+      const headerRow = rows[0].split('|').filter(c => c.trim())
+      headerRow.forEach(cell => {
+        tableHtml += `<th class="border border-gray-300 px-4 py-2 text-left font-semibold text-gray-900">${cell.trim()}</th>`
+      })
+      tableHtml += '</tr></thead><tbody>'
+      
+      // Data rows (skip separator row)
+      for (let i = 2; i < rows.length; i++) {
+        const cells = rows[i].split('|').filter(c => c.trim())
+        tableHtml += '<tr>'
+        cells.forEach(cell => {
+          tableHtml += `<td class="border border-gray-300 px-4 py-2 text-gray-700">${cell.trim()}</td>`
+        })
+        tableHtml += '</tr>'
+      }
+      
+      tableHtml += '</tbody></table></div>'
+      return tableHtml
+    })
+    
+    // Headers
+    html = html.replace(/^### (.*$)/gim, '<h3 class="text-lg font-bold mt-4 mb-2 text-gray-900">$1</h3>')
+    html = html.replace(/^## (.*$)/gim, '<h2 class="text-xl font-bold mt-6 mb-3 text-gray-900">$1</h2>')
+    html = html.replace(/^# (.*$)/gim, '<h1 class="text-2xl font-bold mt-6 mb-4 text-gray-900">$1</h1>')
+    
+    // Bold and italic
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold">$1</strong>')
+    html = html.replace(/\*(.*?)\*/g, '<em class="italic">$1</em>')
+    
+    // Lists
+    html = html.replace(/^\* (.*$)/gim, '<li class="ml-4">$1</li>')
+    html = html.replace(/^- (.*$)/gim, '<li class="ml-4">$1</li>')
+    html = html.replace(/(<li.*<\/li>)/s, '<ul class="list-disc space-y-1 mb-4 ml-6">$1</ul>')
+    
+    // Paragraphs (lines that don't start with HTML tags)
+    const lines = html.split('\n')
+    const processedLines: string[] = []
+    let inList = false
+    let listItems: string[] = []
+    
+    lines.forEach(line => {
+      const trimmed = line.trim()
+      if (trimmed.startsWith('<li')) {
+        inList = true
+        listItems.push(trimmed)
+      } else if (trimmed.startsWith('</ul>')) {
+        if (inList && listItems.length > 0) {
+          processedLines.push(`<ul class="list-disc space-y-1 mb-4 ml-6">${listItems.join('')}</ul>`)
+          listItems = []
+        }
+        inList = false
+        processedLines.push(trimmed)
+      } else {
+        if (inList && listItems.length > 0) {
+          processedLines.push(`<ul class="list-disc space-y-1 mb-4 ml-6">${listItems.join('')}</ul>`)
+          listItems = []
+        }
+        inList = false
+        if (trimmed && !trimmed.startsWith('<') && !trimmed.match(/^#+\s/)) {
+          processedLines.push(`<p class="mb-2 text-gray-700 leading-relaxed">${trimmed}</p>`)
+        } else if (trimmed) {
+          processedLines.push(trimmed)
+        }
+      }
+    })
+    
+    if (inList && listItems.length > 0) {
+      processedLines.push(`<ul class="list-disc space-y-1 mb-4 ml-6">${listItems.join('')}</ul>`)
+    }
+    
+    html = processedLines.join('\n')
+    
+    // Clean up multiple consecutive <p> tags
+    html = html.replace(/<\/p>\n<p class="mb-2 text-gray-700 leading-relaxed">/g, '<br />')
+    
+    return html
   }
   
   return (
@@ -1405,7 +1657,10 @@ function PMMessage({ agent, time, message, type }: any) {
         <span className="text-xs text-gray-400">{time}</span>
       </div>
       <div className={`rounded-lg p-4 text-sm leading-relaxed shadow-sm border ${getMessageStyle()}`}>
-        {cleanMessage(message)}
+        <div 
+          className="prose prose-sm max-w-none"
+          dangerouslySetInnerHTML={{ __html: renderMarkdown(message) }}
+        />
       </div>
     </div>
   )
@@ -1561,14 +1816,21 @@ function PlotCard({ title, type }: any) {
 }
 
 function FeatureBar({ label, value }: any) {
+  // ✅ FIX: Cap value at 100% to prevent overflow
+  const cappedValue = Math.min(Math.max(value, 0), 100)
+  const displayValue = Math.round(cappedValue)
+  
   return (
-    <div>
+    <div className="w-full">
       <div className="flex justify-between text-sm mb-2">
-        <span className="font-semibold text-gray-900">{label}</span>
-        <span className="text-gray-500">{value}%</span>
+        <span className="font-semibold text-gray-900 truncate pr-2" title={label}>{label}</span>
+        <span className="text-gray-500 whitespace-nowrap">{displayValue}%</span>
       </div>
-      <div className="w-full bg-gray-200 rounded-full h-3">
-        <div className="bg-gradient-to-r from-blue-500 to-purple-600 h-3 rounded-full transition-all" style={{width: `${value}%`}} />
+      <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+        <div 
+          className="bg-gradient-to-r from-blue-500 to-purple-600 h-3 rounded-full transition-all" 
+          style={{width: `${cappedValue}%`, maxWidth: '100%'}} 
+        />
       </div>
     </div>
   )

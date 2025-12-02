@@ -689,20 +689,85 @@ async def get_workflow_results(workflow_id: str) -> Dict[str, Any]:
         Dictionary containing workflow results
     """
     try:
-        # Check if workflow exists in our state
-        if workflow_id not in workflow_states:
-            raise HTTPException(status_code=404, detail="Workflow not found")
-        
-        workflow_state = workflow_states[workflow_id]
+        # ✅ FIX: Load from disk if not in memory
+        state = None
+        if workflow_id in workflow_states:
+            state = workflow_states[workflow_id]
+        else:
+            # Try to load from disk (check if results directory exists)
+            results_dir = Path("backend/results") / workflow_id
+            if results_dir.exists():
+                logger.info(f"Workflow {workflow_id} not in memory, loading from disk...")
+                # Load basic state from files
+                state = {
+                    "workflow_id": workflow_id,
+                    "status": "completed",
+                    "workflow_status": "completed",
+                    "progress": 100.0,
+                    # Load file paths
+                    "model_path": str(results_dir / "model.joblib") if (results_dir / "model.joblib").exists() else None,
+                    "notebook_path": str(results_dir / "notebook.ipynb") if (results_dir / "notebook.ipynb").exists() else None,
+                    "report_path": str(results_dir / "report.md") if (results_dir / "report.md").exists() else None,
+                    # Load plots
+                    "eda_plots": [],
+                    "downloadable_files": [],
+                    "evaluation_metrics": {},
+                    "feature_importance_model": {},
+                    "pm_messages": []
+                }
+                
+                # Load plots from plots directory
+                plots_dir = results_dir / "plots"
+                if plots_dir.exists():
+                    plot_files = list(plots_dir.glob("*.png"))
+                    state["eda_plots"] = [
+                        {
+                            "title": f.name.replace("_", " ").replace(".png", "").title(),
+                            "name": f.name,
+                            "path": f"/api/workflow/plot/{workflow_id}/{f.name}",
+                            "url": f"/api/workflow/plot/{workflow_id}/{f.name}"
+                        }
+                        for f in plot_files
+                    ]
+                    logger.info(f"Found {len(state['eda_plots'])} plots in {plots_dir}")
+                else:
+                    logger.warning(f"Plots directory not found: {plots_dir}")
+                
+                # Build downloadable files
+                downloadable_files = []
+                if state.get("model_path"):
+                    downloadable_files.append({
+                        "name": "trained_model.joblib",
+                        "type": "model",
+                        "path": state["model_path"],
+                        "size": "Unknown"
+                    })
+                if state.get("notebook_path"):
+                    downloadable_files.append({
+                        "name": "analysis_notebook.ipynb",
+                        "type": "notebook",
+                        "path": state["notebook_path"],
+                        "size": "Unknown"
+                    })
+                if state.get("report_path"):
+                    downloadable_files.append({
+                        "name": "technical_report.md",
+                        "type": "report",
+                        "path": state["report_path"],
+                        "size": "Unknown"
+                    })
+                state["downloadable_files"] = downloadable_files
+                
+                logger.info(f"✅ Loaded workflow {workflow_id} from disk with {len(state.get('eda_plots', []))} plots")
+            else:
+                raise HTTPException(status_code=404, detail="Workflow not found")
         
         # Check if workflow is completed
-        if workflow_state.get("workflow_status") != "completed":
+        if state.get("workflow_status") != "completed" and state.get("status") != "completed":
             raise HTTPException(
                 status_code=400,
-                detail=f"Workflow {workflow_id} is not completed yet. Current status: {workflow_state.get('workflow_status')}"
+                detail=f"Workflow {workflow_id} is not completed yet. Current status: {state.get('workflow_status') or state.get('status')}"
             )
-        
-        state = workflow_states[workflow_id]
         
         # Build comprehensive results from state
         # Convert numpy types to native Python types for JSON serialization

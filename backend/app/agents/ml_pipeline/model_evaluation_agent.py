@@ -153,6 +153,43 @@ class ModelEvaluationAgent(BaseAgent):
             state["model_performance_analysis"] = performance_analysis
             state["comprehensive_performance_interpretation"] = comprehensive_interpretation
             
+            # ✅ ADD: Initialize evaluation plots list (will be populated by Layer 2 if executed)
+            if "evaluation_plots" not in state:
+                state["evaluation_plots"] = []
+            
+            # ✅ FIX: Use base agent's execute to handle Layer 2 properly
+            # Store Layer 1 results in state so perform_layer1_analysis can return them
+            layer1_results_dict = {
+                "metrics": metrics,
+                "confusion_matrix": confusion_mat.tolist(),
+                "confusion_matrix_data": confusion_matrix_data,
+                "roc_curve_data": roc_data,
+                "roc_curve_visualization": roc_curve_data,
+                "precision_recall_curve": pr_data,
+                "feature_importance": feature_importance,
+                "performance_analysis": performance_analysis,
+                "comprehensive_interpretation": comprehensive_interpretation
+            }
+            
+            # Store in state for perform_layer1_analysis to return
+            state["_layer1_evaluation_results"] = layer1_results_dict
+            
+            # Call base agent's execute which handles Layer 1/2 architecture
+            state = await super().execute(state)
+            
+            # ✅ FIX: Merge Layer 2 evaluation plots if available
+            if "evaluation_plots" in state and state["evaluation_plots"]:
+                self.logger.info(f"✅ Found {len(state['evaluation_plots'])} Layer 2 evaluation plots")
+                # Ensure plots are also in eda_plots for frontend display
+                if "eda_plots" not in state:
+                    state["eda_plots"] = []
+                # Add evaluation plots to eda_plots (frontend displays these)
+                state["eda_plots"].extend(state["evaluation_plots"])
+            
+            # Clean up temp storage
+            if "_layer1_evaluation_results" in state:
+                del state["_layer1_evaluation_results"]
+            
             # Update agent status
             state["agent_statuses"]["model_evaluation"] = AgentStatus.COMPLETED
             state["completed_agents"].append("model_evaluation")
@@ -1640,11 +1677,91 @@ Generate comprehensive, production-ready Python code:"""
         if not isinstance(evaluation_data, dict):
             raise ValueError("Sandbox output should contain evaluation results")
         
+        # ✅ FIX: Extract ROC and confusion matrix plots from sandbox
+        evaluation_plots = self._extract_evaluation_plots_from_sandbox(state)
+        
         result = {
             "advanced_evaluation": evaluation_data,
             "layer2_success": True,
-            "sandbox_execution_time": sandbox_output.get("execution_time", 0)
+            "sandbox_execution_time": sandbox_output.get("execution_time", 0),
+            "evaluation_plots": evaluation_plots,  # ✅ ADD: Include extracted plots
+            # ✅ ADD: Also add to eda_plots for frontend display
+            "eda_plots": evaluation_plots  # Frontend looks for eda_plots
         }
         
-        self.logger.info("✅ LAYER 2: Sandbox results processed and validated")
+        self.logger.info(f"✅ LAYER 2: Sandbox results processed and validated. Extracted {len(evaluation_plots)} plots.")
         return result
+    
+    def _extract_evaluation_plots_from_sandbox(self, state: ClassificationState) -> List[Dict[str, str]]:
+        """
+        Extract ROC curve and confusion matrix plots from sandbox results volume.
+        
+        Args:
+            state: Current workflow state
+            
+        Returns:
+            List of plot dictionaries with title, name, path, url
+        """
+        import subprocess
+        import shutil
+        from pathlib import Path
+        
+        session_id = state.get("session_id", "unknown")
+        workflow_id = session_id
+        
+        # Determine plots directory
+        import os
+        cwd = os.getcwd()
+        if cwd.endswith('/backend'):
+            base_plots_dir = Path("plots")
+        else:
+            base_plots_dir = Path("backend/plots")
+        
+        session_plots_dir = base_plots_dir / workflow_id
+        session_plots_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Access sandbox results volume to find plot files
+        results_volume = "sandbox_results"
+        evaluation_plots = []
+        
+        # Plot files to look for
+        target_plots = ["roc_curve.png", "confusion_matrix.png"]
+        
+        try:
+            # Use sandbox_executor's method to get files from volume
+            sandbox_files = self.sandbox_executor.get_files_from_volume(results_volume)
+            
+            for filename in sandbox_files:
+                if filename.lower() in [p.lower() for p in target_plots]:
+                    try:
+                        # Construct sandbox file path
+                        sandbox_file_path = Path(self.sandbox_executor.results_volume) / filename
+                        
+                        # Copy to workflow plots directory
+                        dest_path = session_plots_dir / filename
+                        if sandbox_file_path.exists():
+                            shutil.copy(sandbox_file_path, dest_path)
+                            
+                            # Create API URL
+                            api_url = f"/api/workflow/plot/{workflow_id}/{filename}"
+                            
+                            # Create plot info
+                            plot_title = filename.replace("_", " ").replace(".png", "").title()
+                            evaluation_plots.append({
+                                "title": plot_title,
+                                "name": filename,
+                                "path": api_url,
+                                "url": api_url
+                            })
+                            
+                            self.logger.info(f"✅ Extracted evaluation plot: {filename} → {api_url}")
+                        else:
+                            self.logger.warning(f"Plot file not found in sandbox: {sandbox_file_path}")
+                    except Exception as e:
+                        self.logger.warning(f"Failed to extract plot {filename}: {e}")
+                        continue
+                        
+        except Exception as e:
+            self.logger.warning(f"Failed to extract evaluation plots from sandbox: {e}")
+        
+        return evaluation_plots

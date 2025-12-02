@@ -151,6 +151,14 @@ class EnhancedDataCleaningAgent(BaseAgent):
             target_nulls_before = cleaned_df[target_column].isnull().sum()
             if target_nulls_before > 0:
                 rows_before = len(cleaned_df)
+                removal_percentage = (target_nulls_before / rows_before * 100)
+                
+                # WARNING: If removing more than 20% of data, log a strong warning
+                if removal_percentage > 20:
+                    self.logger.warning(f"⚠️ WARNING: Removing {removal_percentage:.1f}% of data due to target variable nulls!")
+                    self.logger.warning(f"⚠️ This is a significant data loss. Consider checking data quality before proceeding.")
+                    self.logger.warning(f"⚠️ Original rows: {rows_before}, Rows with null target: {target_nulls_before}")
+                
                 cleaned_df = cleaned_df.dropna(subset=[target_column])
                 rows_after = len(cleaned_df)
                 target_nulls_removed = rows_before - rows_after
@@ -159,21 +167,24 @@ class EnhancedDataCleaningAgent(BaseAgent):
                     "problem": {
                         "type": "target_variable_missing",
                         "count": int(target_nulls_before),
-                        "percentage": float(target_nulls_before / rows_before * 100),
-                        "severity": "critical"
+                        "percentage": float(removal_percentage),
+                        "severity": "critical" if removal_percentage > 20 else "high"
                     },
                     "action": {
                         "method": "drop_rows",
-                        "reason": "Target variable nulls cannot be used for supervised learning"
+                        "reason": "Target variable nulls cannot be used for supervised learning. This is necessary for model training."
                     },
                     "result": {
                         "rows_before": rows_before,
                         "rows_after": rows_after,
-                        "rows_removed": target_nulls_removed
+                        "rows_removed": target_nulls_removed,
+                        "data_loss_warning": removal_percentage > 20
                     }
                 }
-                cleaning_actions.append(f"Removed {target_nulls_removed} rows with null target values ({target_nulls_before/rows_before*100:.2f}%)")
-                self.logger.info(f"✅ Removed {target_nulls_removed} rows with null target values")
+                cleaning_actions.append(f"Removed {target_nulls_removed} rows with null target values ({removal_percentage:.2f}%)")
+                if removal_percentage > 20:
+                    cleaning_actions.append(f"⚠️ WARNING: Significant data loss ({removal_percentage:.1f}%) due to target variable nulls")
+                self.logger.info(f"✅ Removed {target_nulls_removed} rows with null target values ({removal_percentage:.2f}%)")
         
         # 1. Analyze missing values
         missing_analysis = await self._comprehensive_missing_analysis(cleaned_df, state.get("target_column"))
@@ -217,8 +228,21 @@ class EnhancedDataCleaningAgent(BaseAgent):
         cleaned_df, categorical_actions = await self._standardize_categorical_data(cleaned_df)
         cleaning_actions.extend(categorical_actions)
         
+        # Final check: Warn if excessive data loss occurred
+        original_rows = original_dataset.shape[0]
+        final_rows = cleaned_df.shape[0]
+        data_loss_percentage = ((original_rows - final_rows) / original_rows * 100) if original_rows > 0 else 0
+        
+        if data_loss_percentage > 20:
+            self.logger.warning(f"⚠️ SIGNIFICANT DATA LOSS: {data_loss_percentage:.1f}% of data removed ({original_rows} → {final_rows} rows)")
+            self.logger.warning(f"⚠️ This may impact model performance. Consider reviewing data quality.")
+            cleaning_actions.append(f"⚠️ WARNING: {data_loss_percentage:.1f}% data loss occurred during cleaning")
+        elif data_loss_percentage > 10:
+            self.logger.info(f"ℹ️ Moderate data loss: {data_loss_percentage:.1f}% ({original_rows} → {final_rows} rows)")
+        
         self.logger.info(f"✅ Cleaning complete. Shape: {original_dataset.shape} → {cleaned_df.shape}")
         self.logger.info(f"✅ Performed {len(cleaning_actions)} cleaning actions")
+        self.logger.info(f"✅ Data preservation: {final_rows}/{original_rows} rows ({100-data_loss_percentage:.1f}% retained)")
         
         # Compile analysis results WITH cleaned_dataset
         analysis_results = {

@@ -582,8 +582,15 @@ warnings.filterwarnings('ignore', message='.*matplotlib.*cache.*')
         except Exception as e:
             # Don't raise - allow fallback to Layer 1
             # Log the error but return None to trigger Layer 1 fallback
-            self.logger.warning(f"⚠️ Layer 2 execution failed: {e}")
-            self.logger.info("Falling back to Layer 1 results")
+            error_msg = str(e)
+            if "403" in error_msg or "api key" in error_msg.lower() or "leaked" in error_msg.lower():
+                self.logger.error(f"❌ Layer 2 failed due to API key issue: {error_msg}")
+                self.logger.info("💡 Tip: Please check your API key. If it's reported as leaked, generate a new one from your provider's console.")
+            elif "401" in error_msg or "unauthorized" in error_msg.lower():
+                self.logger.error(f"❌ Layer 2 failed due to authentication error: {error_msg}")
+            else:
+                self.logger.warning(f"⚠️ Layer 2 execution failed: {e}")
+            self.logger.info("✅ Falling back to Layer 1 results (reliable hardcoded analysis)")
             # Return None to signal Layer 1 fallback
             return None
 

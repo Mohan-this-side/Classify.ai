@@ -110,3 +110,6 @@ nosetests.xml
 coverage.xml
 *.cover
 test.py
+monitor.sh
+monitor_workflow.py
+test_heart_failure_workflow.py

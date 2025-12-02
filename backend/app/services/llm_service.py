@@ -74,11 +74,21 @@ class LLMService:
         api_key = self.user_api_key or settings.gemini_api_key or settings.google_api_key
         if genai and api_key:
             try:
+                # Validate API key format (basic check - Gemini keys typically start with AIza)
+                if self.user_api_key and not api_key.startswith("AIza") and api_key != "dummy_key":
+                    self.logger.warning(f"⚠️ API key format may be invalid (expected to start with 'AIza'): {api_key[:10]}...")
+                
                 genai.configure(api_key=api_key)
                 self.clients[LLMProvider.GEMINI] = genai.GenerativeModel('models/gemini-flash-latest')
-                self.logger.info("✅ Gemini client initialized" + (" with user-provided key" if self.user_api_key else ""))
+                # Log without exposing the actual key
+                key_preview = f"{api_key[:10]}..." if len(api_key) > 10 else "***"
+                self.logger.info(f"✅ Gemini client initialized" + (f" with user-provided key ({key_preview})" if self.user_api_key else ""))
             except Exception as e:
-                self.logger.warning(f"Failed to initialize Gemini: {e}")
+                error_msg = str(e).lower()
+                if "403" in error_msg or "leaked" in error_msg:
+                    self.logger.error("❌ Gemini API key error: API key may be invalid or reported as leaked. Please use a different key.")
+                else:
+                    self.logger.warning(f"Failed to initialize Gemini: {e}")
         elif genai:
             self.logger.warning("⚠️ Gemini API key not found. Set GEMINI_API_KEY or GOOGLE_API_KEY environment variable, or provide via frontend.")
         
@@ -180,27 +190,47 @@ class LLMService:
         
         model = self.clients[LLMProvider.GEMINI]
         
-        # Run blocking operation in executor to avoid blocking event loop
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, model.generate_content, prompt)
-        
-        # Check for blockers
-        if response.prompt_feedback.block_reason:
-            raise Exception(f"Content blocked: {response.prompt_feedback.block_reason}")
-        
-        # Get text safely
-        text = response.text if hasattr(response, 'text') else str(response)
-        code = self._extract_code_from_response(text)
-        
-        return {
-            "code": code,
-            "provider": "gemini",
-            "raw_response": text,
-            "metadata": {
-                "model": "gemini-flash-latest",
-                "tokens": len(text.split())
+        try:
+            # Run blocking operation in executor to avoid blocking event loop
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(None, model.generate_content, prompt)
+            
+            # Check for blockers
+            if response.prompt_feedback.block_reason:
+                raise Exception(f"Content blocked: {response.prompt_feedback.block_reason}")
+            
+            # Get text safely
+            text = response.text if hasattr(response, 'text') else str(response)
+            code = self._extract_code_from_response(text)
+            
+            return {
+                "code": code,
+                "provider": "gemini",
+                "raw_response": text,
+                "metadata": {
+                    "model": "gemini-flash-latest",
+                    "tokens": len(text.split())
+                }
             }
-        }
+        except Exception as e:
+            error_str = str(e).lower()
+            # Check for specific API errors
+            if "403" in error_str or "api key" in error_str or "leaked" in error_str:
+                error_msg = f"Gemini API key error (403): Your API key may be invalid or reported as leaked. Please use a different API key. Original error: {e}"
+                self.logger.error(error_msg)
+                raise Exception(error_msg) from e
+            elif "401" in error_str or "unauthorized" in error_str:
+                error_msg = f"Gemini API authentication failed (401): Invalid API key. Please check your API key. Original error: {e}"
+                self.logger.error(error_msg)
+                raise Exception(error_msg) from e
+            elif "429" in error_str or "quota" in error_str or "rate limit" in error_str:
+                error_msg = f"Gemini API rate limit exceeded (429): Please try again later or check your quota. Original error: {e}"
+                self.logger.warning(error_msg)
+                raise Exception(error_msg) from e
+            else:
+                # Re-raise other errors as-is
+                self.logger.error(f"Gemini API error: {e}")
+                raise
     
     async def _generate_with_openai(self, prompt: str) -> Dict[str, Any]:
         """Generate code using OpenAI"""

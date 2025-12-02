@@ -71,3 +71,78 @@ Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
  ✓ Compiled in 455ms (469 modules)
  ⚠ Unsupported metadata viewport is configured in metadata export in /?_rsc=1xuj0. Please move it to viewport export instead.
 Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ✓ Compiled in 3.1s (469 modules)
+ ⚠ Unsupported metadata viewport is configured in metadata export in /?_rsc=1xuj0. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ✓ Compiled in 1278ms (469 modules)
+ ⚠ Unsupported metadata viewport is configured in metadata export in /?_rsc=1xuj0. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ✓ Compiled in 709ms (469 modules)
+ ⚠ Unsupported metadata viewport is configured in metadata export in /?_rsc=1xuj0. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ✓ Compiled in 1267ms (469 modules)
+ ⚠ Unsupported metadata viewport is configured in metadata export in /?_rsc=1xuj0. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ✓ Compiled in 578ms (469 modules)
+ ⚠ Unsupported metadata viewport is configured in metadata export in /?_rsc=1xuj0. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ✓ Compiled in 932ms (469 modules)
+ ⚠ Unsupported metadata viewport is configured in metadata export in /?_rsc=1xuj0. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ✓ Compiled in 1190ms (469 modules)
+ ⚠ Unsupported metadata viewport is configured in metadata export in /?_rsc=1xuj0. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⨯ ./app/page.tsx
+Error: 
+  [31mx[0m Unexpected token `div`. Expected jsx identifier
+      ,-[[36;1;4m/Users/mohan/NEU/FALL 2025/AGENTS V1/ds-capstone-project/frontend/app/page.tsx[0m:1013:1]
+ [2m1013[0m |     )
+ [2m1014[0m |   }
+ [2m1015[0m |   return (
+ [2m1016[0m |     <div className="flex-1 flex overflow-hidden">
+      : [31;1m     ^^^[0m
+ [2m1017[0m |       {/* Main Results Content */}
+ [2m1018[0m |       <div className="flex-1 overflow-y-auto p-8 bg-gray-50">
+ [2m1019[0m |         <div className="max-w-7xl mx-auto space-y-8">
+      `----
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./app/page.tsx
+ ○ Compiling /_error ...
+ ⨯ ./app/page.tsx
+Error: 
+  [31mx[0m Unexpected token `div`. Expected jsx identifier
+      ,-[[36;1;4m/Users/mohan/NEU/FALL 2025/AGENTS V1/ds-capstone-project/frontend/app/page.tsx[0m:1013:1]
+ [2m1013[0m |     )
+ [2m1014[0m |   }
+ [2m1015[0m |   return (
+ [2m1016[0m |     <div className="flex-1 flex overflow-hidden">
+      : [31;1m     ^^^[0m
+ [2m1017[0m |       {/* Main Results Content */}
+ [2m1018[0m |       <div className="flex-1 overflow-y-auto p-8 bg-gray-50">
+ [2m1019[0m |         <div className="max-w-7xl mx-auto space-y-8">
+      `----
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./app/page.tsx
+ ✓ Compiled /not-found in 2.3s (627 modules)
+ ⚠ Unsupported metadata viewport is configured in metadata export in /_next/static/webpack/a8fb3f75970f9428.webpack.hot-update.json. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /_next/static/webpack/a8fb3f75970f9428.webpack.hot-update.json. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Fast Refresh had to perform a full reload. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+ ⚠ Unsupported metadata viewport is configured in metadata export in /. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ✓ Compiled in 787ms (641 modules)
+ ⚠ Unsupported metadata viewport is configured in metadata export in /?_rsc=1xuj0. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
