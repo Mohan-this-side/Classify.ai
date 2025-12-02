@@ -21,16 +21,28 @@ import subprocess
 import tempfile
 import json
 import shutil
+import threading
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple, List, Union
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
+
+# ✅ OPTION 3: Global container registry for workflow-scoped containers
+_workflow_containers: Dict[str, Dict[str, Any]] = {}
+_container_lock = threading.Lock()
 
 class SandboxExecutor:
     """
     Executes code in a secure Docker sandbox with resource limits.
     Optimized for machine learning operations with support for datasets,
     resource-intensive computations, and optional GPU acceleration.
+    
+    Option 3 Implementation:
+    - Containers are kept running during workflow execution
+    - Grace period after workflow completion (default 10 minutes)
+    - Containers tracked by workflow_id for better visibility
+    - API endpoints available for container log access
     """
     
     def __init__(
@@ -44,6 +56,7 @@ class SandboxExecutor:
         cpu_limit: float = 1.5,
         enable_gpu: bool = False,
         gpu_count: int = 1,
+        container_retention_minutes: int = 10,  # ✅ OPTION 3: Grace period for container retention
     ):
         # Ensure image name includes tag
         if ":" not in sandbox_image:
@@ -57,6 +70,10 @@ class SandboxExecutor:
         self.cpu_limit = cpu_limit
         self.enable_gpu = enable_gpu
         self.gpu_count = gpu_count
+        self.container_retention_minutes = container_retention_minutes
+        
+        # ✅ OPTION 3: Start background cleanup thread
+        self._start_cleanup_thread()
     
     def load_dataset(self, dataset_path: str, dataset_name: str) -> bool:
         """
@@ -79,7 +96,9 @@ class SandboxExecutor:
     def execute_code(self, 
                      code: str, 
                      datasets: Optional[Dict[str, str]] = None,
-                     additional_env: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+                     additional_env: Optional[Dict[str, str]] = None,
+                     workflow_id: Optional[str] = None,  # ✅ OPTION 3: Track by workflow_id
+                     agent_name: Optional[str] = None) -> Dict[str, Any]:
         """
         Execute the provided code in the sandbox and return the results.
         
@@ -87,12 +106,17 @@ class SandboxExecutor:
             code: The Python code to execute
             datasets: Optional dictionary mapping dataset names to local paths
             additional_env: Optional environment variables to pass to the container
+            workflow_id: Optional workflow identifier for container tracking
+            agent_name: Optional agent name for container tracking
             
         Returns:
             Dict containing execution results, status, and any errors
         """
-        # Generate a unique container name
-        container_name = f"sandbox-{int(time.time())}"
+        # ✅ OPTION 3: Generate container name with workflow_id if available
+        if workflow_id:
+            container_name = f"sandbox-{workflow_id}-{agent_name or 'exec'}-{int(time.time())}"
+        else:
+            container_name = f"sandbox-{int(time.time())}"
         temp_file_path = None
         
         try:
@@ -153,14 +177,19 @@ class SandboxExecutor:
                 time.sleep(1)
             else:
                 logger.warning(f"Sandbox execution timed out after {self.timeout} seconds")
-                self._stop_sandbox(container_name)
+                # ✅ OPTION 3: Register timeout containers too for debugging
+                if workflow_id:
+                    self._register_container(workflow_id, container_name, agent_name)
+                else:
+                    self._stop_sandbox(container_name)
                 return {
                     "status": "TIMEOUT",
                     "output": "",
                     "error": f"Execution timed out after {self.timeout} seconds",
                     "execution_time": self.timeout,
                     "memory_usage": self._get_container_memory_usage(container_name),
-                    "cpu_usage": self._get_container_cpu_usage(container_name)
+                    "cpu_usage": self._get_container_cpu_usage(container_name),
+                    "container_name": container_name
                 }
             
             # Calculate execution time
@@ -179,30 +208,35 @@ class SandboxExecutor:
             results["cpu_usage"] = cpu_usage
             results["container_name"] = container_name  # Store container name for debugging
             
-            # Store container name in results before cleanup (for debugging)
-            # Don't immediately remove container - keep it for a short period for inspection
-            # Clean up results volume but keep container temporarily
+            # ✅ OPTION 3: Clean up results volume but keep container running
             self._cleanup_results()
             
-            # Don't immediately stop container - allow time for result inspection
-            # Container will be cleaned up by a background process or on next execution
-            # For now, we'll stop it but log the container name for debugging
-            logger.info(f"Sandbox execution completed. Container: {container_name}, Status: {results.get('status')}")
+            # ✅ OPTION 3: Register container for workflow-scoped retention
+            if workflow_id:
+                self._register_container(workflow_id, container_name, agent_name)
+                logger.info(f"✅ Container {container_name} registered for workflow {workflow_id} (retention: {self.container_retention_minutes}min)")
+            else:
+                # No workflow_id - stop immediately (fallback behavior)
+                logger.info(f"Sandbox execution completed. Container: {container_name}, Status: {results.get('status')}")
+                self._stop_sandbox(container_name)
             
-            # Stop container after a short delay to allow result inspection
-            # In production, you might want to keep containers longer for debugging
-            self._stop_sandbox(container_name)
+            logger.info(f"Sandbox execution completed. Container: {container_name}, Status: {results.get('status')}, Workflow: {workflow_id or 'N/A'}")
             
             return results
             
         except Exception as e:
             logger.exception(f"Error executing code in sandbox: {str(e)}")
-            self._stop_sandbox(container_name)
+            # ✅ OPTION 3: Register error containers too for debugging
+            if workflow_id:
+                self._register_container(workflow_id, container_name, agent_name)
+            else:
+                self._stop_sandbox(container_name)
             return {
                 "status": "ERROR",
                 "output": "",
                 "error": f"Sandbox execution error: {str(e)}",
-                "execution_time": 0
+                "execution_time": 0,
+                "container_name": container_name
             }
         finally:
             # Clean up temporary file
@@ -427,6 +461,165 @@ class SandboxExecutor:
         except Exception as e:
             logger.warning(f"Failed to get CPU usage: {str(e)}")
             return {"error": str(e)}
+    
+    # ✅ OPTION 3: Container registration and management methods
+    def _register_container(self, workflow_id: str, container_name: str, agent_name: Optional[str] = None) -> None:
+        """Register a container for workflow-scoped retention"""
+        with _container_lock:
+            if workflow_id not in _workflow_containers:
+                _workflow_containers[workflow_id] = {
+                    "containers": [],
+                    "workflow_started": datetime.now(),
+                    "workflow_completed": None
+                }
+            
+            container_info = {
+                "container_name": container_name,
+                "agent_name": agent_name or "unknown",
+                "created_at": datetime.now(),
+                "retention_until": datetime.now() + timedelta(minutes=self.container_retention_minutes),
+                "stopped": False
+            }
+            
+            _workflow_containers[workflow_id]["containers"].append(container_info)
+            logger.info(f"📦 Registered container {container_name} for workflow {workflow_id}")
+    
+    def _start_cleanup_thread(self) -> None:
+        """Start background thread to clean up expired containers"""
+        def cleanup_loop():
+            while True:
+                try:
+                    time.sleep(60)  # Check every minute
+                    self._cleanup_expired_containers()
+                except Exception as e:
+                    logger.error(f"Error in cleanup thread: {e}")
+        
+        cleanup_thread = threading.Thread(target=cleanup_loop, daemon=True)
+        cleanup_thread.start()
+        logger.info("🧹 Container cleanup thread started")
+    
+    def _cleanup_expired_containers(self) -> None:
+        """Clean up containers that have exceeded their retention period"""
+        with _container_lock:
+            now = datetime.now()
+            workflows_to_remove = []
+            
+            for workflow_id, workflow_info in _workflow_containers.items():
+                containers_to_remove = []
+                
+                for container_info in workflow_info["containers"]:
+                    # Check if retention period has expired
+                    if now > container_info["retention_until"]:
+                        container_name = container_info["container_name"]
+                        if not container_info["stopped"]:
+                            try:
+                                # Stop the container
+                                subprocess.run(["docker", "stop", container_name], check=False, capture_output=True)
+                                container_info["stopped"] = True
+                                logger.debug(f"🛑 Stopped expired container: {container_name}")
+                            except Exception as e:
+                                logger.warning(f"Failed to stop container {container_name}: {e}")
+                        
+                        # Remove the container
+                        try:
+                            subprocess.run(["docker", "rm", container_name], check=False, capture_output=True)
+                            containers_to_remove.append(container_info)
+                            logger.debug(f"🗑️ Removed expired container: {container_name}")
+                        except Exception as e:
+                            logger.warning(f"Failed to remove container {container_name}: {e}")
+                
+                # Remove cleaned containers from list
+                for container_info in containers_to_remove:
+                    workflow_info["containers"].remove(container_info)
+                
+                # Remove workflow entry if no containers left
+                if not workflow_info["containers"]:
+                    workflows_to_remove.append(workflow_id)
+            
+            # Remove empty workflow entries
+            for workflow_id in workflows_to_remove:
+                del _workflow_containers[workflow_id]
+                logger.info(f"🧹 Cleaned up all containers for workflow {workflow_id}")
+    
+    @staticmethod
+    def mark_workflow_completed(workflow_id: str) -> None:
+        """Mark a workflow as completed, extending retention period"""
+        with _container_lock:
+            if workflow_id in _workflow_containers:
+                _workflow_containers[workflow_id]["workflow_completed"] = datetime.now()
+                # Extend retention for all containers in this workflow
+                retention_extension = timedelta(minutes=10)  # Additional 10 minutes after completion
+                for container_info in _workflow_containers[workflow_id]["containers"]:
+                    container_info["retention_until"] = datetime.now() + retention_extension
+                logger.info(f"✅ Workflow {workflow_id} marked as completed, containers retained for additional {retention_extension}")
+    
+    @staticmethod
+    def get_workflow_containers(workflow_id: str) -> List[Dict[str, Any]]:
+        """Get all containers for a workflow"""
+        with _container_lock:
+            if workflow_id in _workflow_containers:
+                return [
+                    {
+                        "container_name": c["container_name"],
+                        "agent_name": c["agent_name"],
+                        "created_at": c["created_at"].isoformat(),
+                        "retention_until": c["retention_until"].isoformat(),
+                        "stopped": c["stopped"]
+                    }
+                    for c in _workflow_containers[workflow_id]["containers"]
+                ]
+            return []
+    
+    @staticmethod
+    def get_container_logs(container_name: str, tail: int = 100) -> Dict[str, Any]:
+        """Get logs from a container"""
+        try:
+            result = subprocess.run(
+                ["docker", "logs", "--tail", str(tail), container_name],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            return {
+                "success": True,
+                "logs": result.stdout,
+                "error_logs": result.stderr
+            }
+        except subprocess.CalledProcessError as e:
+            return {
+                "success": False,
+                "error": f"Failed to get logs: {e.stderr or str(e)}"
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Error accessing container logs: {str(e)}"
+            }
+    
+    @staticmethod
+    def cleanup_workflow_containers(workflow_id: str, force: bool = False) -> Dict[str, Any]:
+        """Manually cleanup all containers for a workflow"""
+        with _container_lock:
+            if workflow_id not in _workflow_containers:
+                return {"success": False, "message": f"No containers found for workflow {workflow_id}"}
+            
+            containers_cleaned = []
+            for container_info in _workflow_containers[workflow_id]["containers"]:
+                container_name = container_info["container_name"]
+                try:
+                    if not container_info["stopped"]:
+                        subprocess.run(["docker", "stop", container_name], check=False, capture_output=True)
+                    subprocess.run(["docker", "rm", container_name], check=False, capture_output=True)
+                    containers_cleaned.append(container_name)
+                except Exception as e:
+                    logger.warning(f"Failed to cleanup container {container_name}: {e}")
+            
+            del _workflow_containers[workflow_id]
+            return {
+                "success": True,
+                "message": f"Cleaned up {len(containers_cleaned)} containers",
+                "containers": containers_cleaned
+            }
     
     def _cleanup_results(self) -> None:
         """Clean up result files from the volume"""

@@ -250,11 +250,14 @@ class EDAAgent(BaseAgent):
             if plot_file.exists():
                 # Create API URL: /api/workflow/plot/{workflow_id}/{filename}
                 api_url = f"/api/workflow/plot/{session_id}/{plot_file.name}"
+                # ✅ FIX: Generate meaningful title
+                title = self._generate_plot_title(plot_file.name)
                 plot_list.append({
-                    "title": plot_file.stem.replace("_", " ").title(),
+                    "title": title,
                     "name": plot_file.name,
                     "path": api_url,
-                    "url": api_url
+                    "url": api_url,
+                    "workflow_id": session_id
                 })
                 self.logger.info(f"  📊 Plot available: {api_url}")
         
@@ -992,30 +995,56 @@ class EDAAgent(BaseAgent):
         session_id = state.get("session_id", "unknown")
         workflow_id = session_id
         
+        # ✅ FIX: Filter out placeholder/empty plots
+        placeholder_patterns = ['plot_2', 'plot2', 'basic_plot', 'multiple_plots', 'empty', 'placeholder', 'test', 'demo']
+        
         layer2_plot_list = []
         for plot_path in validated_plots:
             # plot_path is already an API URL from _extract_plots_from_sandbox
             if isinstance(plot_path, str):
                 if plot_path.startswith("/api/workflow/plot/"):
-                    # Already an API URL
-                    filename = plot_path.split("/")[-1]
-                    layer2_plot_list.append({
-                        "title": filename.replace("_", " ").replace(".png", "").title(),
-                        "name": filename,
-                        "path": plot_path,
-                        "url": plot_path,
-                        "source": "layer2"
-                    })
+                    # Already an API URL - ensure it's for current workflow
+                    parts = plot_path.split("/")
+                    if len(parts) >= 5 and parts[4] == workflow_id:
+                        filename = parts[-1]
+                        filename_lower = filename.lower()
+                        
+                        # ✅ FIX: Skip placeholder plots
+                        if any(pattern in filename_lower for pattern in placeholder_patterns):
+                            self.logger.warning(f"Skipping placeholder plot: {filename}")
+                            continue
+                        
+                        # ✅ FIX: Generate meaningful title from filename
+                        title = self._generate_plot_title(filename)
+                        
+                        layer2_plot_list.append({
+                            "title": title,
+                            "name": filename,
+                            "path": plot_path,
+                            "url": plot_path,
+                            "source": "layer2",
+                            "workflow_id": workflow_id
+                        })
                 else:
                     # Convert file path to API URL
                     filename = Path(plot_path).name
+                    filename_lower = filename.lower()
+                    
+                    # ✅ FIX: Skip placeholder plots
+                    if any(pattern in filename_lower for pattern in placeholder_patterns):
+                        self.logger.warning(f"Skipping placeholder plot: {filename}")
+                        continue
+                    
                     api_url = f"/api/workflow/plot/{workflow_id}/{filename}"
+                    title = self._generate_plot_title(filename)
+                    
                     layer2_plot_list.append({
-                        "title": filename.replace("_", " ").replace(".png", "").title(),
+                        "title": title,
                         "name": filename,
                         "path": api_url,
                         "url": api_url,
-                        "source": "layer2"
+                        "source": "layer2",
+                        "workflow_id": workflow_id
                     })
         
         # Merge with Layer 1 results - PRIORITIZE Layer 2 plots
@@ -1125,6 +1154,45 @@ class EDAAgent(BaseAgent):
             # Don't fail completely - return empty list and fall back to Layer 1
         
         return plot_paths
+    
+    def _generate_plot_title(self, filename: str) -> str:
+        """
+        Generate a meaningful title from plot filename.
+        
+        Args:
+            filename: Plot filename (e.g., "correlation_heatmap.png")
+            
+        Returns:
+            Readable title (e.g., "Correlation Heatmap")
+        """
+        # Remove extension
+        name = filename.replace(".png", "").replace(".jpg", "").replace(".svg", "")
+        
+        # Common plot name mappings
+        plot_name_mappings = {
+            "correlation_heatmap": "Correlation Heatmap",
+            "correlation_matrix": "Correlation Matrix",
+            "distributions_histograms": "Feature Distributions",
+            "outliers_boxplots": "Outlier Analysis",
+            "target_distribution": "Target Variable Distribution",
+            "feature_importance": "Feature Importance",
+            "roc_curve": "ROC Curve",
+            "confusion_matrix": "Confusion Matrix",
+            "precision_recall": "Precision-Recall Curve"
+        }
+        
+        # Check if we have a mapping
+        name_lower = name.lower()
+        for key, title in plot_name_mappings.items():
+            if key in name_lower:
+                return title
+        
+        # Otherwise, convert filename to title
+        title = name.replace("_", " ").replace("-", " ")
+        # Capitalize first letter of each word
+        title = " ".join(word.capitalize() for word in title.split())
+        
+        return title
 
     def _prepare_sandbox_datasets(self, state: ClassificationState) -> Dict[str, str]:
         """

@@ -21,6 +21,7 @@ from ..workflows.classification_workflow import ClassificationWorkflow
 from ..workflows.state_management import WorkflowStatus
 from ..config import get_settings
 from ..services.storage import storage_service
+from ..services.sandbox_executor import SandboxExecutor  # ✅ OPTION 3: For container management
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -716,22 +717,80 @@ async def get_workflow_results(workflow_id: str) -> Dict[str, Any]:
                     "pm_messages": []
                 }
                 
-                # Load plots from plots directory
-                plots_dir = results_dir / "plots"
-                if plots_dir.exists():
-                    plot_files = list(plots_dir.glob("*.png"))
-                    state["eda_plots"] = [
-                        {
-                            "title": f.name.replace("_", " ").replace(".png", "").title(),
-                            "name": f.name,
-                            "path": f"/api/workflow/plot/{workflow_id}/{f.name}",
-                            "url": f"/api/workflow/plot/{workflow_id}/{f.name}"
-                        }
-                        for f in plot_files
-                    ]
-                    logger.info(f"Found {len(state['eda_plots'])} plots in {plots_dir}")
+                # ✅ FIX PLOT ISOLATION: Load plots from workflow-specific plots directory
+                # Plots are stored in backend/plots/{workflow_id}/, not in results directory
+                import os
+                cwd = os.getcwd()
+                if cwd.endswith('/backend'):
+                    base_plots_dir = Path("plots")
                 else:
-                    logger.warning(f"Plots directory not found: {plots_dir}")
+                    base_plots_dir = Path("backend/plots")
+                
+                workflow_plots_dir = base_plots_dir / workflow_id
+                
+                # Also check results_dir/plots as fallback
+                results_plots_dir = results_dir / "plots"
+                
+                plot_files = []
+                if workflow_plots_dir.exists():
+                    plot_files = list(workflow_plots_dir.glob("*.png")) + list(workflow_plots_dir.glob("*.jpg")) + list(workflow_plots_dir.glob("*.svg"))
+                    logger.info(f"Found {len(plot_files)} plots in workflow plots directory: {workflow_plots_dir}")
+                elif results_plots_dir.exists():
+                    plot_files = list(results_plots_dir.glob("*.png")) + list(results_plots_dir.glob("*.jpg")) + list(results_plots_dir.glob("*.svg"))
+                    logger.info(f"Found {len(plot_files)} plots in results plots directory: {results_plots_dir}")
+                else:
+                    logger.warning(f"Plots directory not found for workflow {workflow_id}. Checked: {workflow_plots_dir} and {results_plots_dir}")
+                
+                # ✅ FIX PLOT ISOLATION: Filter out placeholder/empty plots and ensure workflow_id match
+                placeholder_patterns = ['plot_2', 'plot2', 'basic_plot', 'multiple_plots', 'empty', 'placeholder']
+                valid_plots = []
+                
+                for f in plot_files:
+                    filename_lower = f.name.lower()
+                    # Skip placeholder plots
+                    if any(pattern in filename_lower for pattern in placeholder_patterns):
+                        logger.info(f"Skipping placeholder plot: {f.name}")
+                        continue
+                    
+                    # ✅ CRITICAL: Ensure plot file is in workflow-specific directory
+                    # Double-check that the plot file path contains the workflow_id
+                    plot_dir = f.parent
+                    if str(workflow_id) not in str(plot_dir):
+                        logger.warning(f"Skipping plot {f.name} - not in workflow directory (found in {plot_dir}, expected {workflow_id})")
+                        continue
+                    
+                    # ✅ FIX: Generate meaningful title
+                    title = f.name.replace("_", " ").replace(".png", "").replace(".jpg", "").replace(".svg", "")
+                    # Capitalize properly
+                    title = " ".join(word.capitalize() for word in title.split())
+                    
+                    # Common plot name mappings
+                    plot_mappings = {
+                        "correlation heatmap": "Correlation Heatmap",
+                        "correlation matrix": "Correlation Matrix",
+                        "distributions histograms": "Feature Distributions",
+                        "outliers boxplots": "Outlier Analysis",
+                        "target distribution": "Target Variable Distribution",
+                        "roc curve": "ROC Curve (AUC)",
+                        "confusion matrix": "Confusion Matrix",
+                        "precision recall curve": "Precision-Recall Curve"
+                    }
+                    
+                    for key, mapped_title in plot_mappings.items():
+                        if key in title.lower():
+                            title = mapped_title
+                            break
+                    
+                    valid_plots.append({
+                        "title": title,
+                        "name": f.name,
+                        "path": f"/api/workflow/plot/{workflow_id}/{f.name}",
+                        "url": f"/api/workflow/plot/{workflow_id}/{f.name}",
+                        "workflow_id": workflow_id  # ✅ CRITICAL: Explicitly tag with workflow_id
+                    })
+                
+                state["eda_plots"] = valid_plots
+                logger.info(f"✅ Loaded {len(valid_plots)} valid plots for workflow {workflow_id} (filtered {len(plot_files) - len(valid_plots)} invalid/placeholder plots)")
                 
                 # Build downloadable files
                 downloadable_files = []
@@ -1309,6 +1368,60 @@ async def get_agent_summary(
         raise HTTPException(status_code=500, detail=f"Failed to get agent summary: {str(e)}")
 
 
+# ✅ OPTION 3: Container management endpoints
+@router.get("/{workflow_id}/sandbox/containers")
+async def get_workflow_containers(workflow_id: str) -> Dict[str, Any]:
+    """Get all containers associated with a workflow"""
+    try:
+        containers = SandboxExecutor.get_workflow_containers(workflow_id)
+        return {
+            "workflow_id": workflow_id,
+            "containers": containers,
+            "count": len(containers)
+        }
+    except Exception as e:
+        logger.error(f"Error getting containers for workflow {workflow_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get containers: {str(e)}")
+
+@router.get("/{workflow_id}/sandbox/container/{container_name}/logs")
+async def get_container_logs(workflow_id: str, container_name: str, tail: int = 100) -> Dict[str, Any]:
+    """Get logs from a specific container"""
+    try:
+        # Verify container belongs to workflow
+        containers = SandboxExecutor.get_workflow_containers(workflow_id)
+        container_names = [c["container_name"] for c in containers]
+        
+        if container_name not in container_names:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Container {container_name} not found for workflow {workflow_id}"
+            )
+        
+        logs = SandboxExecutor.get_container_logs(container_name, tail=tail)
+        return {
+            "workflow_id": workflow_id,
+            "container_name": container_name,
+            **logs
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting logs for container {container_name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get logs: {str(e)}")
+
+@router.delete("/{workflow_id}/sandbox/containers")
+async def cleanup_workflow_containers(workflow_id: str, force: bool = False) -> Dict[str, Any]:
+    """Manually cleanup all containers for a workflow"""
+    try:
+        result = SandboxExecutor.cleanup_workflow_containers(workflow_id, force=force)
+        return {
+            "workflow_id": workflow_id,
+            **result
+        }
+    except Exception as e:
+        logger.error(f"Error cleaning up containers for workflow {workflow_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to cleanup containers: {str(e)}")
+
 @router.post("/{workflow_id}/pm/question")
 async def ask_pm_question(
     workflow_id: str,
@@ -1851,6 +1964,13 @@ async def execute_workflow_with_progress(
             workflow_states[workflow_id]["status"] = WorkflowStatus.COMPLETED
             workflow_states[workflow_id]["workflow_status"] = "completed"  # Add this field for results endpoint
             workflow_states[workflow_id]["end_time"] = datetime.now().isoformat()
+            
+            # ✅ OPTION 3: Mark workflow as completed in SandboxExecutor for container retention
+            try:
+                SandboxExecutor.mark_workflow_completed(workflow_id)
+                logger.info(f"✅ Marked workflow {workflow_id} as completed in SandboxExecutor")
+            except Exception as e:
+                logger.warning(f"Failed to mark workflow completion in SandboxExecutor: {e}")
         
         # ✅ ADD: Generate and send workflow completion summary with actionable insights
         try:
@@ -1961,6 +2081,13 @@ async def execute_workflow_background(
             workflow_states[workflow_id]["status"] = result.get("status", WorkflowStatus.COMPLETED)
             workflow_states[workflow_id]["progress"] = 100.0
             workflow_states[workflow_id]["results"] = result.get("results", {})
+            
+            # ✅ OPTION 3: Mark workflow as completed in SandboxExecutor for container retention
+            try:
+                SandboxExecutor.mark_workflow_completed(workflow_id)
+                logger.info(f"✅ Marked workflow {workflow_id} as completed in SandboxExecutor")
+            except Exception as e:
+                logger.warning(f"Failed to mark workflow completion in SandboxExecutor: {e}")
         
         logger.info(f"Workflow {workflow_id} completed with status: {result['status']}")
         

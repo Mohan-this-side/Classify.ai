@@ -1745,13 +1745,14 @@ Generate comprehensive, production-ready Python code:"""
                             # Create API URL
                             api_url = f"/api/workflow/plot/{workflow_id}/{filename}"
                             
-                            # Create plot info
-                            plot_title = filename.replace("_", " ").replace(".png", "").title()
+                            # ✅ FIX: Generate meaningful title
+                            plot_title = self._generate_evaluation_plot_title(filename)
                             evaluation_plots.append({
                                 "title": plot_title,
                                 "name": filename,
                                 "path": api_url,
-                                "url": api_url
+                                "url": api_url,
+                                "workflow_id": workflow_id
                             })
                             
                             self.logger.info(f"✅ Extracted evaluation plot: {filename} → {api_url}")
@@ -1765,3 +1766,36 @@ Generate comprehensive, production-ready Python code:"""
             self.logger.warning(f"Failed to extract evaluation plots from sandbox: {e}")
         
         return evaluation_plots
+    
+    def _generate_evaluation_plot_title(self, filename: str) -> str:
+        """
+        Generate a meaningful title from evaluation plot filename.
+        
+        Args:
+            filename: Plot filename (e.g., "roc_curve.png")
+            
+        Returns:
+            Readable title (e.g., "ROC Curve")
+        """
+        # Remove extension
+        name = filename.replace(".png", "").replace(".jpg", "").replace(".svg", "")
+        
+        # Evaluation plot name mappings
+        plot_mappings = {
+            "roc_curve": "ROC Curve (AUC)",
+            "confusion_matrix": "Confusion Matrix",
+            "precision_recall": "Precision-Recall Curve",
+            "feature_importance": "Feature Importance"
+        }
+        
+        # Check if we have a mapping
+        name_lower = name.lower()
+        for key, title in plot_mappings.items():
+            if key in name_lower:
+                return title
+        
+        # Otherwise, convert filename to title
+        title = name.replace("_", " ").replace("-", " ")
+        title = " ".join(word.capitalize() for word in title.split())
+        
+        return title

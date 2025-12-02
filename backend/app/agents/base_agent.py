@@ -630,11 +630,14 @@ warnings.filterwarnings('ignore', message='.*matplotlib.*cache.*')
             "LAYER1_RESULTS": str(layer1_results)
         }
 
-        # Execute code in sandbox
+        # ✅ OPTION 3: Pass workflow_id and agent_name for container tracking
+        workflow_id = state.get("session_id")  # session_id is the workflow_id
         result = self.sandbox_executor.execute_code(
             code=generated_code,
             datasets=datasets,
-            additional_env=env_vars
+            additional_env=env_vars,
+            workflow_id=workflow_id,
+            agent_name=self.agent_name
         )
 
         self.logger.info(f"Sandbox execution completed: {result.get('status')}")

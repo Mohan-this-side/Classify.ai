@@ -30,6 +30,8 @@ export default function ClassifyAI() {
   const [sandboxMetrics, setSandboxMetrics] = useState({ cpu: 0, memory: 0, time: 0 })
   const [results, setResults] = useState<any>(null)
   const [workflowCompletedNotified, setWorkflowCompletedNotified] = useState(false) // ✅ FIX: Track if completion notification shown
+  const [approvalNotified, setApprovalNotified] = useState(false) // ✅ FIX: Track if approval notification shown
+  const [currentApprovalId, setCurrentApprovalId] = useState<string | null>(null) // ✅ FIX: Track current approval gate ID
 
   // ✅ FIX: Reset state function (memoized with useCallback)
   const resetAppState = useCallback(() => {
@@ -42,6 +44,8 @@ export default function ClassifyAI() {
     setSandboxMetrics({ cpu: 0, memory: 0, time: 0 })
     setResults(null)
     setWorkflowCompletedNotified(false)
+    setApprovalNotified(false)
+    setCurrentApprovalId(null)
     setPendingApproval(false)
     setFile(null)
     setTargetColumn('')
@@ -198,6 +202,8 @@ export default function ClassifyAI() {
       setWorkflowId(data.workflow_id)
       setWorkflowStatus('running')
       setWorkflowCompletedNotified(false) // ✅ FIX: Reset completion notification flag
+      setApprovalNotified(false) // ✅ FIX: Reset approval notification flag
+      setCurrentApprovalId(null) // ✅ FIX: Reset approval ID
       
       // Initialize agents status
       setAgents([
@@ -277,39 +283,60 @@ export default function ClassifyAI() {
         }
         
         // ✅ Update pending approval from backend
+        // ✅ FIX NOTIFICATION SPAM: Only show one notification per approval gate
         const hasPendingApproval = !!data.pending_approval
+        const approvalId = data.pending_approval?.id || data.pending_approval?.timestamp || null
+        
         if (hasPendingApproval && !pendingApproval) {
-          // Approval gate just appeared - notify user
+          // Approval gate just appeared
           setPendingApproval(true)
           
-          // Request browser notification permission if not already granted
-          if ('Notification' in window && Notification.permission === 'default') {
-            Notification.requestPermission()
-          }
-          
-          // Show browser notification if permission granted
-          if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('⏸️ Approval Required', {
-              body: 'The workflow is paused and waiting for your approval. Click to review.',
-              icon: '/favicon.ico',
-              tag: 'approval-gate',
-              requireInteraction: true
+          // ✅ FIX: Only notify if this is a new approval gate (different ID)
+          if (approvalId !== currentApprovalId && !approvalNotified) {
+            setCurrentApprovalId(approvalId)
+            setApprovalNotified(true)
+            
+            // Request browser notification permission if not already granted
+            if ('Notification' in window && Notification.permission === 'default') {
+              Notification.requestPermission()
+            }
+            
+            // Show browser notification if permission granted (only once)
+            if ('Notification' in window && Notification.permission === 'granted') {
+              // Close any existing notification with same tag first
+              try {
+                const existingNotification = new Notification('', { tag: 'approval-gate' })
+                existingNotification.close()
+              } catch (e) {
+                // Ignore errors
+              }
+              
+              new Notification('⏸️ Approval Required', {
+                body: 'The workflow is paused and waiting for your approval. Click to review.',
+                icon: '/favicon.ico',
+                tag: 'approval-gate', // ✅ Same tag ensures only one browser notification
+                requireInteraction: true
+              })
+            }
+            
+            // Show toast notification (only once)
+            toast('⏸️ Approval Required - Workflow is paused', {
+              duration: 10000,
+              position: 'top-right',
+              icon: '⏸️',
+              id: 'approval-gate-toast' // ✅ Same ID ensures only one toast
             })
-          }
-          
-          // Show toast notification
-          toast('⏸️ Approval Required - Workflow is paused', {
-            duration: 10000,
-            position: 'top-right',
-            icon: '⏸️'
-          })
-          
-          // Auto-expand PM chat if minimized to show approval gate
-          if (!pmExpanded) {
-            setPmExpanded(true)
+            
+            // Auto-expand PM chat if minimized to show approval gate
+            if (!pmExpanded) {
+              setPmExpanded(true)
+            }
           }
         } else if (!hasPendingApproval && pendingApproval) {
+          // Approval gate resolved - reset notification flags
           setPendingApproval(false)
+          setApprovalNotified(false)
+          setCurrentApprovalId(null)
         }
 
         // ✅ Update sandbox metrics from backend
@@ -393,6 +420,7 @@ export default function ClassifyAI() {
       setActiveView('results')
       
       // ✅ FIX: Show single, informative completion notification (only once)
+      // ✅ FIX NOTIFICATION SPAM: Show single, informative completion notification (only once)
       if (!workflowCompletedNotified) {
         setWorkflowCompletedNotified(true)
         const completedAgentsCount = data.execution_info?.completed_agents?.length || 7
@@ -404,6 +432,27 @@ export default function ClassifyAI() {
           {
             duration: 5000,
             icon: '🎉',
+            id: 'workflow-completed-toast' // ✅ Same ID ensures only one toast
+          }
+        )
+        
+        // Show browser notification (only once)
+        if ('Notification' in window && Notification.permission === 'granted') {
+          // Close any existing notification with same tag first
+          try {
+            const existingNotification = new Notification('', { tag: 'workflow-completed' })
+            existingNotification.close()
+          } catch (e) {
+            // Ignore errors
+          }
+          
+          new Notification('🎉 Workflow Completed', {
+            body: `Analysis complete! ${completedAgentsCount} agents finished. Model accuracy: ${accuracy}`,
+            icon: '/favicon.ico',
+            tag: 'workflow-completed' // ✅ Same tag ensures only one browser notification
+          })
+        }
+      }
             style: {
               background: '#10b981',
               color: '#fff',
@@ -1074,28 +1123,67 @@ function ResultsView({ results, workflowId }: any) {
             <span>Exploratory Data Analysis</span>
           </h3>
           <div className="grid grid-cols-2 gap-6">
-            {results?.eda_analysis?.plots && results.eda_analysis.plots.length > 0 ? (
-              results.eda_analysis.plots.map((plot: any, idx: number) => {
-                const plotUrl = `http://localhost:8000${plot.path || plot.url}`
-                return (
-                  <div key={idx} className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg border border-purple-200 p-4 cursor-pointer hover:shadow-lg transition-shadow" onClick={() => setFullScreenImage(plotUrl)}>
-                    <p className="font-medium text-sm mb-2">{plot.title || plot.name || `Plot ${idx + 1}`}</p>
-                    <img 
-                      src={plotUrl} 
-                      alt={plot.title || plot.name || `Plot ${idx + 1}`}
-                      className="w-full h-auto rounded"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iI2Y1ZjVmNSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5QbG90IG5vdCBhdmFpbGFibGU8L3RleHQ+PC9zdmc+'
-                      }}
-                    />
-                  </div>
-                )
-              })
-            ) : (
-              <div className="col-span-2 text-center py-8 text-gray-500">
-                <p>No EDA plots generated. Check backend logs for EDA agent execution.</p>
-              </div>
-            )}
+            {(() => {
+              // ✅ FIX: Filter out empty/placeholder plots
+              const validPlots = (results?.eda_analysis?.plots || [])
+                .filter((plot: any) => {
+                  const title = (plot.title || plot.name || '').toLowerCase()
+                  const name = (plot.name || '').toLowerCase()
+                  
+                  // Filter out placeholder/empty plots
+                  const placeholderPatterns = [
+                    'plot 2', 'plot2', 'basic plot', 'multiple plots',
+                    'empty', 'placeholder', 'test', 'demo', 'sample'
+                  ]
+                  
+                  // Check if plot has meaningful title/name
+                  const hasValidTitle = title && title.length > 2 && 
+                    !placeholderPatterns.some(pattern => title.includes(pattern))
+                  
+                  // Check if plot path/url exists
+                  const hasValidPath = plot.path || plot.url
+                  
+                  // Ensure plot is for current workflow (check path contains workflow_id)
+                  const isCurrentWorkflow = !currentWorkflowId || 
+                    (plot.path && plot.path.includes(currentWorkflowId)) ||
+                    (plot.url && plot.url.includes(currentWorkflowId))
+                  
+                  return hasValidTitle && hasValidPath && isCurrentWorkflow
+                })
+              
+              return validPlots.length > 0 ? (
+                validPlots.map((plot: any, idx: number) => {
+                  const plotUrl = `http://localhost:8000${plot.path || plot.url}`
+                  // ✅ FIX: Generate meaningful title from filename if not provided
+                  let plotTitle = plot.title || plot.name || `Plot ${idx + 1}`
+                  if (!plot.title && plot.name) {
+                    // Convert filename to readable title
+                    plotTitle = plot.name
+                      .replace(/_/g, ' ')
+                      .replace(/\.png$/i, '')
+                      .replace(/\b\w/g, (l: string) => l.toUpperCase())
+                  }
+                  
+                  return (
+                    <div key={idx} className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg border border-purple-200 p-4 cursor-pointer hover:shadow-lg transition-shadow" onClick={() => setFullScreenImage(plotUrl)}>
+                      <p className="font-medium text-sm mb-2">{plotTitle}</p>
+                      <img 
+                        src={plotUrl} 
+                        alt={plotTitle}
+                        className="w-full h-auto rounded"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iI2Y1ZjVmNSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5QbG90IG5vdCBhdmFpbGFibGU8L3RleHQ+PC9zdmc+'
+                        }}
+                      />
+                    </div>
+                  )
+                })
+              ) : (
+                <div className="col-span-2 text-center py-8 text-gray-500">
+                  <p>No EDA plots generated. Check backend logs for EDA agent execution.</p>
+                </div>
+              )
+            })()}
           </div>
           
           {/* ✅ ADD: Full-screen image viewer */}
@@ -1141,16 +1229,28 @@ function ResultsView({ results, workflowId }: any) {
           <h3 className="text-2xl font-bold text-gray-900 mb-6">Feature Importance</h3>
           <div className="space-y-4">
             {results?.feature_importance && Object.keys(results.feature_importance).length > 0 ? (
-              Object.entries(results.feature_importance)
-                .sort(([, a]: any, [, b]: any) => b - a)
-                .slice(0, 10)
-                .map(([feature, importance]: any) => (
-                  <FeatureBar 
-                    key={feature} 
-                    label={feature} 
-                    value={Math.round((importance || 0) * 100)} 
-                  />
-                ))
+              (() => {
+                // ✅ FIX: Normalize feature importance values relative to max value
+                const entries = Object.entries(results.feature_importance)
+                  .map(([name, val]: any) => [name, Math.abs(val || 0)])
+                  .sort(([, a]: any, [, b]: any) => b - a)
+                  .slice(0, 10)
+                
+                // Find max value for normalization
+                const maxValue = entries.length > 0 ? Math.max(...entries.map(([, val]: any) => val)) : 1
+                
+                return entries.map(([feature, importance]: any) => {
+                  // Normalize to 0-100 relative to max value
+                  const normalizedValue = maxValue > 0 ? (importance / maxValue) * 100 : 0
+                  return (
+                    <FeatureBar 
+                      key={feature} 
+                      label={feature} 
+                      value={Math.round(Math.min(Math.max(normalizedValue, 0), 100))} 
+                    />
+                  )
+                })
+              })()
             ) : (
               <p className="text-gray-500 text-center py-4">No feature importance data available</p>
             )}
