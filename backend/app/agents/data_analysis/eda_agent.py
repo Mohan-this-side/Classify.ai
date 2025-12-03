@@ -926,7 +926,7 @@ class EDAAgent(BaseAgent):
 
         # ✅ ENHANCEMENT: Extract Layer 2 plots from sandbox results volume
         plot_paths = results.get("plot_paths", [])
-        
+
         # Try to extract plots from sandbox results volume
         layer2_plots = self._extract_plots_from_sandbox(state)
         if layer2_plots:
@@ -959,14 +959,14 @@ class EDAAgent(BaseAgent):
         try:
             from .validators import PlotValidator
             validator = PlotValidator()
-            
+
             for plot_path in plot_paths:
                 validation_result = validator.validate_plot(plot_path)
                 if validation_result["is_valid"]:
                     validated_plots.append(plot_path)
                 else:
                     self.logger.warning(f"Plot validation failed for {plot_path}: {validation_result['errors']}")
-            
+
             if not validated_plots:
                 self.logger.warning("All plots failed validation, using all plots anyway")
                 validated_plots = plot_paths

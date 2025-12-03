@@ -224,7 +224,7 @@ def advanced_clean_data(df):
     Returns cleaned DataFrame with SAME or MORE rows (except target nulls).
     \"\"\"
     cleaned_df = df.copy()
-    
+
     # Step 1: Handle missing values (IMPUTE, don't drop)
     # Use KNNImputer for numeric, mode for categorical
     
@@ -237,7 +237,7 @@ def advanced_clean_data(df):
     # Step 4: Validate - ensure shape preserved
     assert cleaned_df.shape[0] >= df.shape[0] - df['target_column'].isnull().sum(), \\
         "Data loss should only occur for target variable nulls"
-    
+
     return cleaned_df
 
 # Execute cleaning

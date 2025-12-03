@@ -233,13 +233,42 @@ export default function ClassifyAI() {
   const pollWorkflowStatus = async (wfId: string) => {
     let intervalId: NodeJS.Timeout | null = null
     let hasCompleted = false // ✅ FIX: Track if workflow has completed to prevent duplicate notifications
+    let errorCount = 0 // ✅ FIX: Track consecutive errors for exponential backoff
+    let pollInterval = 3000 // ✅ FIX: Start with 3 seconds instead of 2
+    const maxInterval = 10000 // Maximum 10 seconds between polls
+    const minInterval = 2000 // Minimum 2 seconds between polls
     
-    const interval = setInterval(async () => {
+    const poll = async (): Promise<boolean> => {
+      // ✅ CRITICAL FIX: Return early if already completed
+      if (hasCompleted) return false
+      
       try {
-        const response = await fetch(`http://localhost:8000/api/workflow/status/${wfId}`)
+        // ✅ FIX: Add timeout and abort controller to prevent hanging requests
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 5000) // 5 second timeout
+        
+        const response = await fetch(`http://localhost:8000/api/workflow/status/${wfId}`, {
+          signal: controller.signal,
+          headers: {
+            'Cache-Control': 'no-cache'
+          }
+        })
+        clearTimeout(timeoutId)
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+        }
+        
         const data = await response.json()
+        
+        // ✅ CRITICAL FIX: Check status first - normalize to string for comparison
+        const status = String(data.status || '').toLowerCase()
+        
+        // ✅ FIX: Reset error count on success
+        errorCount = 0
+        pollInterval = Math.max(minInterval, pollInterval - 500) // Gradually decrease interval on success
 
-        setWorkflowStatus(data.status)
+        setWorkflowStatus(status)
 
         // Map backend agent names to frontend agent IDs
         const agentMapping: { [key: string]: string } = {
@@ -261,15 +290,15 @@ export default function ClassifyAI() {
             )
             
             if (backendAgentName && data.agent_status[backendAgentName]) {
-              const status = data.agent_status[backendAgentName]
+              const agentStatus = data.agent_status[backendAgentName]
               const layer = data.layer_usage?.[backendAgentName] || 'layer1'
               // Standardize layer naming: always "Layer 1" or "Layer 2"
               const layerName = layer.toLowerCase().includes('layer2') || layer.toLowerCase().includes('2') ? 'Layer 2' : 'Layer 1'
               const layerEmoji = layerName === 'Layer 2' ? '🐳' : '⚡'
               return { 
                 ...agent, 
-                status: status === 'running' ? 'active' : status === 'completed' ? 'complete' : status,
-                time: status === 'completed' ? `${layerEmoji} ${layerName}` : (status === 'running' ? `${layerEmoji} ${layerName}...` : ''),
+                status: agentStatus === 'running' ? 'active' : agentStatus === 'completed' ? 'complete' : agentStatus,
+                time: agentStatus === 'completed' ? `${layerEmoji} ${layerName}` : (agentStatus === 'running' ? `${layerEmoji} ${layerName}...` : ''),
                 layer: layerName
               }
             }
@@ -295,14 +324,14 @@ export default function ClassifyAI() {
           if (approvalId !== currentApprovalId && !approvalNotified) {
             setCurrentApprovalId(approvalId)
             setApprovalNotified(true)
-            
-            // Request browser notification permission if not already granted
-            if ('Notification' in window && Notification.permission === 'default') {
-              Notification.requestPermission()
-            }
-            
+          
+          // Request browser notification permission if not already granted
+          if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission()
+          }
+          
             // Show browser notification if permission granted (only once)
-            if ('Notification' in window && Notification.permission === 'granted') {
+          if ('Notification' in window && Notification.permission === 'granted') {
               // Close any existing notification with same tag first
               try {
                 const existingNotification = new Notification('', { tag: 'approval-gate' })
@@ -311,25 +340,25 @@ export default function ClassifyAI() {
                 // Ignore errors
               }
               
-              new Notification('⏸️ Approval Required', {
-                body: 'The workflow is paused and waiting for your approval. Click to review.',
-                icon: '/favicon.ico',
+            new Notification('⏸️ Approval Required', {
+              body: 'The workflow is paused and waiting for your approval. Click to review.',
+              icon: '/favicon.ico',
                 tag: 'approval-gate', // ✅ Same tag ensures only one browser notification
-                requireInteraction: true
-              })
-            }
-            
+              requireInteraction: true
+            })
+          }
+          
             // Show toast notification (only once)
             toast('⏸️ Approval Required - Workflow is paused', {
-              duration: 10000,
+            duration: 10000,
               position: 'top-right',
-              icon: '⏸️',
+              icon: undefined, // ✅ FIX: Remove duplicate emoji icon
               id: 'approval-gate-toast' // ✅ Same ID ensures only one toast
-            })
-            
-            // Auto-expand PM chat if minimized to show approval gate
-            if (!pmExpanded) {
-              setPmExpanded(true)
+          })
+          
+          // Auto-expand PM chat if minimized to show approval gate
+          if (!pmExpanded) {
+            setPmExpanded(true)
             }
           }
         } else if (!hasPendingApproval && pendingApproval) {
@@ -357,33 +386,109 @@ export default function ClassifyAI() {
           setSandboxMetrics({ cpu: 0, memory: 0, time: 0 })
         }
 
-        // ✅ FIX: Check if workflow is complete (only once)
-        if (data.status === 'completed' && !hasCompleted) {
+        // ✅ CRITICAL FIX: Check if workflow is complete (only once) - normalize status comparison
+        if (status === 'completed' && !hasCompleted) {
           hasCompleted = true
-          clearInterval(interval)
-          intervalId = null
+          // ✅ CRITICAL FIX: Clear the timeout, not undefined 'interval'
+          if (intervalId) {
+            clearTimeout(intervalId)
+            intervalId = null
+          }
           // Reset sandbox metrics
           setSandboxMetrics({ cpu: 0, memory: 0, time: 0 })
           // Fetch results (this will show the single completion notification)
           await fetchResults(wfId)
-        } else if (data.status === 'failed' && !hasCompleted) {
+          return false // Stop polling
+        } else if (status === 'failed' && !hasCompleted) {
           hasCompleted = true
-          clearInterval(interval)
-          intervalId = null
+          if (intervalId) {
+            clearTimeout(intervalId)
+            intervalId = null
+          }
           toast.error('Workflow failed')
+          return false // Stop polling
         }
-      } catch (error) {
-        console.error('Error polling status:', error)
+        
+        return true // Continue polling
+      } catch (error: any) {
+        errorCount++
+        // ✅ FIX: Exponential backoff on errors
+        pollInterval = Math.min(maxInterval, pollInterval * 1.5)
+        
+        // Only log errors occasionally to avoid console spam
+        if (errorCount % 5 === 1) {
+          console.error(`Error polling status (attempt ${errorCount}):`, error)
+        }
+        
+        // ✅ FIX: Stop polling if too many consecutive errors
+        if (errorCount > 20) {
+          console.error('Too many polling errors, stopping...')
+          hasCompleted = true // Mark as completed to stop polling
+          if (intervalId) {
+            clearTimeout(intervalId)
+            intervalId = null
+          }
+          toast.error('Lost connection to workflow. Please refresh the page.')
+          return false // Stop polling
+        }
+        
+        return true // Continue polling on error (with backoff)
       }
-    }, 2000) // Poll every 2 seconds
+    }
+    
+    // ✅ CRITICAL FIX: Use dynamic interval with exponential backoff - properly handle completion
+    const scheduleNextPoll = async () => {
+      if (hasCompleted) {
+        if (intervalId) {
+          clearTimeout(intervalId)
+          intervalId = null
+        }
+        return
+      }
+      
+      const shouldContinue = await poll()
+      if (shouldContinue && !hasCompleted) {
+        intervalId = setTimeout(() => {
+          scheduleNextPoll()
+        }, pollInterval)
+      } else {
+        if (intervalId) {
+          clearTimeout(intervalId)
+          intervalId = null
+        }
+      }
+    }
+    
+    // Start polling
+    scheduleNextPoll()
   }
 
   // ✅ Fetch workflow results when complete
-  const fetchResults = async (wfId: string) => {
+  const fetchResults = async (wfId: string, retryCount = 0) => {
+    const maxRetries = 3
+    const retryDelay = 2000 // 2 seconds
+    
     try {
-      const response = await fetch(`http://localhost:8000/api/workflow/results/${wfId}`)
+      // ✅ CRITICAL FIX: Add timeout to prevent hanging
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+      
+      const response = await fetch(`http://localhost:8000/api/workflow/results/${wfId}`, {
+        signal: controller.signal,
+        headers: {
+          'Cache-Control': 'no-cache'
+        }
+      })
+      clearTimeout(timeoutId)
+      
       if (!response.ok) {
-        throw new Error('Failed to fetch results')
+        if (response.status === 404 && retryCount < maxRetries) {
+          // Workflow might not be fully saved yet, retry
+          console.log(`Results not ready yet, retrying... (${retryCount + 1}/${maxRetries})`)
+          setTimeout(() => fetchResults(wfId, retryCount + 1), retryDelay)
+          return
+        }
+        throw new Error(`Failed to fetch results: HTTP ${response.status}`)
       }
       
       const data = await response.json()
@@ -393,12 +498,15 @@ export default function ClassifyAI() {
       const structuredResults = {
         // Model evaluation metrics - check top-level first, then nested
         model_evaluation: {
-          evaluation_metrics: data.evaluation_metrics || data.results?.model_evaluation?.evaluation_metrics || data.results?.evaluation_metrics || {}
+          evaluation_metrics: data.evaluation_metrics || data.results?.model_evaluation?.evaluation_metrics || data.results?.evaluation_metrics || {},
+          plots: data.evaluation_plots || data.results?.model_evaluation?.plots || []
         },
-        // EDA plots - check multiple locations
+        // ✅ FIX: Use aggregated plots from all agents
         eda_analysis: {
-          plots: data.results?.eda_analysis?.plots || data.results?.eda_plots || data.results?.plots || data.eda_plots || []
+          plots: data.all_plots || data.plots || data.results?.eda_analysis?.plots || data.results?.eda_plots || data.results?.plots || data.eda_plots || []
         },
+        // ✅ ADD: All plots aggregated
+        all_plots: data.all_plots || data.plots || [],
         // Feature importance - check multiple locations
         feature_importance: data.feature_importance_model || data.results?.feature_importance_model || data.results?.model_evaluation?.feature_importance || data.results?.feature_importance || {},
         // Dataset info
@@ -431,7 +539,7 @@ export default function ClassifyAI() {
           `🎉 Analysis Complete! ${completedAgentsCount} agents finished successfully. Model accuracy: ${accuracy}`,
           {
             duration: 5000,
-            icon: '🎉',
+            icon: undefined, // ✅ FIX: Remove duplicate emoji icon
             id: 'workflow-completed-toast' // ✅ Same ID ensures only one toast
           }
         )
@@ -453,19 +561,23 @@ export default function ClassifyAI() {
           })
         }
       }
-            style: {
-              background: '#10b981',
-              color: '#fff',
-              fontSize: '14px',
-              padding: '16px',
-              borderRadius: '8px',
-            }
-          }
-        )
-      }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching results:', error)
-      toast.error('Failed to fetch results')
+      
+      // ✅ CRITICAL FIX: Retry on network errors or timeouts
+      if (retryCount < maxRetries && (error.name === 'AbortError' || error.message.includes('fetch'))) {
+        console.log(`Retrying results fetch... (${retryCount + 1}/${maxRetries})`)
+        setTimeout(() => fetchResults(wfId, retryCount + 1), retryDelay)
+        return
+      }
+      
+      // ✅ CRITICAL FIX: Show error but don't leave user stuck on loading screen
+      toast.error(`Failed to fetch results${retryCount >= maxRetries ? ' after retries' : ''}. Please refresh the page.`)
+      
+      // Still try to show something if we have partial data
+      if (results && Object.keys(results).length > 0) {
+        setActiveView('results')
+      }
     }
   }
 
@@ -1064,8 +1176,8 @@ function ResultsView({ results, workflowId }: any) {
   return (
     <div className="flex-1 flex overflow-hidden">
       {/* Main Results Content */}
-      <div className="flex-1 overflow-y-auto p-8 bg-gray-50">
-        <div className="max-w-7xl mx-auto space-y-8">
+    <div className="flex-1 overflow-y-auto p-8 bg-gray-50">
+      <div className="max-w-7xl mx-auto space-y-8">
         <div className="flex items-center justify-between">
           <h2 className="text-4xl font-bold text-gray-900">Analysis Complete! 🎉</h2>
           <button className="flex items-center space-x-2 bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-all shadow-lg">
@@ -1088,8 +1200,8 @@ function ResultsView({ results, workflowId }: any) {
             label="F1 Score" 
             value={(() => {
               const metrics = results?.model_evaluation?.evaluation_metrics || results?.evaluation_metrics || {}
-              // Try multiple key variations
-              const f1 = metrics.f1_weighted || metrics.f1_score || metrics.f1 || metrics['f1-weighted'] || 0
+              // ✅ FIX: Use f1_score (main metric) first, then fallback to weighted
+              const f1 = metrics.f1_score || metrics.f1_weighted || metrics.f1 || metrics['f1-weighted'] || 0
               return f1 ? f1.toFixed(3) : 'N/A'
             })()} 
             gradient="from-green-500 to-green-600" 
@@ -1098,8 +1210,8 @@ function ResultsView({ results, workflowId }: any) {
             label="Precision" 
             value={(() => {
               const metrics = results?.model_evaluation?.evaluation_metrics || results?.evaluation_metrics || {}
-              // Try multiple key variations
-              const precision = metrics.precision_weighted || metrics.precision_score || metrics.precision || metrics['precision-weighted'] || 0
+              // ✅ FIX: Use precision (main metric) first, then fallback to weighted
+              const precision = metrics.precision || metrics.precision_weighted || metrics.precision_score || metrics['precision-weighted'] || 0
               return precision ? `${(precision * 100).toFixed(1)}%` : 'N/A'
             })()} 
             gradient="from-purple-500 to-purple-600" 
@@ -1108,8 +1220,8 @@ function ResultsView({ results, workflowId }: any) {
             label="Recall" 
             value={(() => {
               const metrics = results?.model_evaluation?.evaluation_metrics || results?.evaluation_metrics || {}
-              // Try multiple key variations
-              const recall = metrics.recall_weighted || metrics.recall_score || metrics.recall || metrics['recall-weighted'] || 0
+              // ✅ FIX: Use recall (main metric) first, then fallback to weighted
+              const recall = metrics.recall || metrics.recall_weighted || metrics.recall_score || metrics['recall-weighted'] || 0
               return recall ? `${(recall * 100).toFixed(1)}%` : 'N/A'
             })()} 
             gradient="from-orange-500 to-orange-600" 
@@ -1124,8 +1236,9 @@ function ResultsView({ results, workflowId }: any) {
           </h3>
           <div className="grid grid-cols-2 gap-6">
             {(() => {
-              // ✅ FIX: Filter out empty/placeholder plots
-              const validPlots = (results?.eda_analysis?.plots || [])
+              // ✅ FIX: Use ALL plots from ALL agents (EDA + Model Evaluation)
+              const allPlots = results?.all_plots || results?.eda_analysis?.plots || results?.model_evaluation?.plots || []
+              const validPlots = allPlots
                 .filter((plot: any) => {
                   const title = (plot.title || plot.name || '').toLowerCase()
                   const name = (plot.name || '').toLowerCase()
@@ -1167,20 +1280,20 @@ function ResultsView({ results, workflowId }: any) {
                   return (
                     <div key={idx} className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg border border-purple-200 p-4 cursor-pointer hover:shadow-lg transition-shadow" onClick={() => setFullScreenImage(plotUrl)}>
                       <p className="font-medium text-sm mb-2">{plotTitle}</p>
-                      <img 
+                  <img 
                         src={plotUrl} 
                         alt={plotTitle}
-                        className="w-full h-auto rounded"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iI2Y1ZjVmNSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5QbG90IG5vdCBhdmFpbGFibGU8L3RleHQ+PC9zdmc+'
-                        }}
-                      />
-                    </div>
+                    className="w-full h-auto rounded"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iI2Y1ZjVmNSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5QbG90IG5vdCBhdmFpbGFibGU8L3RleHQ+PC9zdmc+'
+                    }}
+                  />
+                </div>
                   )
                 })
-              ) : (
-                <div className="col-span-2 text-center py-8 text-gray-500">
-                  <p>No EDA plots generated. Check backend logs for EDA agent execution.</p>
+            ) : (
+              <div className="col-span-2 text-center py-8 text-gray-500">
+                <p>No EDA plots generated. Check backend logs for EDA agent execution.</p>
                 </div>
               )
             })()}
@@ -1207,9 +1320,9 @@ function ResultsView({ results, workflowId }: any) {
                   onClick={(e) => e.stopPropagation()}
                 />
               </div>
-            </div>
-          )}
-        </div>
+              </div>
+            )}
+          </div>
 
         {/* Summary - ✅ ADD: Comprehensive workflow summary */}
         {results?.workflow_summary && (
@@ -1220,7 +1333,7 @@ function ResultsView({ results, workflowId }: any) {
             </h3>
             <div className="prose prose-sm max-w-none">
               <MarkdownContent content={results.workflow_summary} />
-            </div>
+        </div>
           </div>
         )}
 
@@ -1233,8 +1346,8 @@ function ResultsView({ results, workflowId }: any) {
                 // ✅ FIX: Normalize feature importance values relative to max value
                 const entries = Object.entries(results.feature_importance)
                   .map(([name, val]: any) => [name, Math.abs(val || 0)])
-                  .sort(([, a]: any, [, b]: any) => b - a)
-                  .slice(0, 10)
+                .sort(([, a]: any, [, b]: any) => b - a)
+                .slice(0, 10)
                 
                 // Find max value for normalization
                 const maxValue = entries.length > 0 ? Math.max(...entries.map(([, val]: any) => val)) : 1
@@ -1243,11 +1356,11 @@ function ResultsView({ results, workflowId }: any) {
                   // Normalize to 0-100 relative to max value
                   const normalizedValue = maxValue > 0 ? (importance / maxValue) * 100 : 0
                   return (
-                    <FeatureBar 
-                      key={feature} 
-                      label={feature} 
+                  <FeatureBar 
+                    key={feature} 
+                    label={feature} 
                       value={Math.round(Math.min(Math.max(normalizedValue, 0), 100))} 
-                    />
+                  />
                   )
                 })
               })()
@@ -1283,7 +1396,7 @@ function ResultsView({ results, workflowId }: any) {
             )}
           </div>
         </div>
-        </div>
+      </div>
       </div>
       
       {/* ✅ ADD: PM Chatbot Panel (similar to WorkflowView) */}
@@ -1991,4 +2104,5 @@ function DeliverableItem({ name, size, downloadUrl, workflowId }: any) {
     </div>
   )
 }
+
 

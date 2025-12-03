@@ -231,7 +231,9 @@ Format each insight as a bullet point (1-2 sentences). Be specific and actionabl
                 insights = insights.replace("**Key Insights:**", "").strip()
                 insights = insights.replace("**Insights:**", "").strip()
                 
-                return insights[:800]  # Limit length but allow more detail
+                # ✅ FIX: Remove truncation to show full insights (was 800 chars, now unlimited)
+                # Frontend will handle display formatting
+                return insights
             
             return ""
         except Exception as e:

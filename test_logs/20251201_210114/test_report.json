@@ -1,0 +1,110 @@
+{
+  "test_summary": {
+    "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386",
+    "duration_seconds": 81.295934,
+    "duration_minutes": 1.3549322333333333,
+    "start_time": "2025-12-01T21:01:14.798119",
+    "end_time": "2025-12-01T21:02:36.094053"
+  },
+  "agents": {},
+  "plots": {
+    "total": 9,
+    "meaningful": 8,
+    "generic": 1,
+    "details": [
+      {
+        "title": "Target Variable Distribution",
+        "name": "target_distribution.png",
+        "path": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/target_distribution.png",
+        "url": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/target_distribution.png",
+        "source": "layer2",
+        "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386"
+      },
+      {
+        "title": "Plot 6",
+        "name": "plot_6.png",
+        "path": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/plot_6.png",
+        "url": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/plot_6.png",
+        "source": "layer2",
+        "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386"
+      },
+      {
+        "title": "Seaborn Plots",
+        "name": "seaborn_plots.png",
+        "path": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/seaborn_plots.png",
+        "url": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/seaborn_plots.png",
+        "source": "layer2",
+        "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386"
+      },
+      {
+        "title": "Plot 3",
+        "name": "plot_3.png",
+        "path": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/plot_3.png",
+        "url": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/plot_3.png",
+        "source": "layer2",
+        "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386"
+      },
+      {
+        "title": "Plot 1",
+        "name": "plot_1.png",
+        "path": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/plot_1.png",
+        "url": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/plot_1.png",
+        "source": "layer2",
+        "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386"
+      },
+      {
+        "title": "Plot 4",
+        "name": "plot_4.png",
+        "path": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/plot_4.png",
+        "url": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/plot_4.png",
+        "source": "layer2",
+        "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386"
+      },
+      {
+        "title": "Plot 7",
+        "name": "plot_7.png",
+        "path": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/plot_7.png",
+        "url": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/plot_7.png",
+        "source": "layer2",
+        "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386"
+      },
+      {
+        "title": "Plot 5",
+        "name": "plot_5.png",
+        "path": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/plot_5.png",
+        "url": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/plot_5.png",
+        "source": "layer2",
+        "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386"
+      },
+      {
+        "title": "Ml Visualizations",
+        "name": "ml_visualizations.png",
+        "path": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/ml_visualizations.png",
+        "url": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/ml_visualizations.png",
+        "source": "layer2",
+        "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386"
+      }
+    ]
+  },
+  "pm_messages": [],
+  "summary": {
+    "length": 6215,
+    "has_executive_summary": true,
+    "has_metrics": true,
+    "has_insights": true,
+    "has_action_items": true,
+    "has_tables": true,
+    "preview": "# Heart Disease Prediction Model Analysis Summary\n\n## Executive Summary\n\n\u2705 Workflow Complete! We've successfully analyzed your dataset and built a classification model for 'heartdisease' using LightGBM. While the model achieved a high **87.5% overall accuracy**, a critical evaluation of its performance metrics reveals that the model currently **fails to identify any patients who actually have heart disease (0.0% Recall and Precision)**. This outcome strongly suggests a significant class imbalanc"
+  },
+  "metrics": {
+    "accuracy": 0.875,
+    "precision": 0.8749547920433997,
+    "recall": 0.875,
+    "f1_score": 0.8747412008281572,
+    "precision_macro": 0.8748040988547318,
+    "recall_macro": 0.8717120994739359,
+    "f1_macro": 0.873015873015873
+  },
+  "errors": [],
+  "warnings": []
+}

@@ -33,6 +33,7 @@ wheels/
 # Environment variables
 .env
 *.env
+!config/*.env.example
 
 # Logs
 logs/
@@ -48,9 +49,6 @@ frontend.log
 test_output*.log
 loan_test_output.log
 test_results/
-test_data/*.csv
-!test_data/README.md
-!test_data/Loan Approval Dataset.csv
 
 # Temporary files
 *.tmp
@@ -80,14 +78,7 @@ Thumbs.db
 # Taskmaster AI
 .taskmaster/
 
-# Project Planning Documents (PID/PRD)
-PRD_GAP_ANALYSIS.md
-*PRD*.md
-*PID*.md
-*GAP*.md
-scripts/PRD.txt
-
-# Results and models
+# Results and models (generated at runtime)
 backend/results/
 backend/models/
 backend/plots/
@@ -96,8 +87,20 @@ results/
 models/
 plots/
 notebooks/
+backend/uploads/
+backend/temp/
 
-# Documentation (keep in git)
+# Test data (keep README but ignore large CSV files)
+test_data/*.csv
+!test_data/README.md
+
+# Docker volumes and containers (runtime data)
+docker/volumes/
+
+# Archive and old files
+archive/
+
+# Keep documentation
 !docs/
 
 # Coverage reports
@@ -109,7 +112,10 @@ htmlcov/
 nosetests.xml
 coverage.xml
 *.cover
-test.py
+
+# Debug and monitoring scripts (temporary)
 monitor.sh
-monitor_workflow.py
-test_heart_failure_workflow.py
+monitor_workflow*.py
+debug_*.py
+*_test_suite.py
+current_workflow_id.txt

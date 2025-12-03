@@ -1,0 +1,180 @@
+{
+  "test_summary": {
+    "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386",
+    "duration_seconds": 85.010105,
+    "duration_minutes": 1.4168350833333332,
+    "start_time": "2025-12-01T21:13:22.802916",
+    "end_time": "2025-12-01T21:14:47.813021"
+  },
+  "agents": {
+    "data_discovery": {
+      "status": "completed",
+      "duration": 0,
+      "completed_at": "2025-12-01T21:14:47.783882"
+    }
+  },
+  "plots": {
+    "total": 16,
+    "meaningful": 12,
+    "generic": 4,
+    "layer2_plots": 0,
+    "layer1_plots": 16,
+    "plots_exist": 16,
+    "plots_missing": 0,
+    "details": [
+      {
+        "name": "distributions_histograms.png",
+        "title": "Distributions Histograms",
+        "path": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/distributions_histograms.png",
+        "url": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/distributions_histograms.png",
+        "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386",
+        "source": "filesystem"
+      },
+      {
+        "name": "seaborn_plots.png",
+        "title": "Seaborn Plots",
+        "path": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/seaborn_plots.png",
+        "url": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/seaborn_plots.png",
+        "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386",
+        "source": "filesystem"
+      },
+      {
+        "name": "basic_plot.png",
+        "title": "Basic Plot",
+        "path": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/basic_plot.png",
+        "url": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/basic_plot.png",
+        "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386",
+        "source": "filesystem"
+      },
+      {
+        "name": "test_display_plot.png",
+        "title": "Test Display Plot",
+        "path": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/test_display_plot.png",
+        "url": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/test_display_plot.png",
+        "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386",
+        "source": "filesystem"
+      },
+      {
+        "name": "plot_5.png",
+        "title": "Plot 5",
+        "path": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/plot_5.png",
+        "url": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/plot_5.png",
+        "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386",
+        "source": "filesystem"
+      },
+      {
+        "name": "plot_4.png",
+        "title": "Plot 4",
+        "path": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/plot_4.png",
+        "url": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/plot_4.png",
+        "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386",
+        "source": "filesystem"
+      },
+      {
+        "name": "plot_6.png",
+        "title": "Plot 6",
+        "path": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/plot_6.png",
+        "url": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/plot_6.png",
+        "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386",
+        "source": "filesystem"
+      },
+      {
+        "name": "plot_7.png",
+        "title": "Plot 7",
+        "path": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/plot_7.png",
+        "url": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/plot_7.png",
+        "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386",
+        "source": "filesystem"
+      },
+      {
+        "name": "multiple_plots.png",
+        "title": "Multiple Plots",
+        "path": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/multiple_plots.png",
+        "url": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/multiple_plots.png",
+        "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386",
+        "source": "filesystem"
+      },
+      {
+        "name": "plot_3.png",
+        "title": "Plot 3",
+        "path": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/plot_3.png",
+        "url": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/plot_3.png",
+        "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386",
+        "source": "filesystem"
+      },
+      {
+        "name": "plot_2.png",
+        "title": "Plot 2",
+        "path": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/plot_2.png",
+        "url": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/plot_2.png",
+        "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386",
+        "source": "filesystem"
+      },
+      {
+        "name": "target_distribution.png",
+        "title": "Target Distribution",
+        "path": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/target_distribution.png",
+        "url": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/target_distribution.png",
+        "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386",
+        "source": "filesystem"
+      },
+      {
+        "name": "plot_1.png",
+        "title": "Plot 1",
+        "path": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/plot_1.png",
+        "url": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/plot_1.png",
+        "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386",
+        "source": "filesystem"
+      },
+      {
+        "name": "correlation_heatmap.png",
+        "title": "Correlation Heatmap",
+        "path": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/correlation_heatmap.png",
+        "url": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/correlation_heatmap.png",
+        "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386",
+        "source": "filesystem"
+      },
+      {
+        "name": "outliers_boxplots.png",
+        "title": "Outliers Boxplots",
+        "path": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/outliers_boxplots.png",
+        "url": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/outliers_boxplots.png",
+        "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386",
+        "source": "filesystem"
+      },
+      {
+        "name": "ml_visualizations.png",
+        "title": "Ml Visualizations",
+        "path": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/ml_visualizations.png",
+        "url": "/api/workflow/plot/059c7632-80de-4823-b9df-9d8ebdf11386/ml_visualizations.png",
+        "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386",
+        "source": "filesystem"
+      }
+    ]
+  },
+  "pm_messages": {
+    "total": 0,
+    "informative": 0,
+    "messages": []
+  },
+  "summary": {
+    "length": 6402,
+    "has_executive_summary": true,
+    "has_metrics": true,
+    "has_insights": true,
+    "has_action_items": true,
+    "has_tables": true,
+    "preview": "# Classification Analysis Summary: Heart Disease Prediction\n\n## Executive Summary\n\nWe successfully executed a classification task using the LightGBM model to predict the presence of Heart Disease. The model achieved a high overall **Accuracy of 87.5%**. However, a critical finding is that the model currently fails to identify *any* positive cases of Heart Disease (Recall = 0.0%). This result indicates a significant model bias toward the majority class (No Heart Disease) and requires immediate re"
+  },
+  "metrics": {
+    "accuracy": 0.875,
+    "precision": 0.8749547920433997,
+    "recall": 0.875,
+    "f1_score": 0.8747412008281572,
+    "precision_macro": 0.8748040988547318,
+    "recall_macro": 0.8717120994739359,
+    "f1_macro": 0.873015873015873
+  },
+  "errors": [],
+  "warnings": []
+}

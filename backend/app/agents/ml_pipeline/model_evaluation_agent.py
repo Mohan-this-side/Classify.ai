@@ -16,6 +16,8 @@ from typing import Dict, Any, List, Tuple, Optional
 from datetime import datetime
 import matplotlib.pyplot as plt
 import seaborn as sns
+import subprocess
+import shutil
 from sklearn.metrics import (
     confusion_matrix, classification_report, roc_curve, auc,
     precision_recall_curve, average_precision_score
@@ -58,151 +60,8 @@ class ModelEvaluationAgent(BaseAgent):
         """Get list of agent dependencies"""
         return ["ml_building"]
     
-    async def execute(self, state: ClassificationState) -> ClassificationState:
-        """
-        Execute model evaluation process
-        
-        Args:
-            state: Current workflow state
-            
-        Returns:
-            Updated state with evaluation results
-        """
-        try:
-            self.logger.info("Starting model evaluation process")
-            
-            # Get model and data - check multiple locations for model_path
-            model_path = (
-                state.get("model_selection_results", {}).get("model_path") or
-                state.get("model_path") or
-                None
-            )
-            if not model_path:
-                raise ValueError("No trained model available for evaluation - model_path not found in state")
-            if not os.path.exists(model_path):
-                raise ValueError(f"Model file not found at path: {model_path}")
-            
-            # Load model
-            model = joblib.load(model_path)
-            
-            # Get cleaned dataset
-            cleaned_df = state_manager.get_dataset(state, "cleaned")
-            if cleaned_df is None:
-                cleaned_df = state_manager.get_dataset(state, "original")
-            if cleaned_df is None:
-                raise ValueError("No cleaned dataset available")
-            
-            target_column = state.get("target_column")
-            if not target_column:
-                raise ValueError("No target column specified")
-            
-            # Prepare data
-            X, y = self._prepare_data(cleaned_df, target_column)
-            
-            # Split data (same as training)
-            from sklearn.model_selection import train_test_split
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=0.2, random_state=42, stratify=y
-            )
-            
-            # Generate predictions
-            y_pred = model.predict(X_test)
-            y_pred_proba = model.predict_proba(X_test) if hasattr(model, 'predict_proba') else None
-            
-            # Calculate comprehensive metrics
-            metrics = self._calculate_comprehensive_metrics(y_test, y_pred, y_pred_proba)
-            
-            # Generate confusion matrix (basic)
-            confusion_mat = self._generate_confusion_matrix(y_test, y_pred)
-            
-            # Generate comprehensive confusion matrix with visualization
-            confusion_matrix_data = self._generate_confusion_matrix_visualization(
-                y_test, y_pred, class_names=None
-            )
-            
-            # Generate ROC curve data (basic)
-            roc_data = self._generate_roc_curve_data(y_test, y_pred_proba)
-            
-            # Generate comprehensive ROC curve with visualization
-            roc_curve_data = self._generate_roc_curve_visualization(y_test, y_pred_proba)
-            
-            # Generate precision-recall curve data
-            pr_data = self._generate_precision_recall_curve_data(y_test, y_pred_proba)
-            
-            # Analyze feature importance
-            feature_importance = self._analyze_feature_importance(model, X.columns)
-            
-            # Generate performance analysis (basic)
-            performance_analysis = self._generate_performance_analysis(
-                metrics, confusion_mat, roc_data, pr_data
-            )
-            
-            # Generate comprehensive performance interpretation
-            comprehensive_interpretation = self._generate_comprehensive_performance_interpretation(
-                metrics, confusion_matrix_data, roc_curve_data, pr_data
-            )
-            
-            # Update state with results
-            state["evaluation_metrics"] = metrics
-            state["confusion_matrix"] = confusion_mat.tolist()
-            state["confusion_matrix_data"] = confusion_matrix_data
-            state["roc_curve_data"] = roc_data
-            state["roc_curve_visualization"] = roc_curve_data
-            state["precision_recall_curve"] = pr_data
-            state["feature_importance_model"] = feature_importance
-            state["model_performance_analysis"] = performance_analysis
-            state["comprehensive_performance_interpretation"] = comprehensive_interpretation
-            
-            # ✅ ADD: Initialize evaluation plots list (will be populated by Layer 2 if executed)
-            if "evaluation_plots" not in state:
-                state["evaluation_plots"] = []
-            
-            # ✅ FIX: Use base agent's execute to handle Layer 2 properly
-            # Store Layer 1 results in state so perform_layer1_analysis can return them
-            layer1_results_dict = {
-                "metrics": metrics,
-                "confusion_matrix": confusion_mat.tolist(),
-                "confusion_matrix_data": confusion_matrix_data,
-                "roc_curve_data": roc_data,
-                "roc_curve_visualization": roc_curve_data,
-                "precision_recall_curve": pr_data,
-                "feature_importance": feature_importance,
-                "performance_analysis": performance_analysis,
-                "comprehensive_interpretation": comprehensive_interpretation
-            }
-            
-            # Store in state for perform_layer1_analysis to return
-            state["_layer1_evaluation_results"] = layer1_results_dict
-            
-            # Call base agent's execute which handles Layer 1/2 architecture
-            state = await super().execute(state)
-            
-            # ✅ FIX: Merge Layer 2 evaluation plots if available
-            if "evaluation_plots" in state and state["evaluation_plots"]:
-                self.logger.info(f"✅ Found {len(state['evaluation_plots'])} Layer 2 evaluation plots")
-                # Ensure plots are also in eda_plots for frontend display
-                if "eda_plots" not in state:
-                    state["eda_plots"] = []
-                # Add evaluation plots to eda_plots (frontend displays these)
-                state["eda_plots"].extend(state["evaluation_plots"])
-            
-            # Clean up temp storage
-            if "_layer1_evaluation_results" in state:
-                del state["_layer1_evaluation_results"]
-            
-            # Update agent status
-            state["agent_statuses"]["model_evaluation"] = AgentStatus.COMPLETED
-            state["completed_agents"].append("model_evaluation")
-            
-            self.logger.info("Model evaluation completed successfully")
-            return state
-            
-        except Exception as e:
-            self.logger.error(f"Error in model evaluation: {str(e)}")
-            state["agent_statuses"]["model_evaluation"] = AgentStatus.FAILED
-            state["last_error"] = str(e)
-            state["error_count"] += 1
-            return state
+    # ✅ FIX: Remove custom execute - use base agent's execute which handles Layer 1/2 properly
+    # The base agent will call perform_layer1_analysis() which we've implemented
     
     def _prepare_data(self, df: pd.DataFrame, target_column: str) -> Tuple[pd.DataFrame, pd.Series]:
         """Prepare features and target for evaluation"""
@@ -244,17 +103,73 @@ class ModelEvaluationAgent(BaseAgent):
                 classification_report, cohen_kappa_score, roc_auc_score
             )
             
-            # Basic metrics
-            metrics = {
-                'accuracy': float(accuracy_score(y_true, y_pred)),
-                'precision_macro': float(precision_score(y_true, y_pred, average='macro')),
-                'precision_weighted': float(precision_score(y_true, y_pred, average='weighted')),
-                'recall_macro': float(recall_score(y_true, y_pred, average='macro')),
-                'recall_weighted': float(recall_score(y_true, y_pred, average='weighted')),
-                'f1_macro': float(f1_score(y_true, y_pred, average='macro')),
-                'f1_weighted': float(f1_score(y_true, y_pred, average='weighted')),
-                'cohen_kappa': float(cohen_kappa_score(y_true, y_pred))
-            }
+            # ✅ CRITICAL FIX: Use zero_division=0 to handle cases where model predicts only one class
+            # Determine if binary or multi-class
+            n_classes = len(np.unique(y_true))
+            is_binary = n_classes == 2
+            
+            # Calculate metrics based on classification type
+            if is_binary:
+                # Binary classification - use binary metrics (positive class)
+                # For binary, we need to specify which class is positive
+                # Use the less frequent class as positive (usually class 1)
+                pos_label = 1 if 1 in y_true.values else 0
+                
+                precision_binary = precision_score(y_true, y_pred, pos_label=pos_label, zero_division=0)
+                recall_binary = recall_score(y_true, y_pred, pos_label=pos_label, zero_division=0)
+                f1_binary = f1_score(y_true, y_pred, pos_label=pos_label, zero_division=0)
+                
+                # ✅ CRITICAL FIX: Add main metrics for frontend (without suffix)
+                metrics = {
+                    'accuracy': float(accuracy_score(y_true, y_pred)),
+                    'precision': float(precision_binary),  # Main metric for frontend
+                    'recall': float(recall_binary),  # Main metric for frontend
+                    'f1_score': float(f1_binary),  # Main metric for frontend
+                    'precision_macro': float(precision_score(y_true, y_pred, average='macro', zero_division=0)),
+                    'precision_weighted': float(precision_score(y_true, y_pred, average='weighted', zero_division=0)),
+                    'precision_binary': float(precision_binary),
+                    'recall_macro': float(recall_score(y_true, y_pred, average='macro', zero_division=0)),
+                    'recall_weighted': float(recall_score(y_true, y_pred, average='weighted', zero_division=0)),
+                    'recall_binary': float(recall_binary),
+                    'f1_macro': float(f1_score(y_true, y_pred, average='macro', zero_division=0)),
+                    'f1_weighted': float(f1_score(y_true, y_pred, average='weighted', zero_division=0)),
+                    'f1_binary': float(f1_binary),
+                    'cohen_kappa': float(cohen_kappa_score(y_true, y_pred)),
+                    'is_binary': True,
+                    'positive_label': int(pos_label)
+                }
+            else:
+                # Multi-class classification - use macro and weighted averages
+                metrics = {
+                    'accuracy': float(accuracy_score(y_true, y_pred)),
+                    'precision': float(precision_score(y_true, y_pred, average='weighted', zero_division=0)),  # Main metric for frontend
+                    'recall': float(recall_score(y_true, y_pred, average='weighted', zero_division=0)),  # Main metric for frontend
+                    'f1_score': float(f1_score(y_true, y_pred, average='weighted', zero_division=0)),  # Main metric for frontend
+                    'precision_macro': float(precision_score(y_true, y_pred, average='macro', zero_division=0)),
+                    'precision_weighted': float(precision_score(y_true, y_pred, average='weighted', zero_division=0)),
+                    'recall_macro': float(recall_score(y_true, y_pred, average='macro', zero_division=0)),
+                    'recall_weighted': float(recall_score(y_true, y_pred, average='weighted', zero_division=0)),
+                    'f1_macro': float(f1_score(y_true, y_pred, average='macro', zero_division=0)),
+                    'f1_weighted': float(f1_score(y_true, y_pred, average='weighted', zero_division=0)),
+                    'cohen_kappa': float(cohen_kappa_score(y_true, y_pred)),
+                    'is_binary': False,
+                    'n_classes': n_classes
+                }
+            
+            # ✅ CRITICAL FIX: Detect impossible metric combinations (model predicting only one class)
+            # If accuracy is high but F1/Precision/Recall are 0, the model is broken
+            if metrics['accuracy'] > 0.5 and metrics['f1_weighted'] == 0.0:
+                unique_preds = len(np.unique(y_pred))
+                unique_true = len(np.unique(y_true))
+                self.logger.error(f"❌ CRITICAL: Model appears to predict only one class!")
+                self.logger.error(f"   Accuracy: {metrics['accuracy']:.3f}, F1: {metrics['f1_weighted']:.3f}")
+                self.logger.error(f"   Unique predictions: {unique_preds}, Unique true labels: {unique_true}")
+                self.logger.error(f"   Prediction distribution: {pd.Series(y_pred).value_counts().to_dict()}")
+                self.logger.error(f"   True distribution: {pd.Series(y_true).value_counts().to_dict()}")
+                
+                # Add warning to metrics
+                metrics['model_warning'] = f"Model predicts only {unique_preds} class(es) out of {unique_true} true classes. Model is broken!"
+                metrics['is_broken'] = True
             
             # ROC-AUC calculation if probabilities available
             if y_pred_proba is not None:
@@ -809,12 +724,68 @@ else:
             self.logger.error(f"Error generating precision-recall curve data: {str(e)}")
             return {"error": str(e)}
     
-    def _analyze_feature_importance(self, model: Any, feature_names: List[str]) -> Dict[str, float]:
-        """Analyze feature importance"""
+    def _analyze_feature_importance(self, model: Any, feature_names: List[str], 
+                                   X: pd.DataFrame = None, y: pd.Series = None) -> Dict[str, float]:
+        """
+        Analyze feature importance using correlation with target column.
+        
+        ✅ CRITICAL FIX: Use correlation-based importance instead of model-based importance.
+        Features most correlated with target should have higher importance.
+        Values are normalized to percentages (0-100%).
+        """
         try:
+            # ✅ CRITICAL FIX: Use correlation-based importance if data is available
+            if X is not None and y is not None:
+                self.logger.info("📊 Calculating feature importance using correlation with target column")
+                
+                # Calculate absolute correlation with target for each feature
+                importance_dict = {}
+                for feature in feature_names:
+                    if feature in X.columns:
+                        try:
+                            # Calculate correlation
+                            corr = abs(X[feature].corr(y))
+                            if pd.isna(corr):
+                                corr = 0.0
+                            importance_dict[feature] = float(corr)
+                        except Exception as e:
+                            self.logger.warning(f"Could not calculate correlation for {feature}: {e}")
+                            importance_dict[feature] = 0.0
+                    else:
+                        # Feature not found in X (might be encoded differently)
+                        importance_dict[feature] = 0.0
+                
+                # ✅ CRITICAL FIX: Normalize to percentages (0-100%)
+                if importance_dict:
+                    max_importance = max(importance_dict.values())
+                    if max_importance > 0:
+                        # Normalize: divide by max and multiply by 100
+                        importance_dict = {k: (v / max_importance) * 100.0 
+                                         for k, v in importance_dict.items()}
+                    else:
+                        # All correlations are 0, set equal importance
+                        equal_importance = 100.0 / len(importance_dict) if importance_dict else 0.0
+                        importance_dict = {k: equal_importance for k in importance_dict.keys()}
+                
+                # Sort by importance (descending)
+                importance_dict = dict(sorted(importance_dict.items(), key=lambda x: x[1], reverse=True))
+                
+                self.logger.info(f"✅ Calculated correlation-based feature importance for {len(importance_dict)} features")
+                self.logger.info(f"   Top 3 features: {list(importance_dict.items())[:3]}")
+                
+                return importance_dict
+            
+            # Fallback: Use model-based importance if correlation data not available
+            self.logger.warning("⚠️ Correlation data not available, using model-based importance")
+            
             # Check if model has feature_importances_ attribute
             if hasattr(model, 'feature_importances_'):
                 importance_dict = dict(zip(feature_names, model.feature_importances_))
+                # ✅ CRITICAL FIX: Normalize to percentages
+                max_importance = max(importance_dict.values()) if importance_dict else 1.0
+                if max_importance > 0:
+                    importance_dict = {k: (v / max_importance) * 100.0 
+                                     for k, v in importance_dict.items()}
                 # Sort by importance
                 importance_dict = dict(sorted(importance_dict.items(), key=lambda x: x[1], reverse=True))
                 return importance_dict
@@ -827,6 +798,12 @@ else:
                 else:
                     # Multi-class classification - use mean absolute coefficients
                     importance_dict = dict(zip(feature_names, abs(model.coef_).mean(axis=0)))
+                
+                # ✅ CRITICAL FIX: Normalize to percentages
+                max_importance = max(importance_dict.values()) if importance_dict else 1.0
+                if max_importance > 0:
+                    importance_dict = {k: (v / max_importance) * 100.0 
+                                     for k, v in importance_dict.items()}
                 
                 importance_dict = dict(sorted(importance_dict.items(), key=lambda x: x[1], reverse=True))
                 return importance_dict
@@ -1561,10 +1538,34 @@ else:
         """
         self.logger.info("🔍 LAYER 1: Analyzing model performance")
         
-        # Get model path
-        model_path = state.get("model_selection_results", {}).get("model_path")
+        # ✅ FIX: Get model path with better error handling
+        model_selection_results = state.get("model_selection_results")
+        if model_selection_results is None:
+            model_selection_results = {}
+        
+        model_path = (
+            model_selection_results.get("model_path") if isinstance(model_selection_results, dict) else None or
+            state.get("model_path") or
+            None
+        )
+        
         if not model_path or not os.path.exists(model_path):
-            raise ValueError("No trained model available for evaluation")
+            error_msg = f"No trained model available for evaluation (model_path: {model_path})"
+            self.logger.warning(f"⚠️ {error_msg}")
+            # ✅ FIX: Return empty results instead of raising - allows Layer 2 to attempt
+            return {
+                "metrics": {},
+                "confusion_matrix": [],
+                "confusion_matrix_data": {},
+                "roc_curve_data": {},
+                "roc_curve_visualization": {},
+                "precision_recall_curve": {},
+                "feature_importance": {},
+                "model_performance_analysis": error_msg,
+                "comprehensive_performance_interpretation": error_msg,
+                "evaluation_plots": [],
+                "evaluation_error": error_msg
+            }
         
         # Load model
         model = joblib.load(model_path)
@@ -1593,17 +1594,69 @@ else:
         y_pred = model.predict(X_test)
         y_pred_proba = model.predict_proba(X_test) if hasattr(model, 'predict_proba') else None
         
+        # ✅ CRITICAL FIX: Validate predictions before calculating metrics
+        unique_preds = len(np.unique(y_pred))
+        unique_true = len(np.unique(y_test))
+        
+        if unique_preds < unique_true:
+            self.logger.error(f"❌ CRITICAL: Model predicts only {unique_preds} class(es) out of {unique_true} true classes!")
+            self.logger.error(f"   Prediction distribution: {pd.Series(y_pred).value_counts().to_dict()}")
+            self.logger.error(f"   True distribution: {pd.Series(y_test).value_counts().to_dict()}")
+            self.logger.error(f"   This indicates the model is broken - likely due to class imbalance not being handled.")
+        
         # Calculate metrics
         metrics = self._calculate_comprehensive_metrics(y_test, y_pred, y_pred_proba)
+        
+        # ✅ CRITICAL FIX: Add validation warning if metrics indicate broken model
+        if metrics.get('accuracy', 0) > 0.5 and metrics.get('f1_weighted', 0) == 0.0:
+            metrics['model_warning'] = "Model appears to predict only one class. Check class imbalance handling."
+            metrics['is_broken'] = True
+            self.logger.error(f"❌ Model validation failed: High accuracy ({metrics.get('accuracy', 0):.3f}) but zero F1-score indicates broken model!")
+        
+        # ✅ FIX: Generate confusion matrix and ROC curve data
+        confusion_matrix_data = self._generate_confusion_matrix_visualization(y_test, y_pred)
+        roc_curve_data = {}
+        if y_pred_proba is not None:
+            roc_curve_data = self._generate_roc_curve_visualization(y_test, y_pred_proba)
+        
+        # ✅ FIX: Generate plots in Layer 1 (similar to EDA agent)
+        workflow_id = state.get("dataset_id") or state.get("session_id", "unknown")
+        evaluation_plots = self._generate_evaluation_plots(
+            y_test, y_pred, y_pred_proba, confusion_matrix_data, roc_curve_data, workflow_id
+        )
+        
+        # ✅ CRITICAL FIX: Calculate feature importance using correlation with target
+        feature_importance = {}
+        try:
+            # Use correlation-based importance (X_test and y_test for evaluation)
+            feature_importance = self._analyze_feature_importance(
+                model=model,
+                feature_names=list(X_test.columns),
+                X=X_test,
+                y=y_test
+            )
+            self.logger.info(f"✅ Calculated feature importance for {len(feature_importance)} features")
+        except Exception as e:
+            self.logger.warning(f"⚠️ Could not calculate feature importance: {e}")
+            feature_importance = {}
         
         analysis_results = {
             "metrics": metrics,
             "model_type": type(model).__name__,
             "test_size": len(X_test),
             "has_probability": y_pred_proba is not None,
+            "confusion_matrix_data": confusion_matrix_data,
+            "roc_curve_data": roc_curve_data,
+            "feature_importance": feature_importance,  # ✅ ADD: Feature importance
+            "feature_importance_model": feature_importance,  # ✅ ADD: Also store as feature_importance_model for frontend
+            "evaluation_plots": evaluation_plots,  # ✅ ADD: Include plots
+            "plot_paths": [plot.get("path", "") for plot in evaluation_plots],  # For backward compatibility
+            # ✅ ADD: Also add to eda_plots for frontend display (frontend looks for eda_plots)
+            "eda_plots": evaluation_plots,
+            "plots": evaluation_plots  # Also add as 'plots' for consistency
         }
         
-        self.logger.info("✅ LAYER 1: Model evaluation analysis complete")
+        self.logger.info(f"✅ LAYER 1: Model evaluation analysis complete. Generated {len(evaluation_plots)} plots.")
         return analysis_results
     
     def generate_layer2_code(self, layer1_results: Dict[str, Any], state: ClassificationState) -> str:
@@ -1678,18 +1731,24 @@ Generate comprehensive, production-ready Python code:"""
             raise ValueError("Sandbox output should contain evaluation results")
         
         # ✅ FIX: Extract ROC and confusion matrix plots from sandbox
-        evaluation_plots = self._extract_evaluation_plots_from_sandbox(state)
+        layer2_plots = self._extract_evaluation_plots_from_sandbox(state)
+        
+        # ✅ FIX: Merge Layer 1 plots with Layer 2 plots
+        layer1_plots = layer1_results.get("evaluation_plots", [])
+        all_plots = layer1_plots + layer2_plots  # Layer 1 plots + Layer 2 plots
         
         result = {
             "advanced_evaluation": evaluation_data,
             "layer2_success": True,
             "sandbox_execution_time": sandbox_output.get("execution_time", 0),
-            "evaluation_plots": evaluation_plots,  # ✅ ADD: Include extracted plots
-            # ✅ ADD: Also add to eda_plots for frontend display
-            "eda_plots": evaluation_plots  # Frontend looks for eda_plots
+            "evaluation_plots": all_plots,  # ✅ FIX: Include both Layer 1 and Layer 2 plots
+            "plot_paths": [plot.get("path", "") for plot in all_plots],  # For backward compatibility
+            # ✅ ADD: Also add to eda_plots for frontend display (frontend looks for eda_plots)
+            "eda_plots": all_plots,
+            "plots": all_plots  # Also add as 'plots' for consistency
         }
         
-        self.logger.info(f"✅ LAYER 2: Sandbox results processed and validated. Extracted {len(evaluation_plots)} plots.")
+        self.logger.info(f"✅ LAYER 2: Sandbox results processed and validated. Extracted {len(layer2_plots)} Layer 2 plots, total {len(all_plots)} plots.")
         return result
     
     def _extract_evaluation_plots_from_sandbox(self, state: ClassificationState) -> List[Dict[str, str]]:
@@ -1734,13 +1793,23 @@ Generate comprehensive, production-ready Python code:"""
             for filename in sandbox_files:
                 if filename.lower() in [p.lower() for p in target_plots]:
                     try:
-                        # Construct sandbox file path
-                        sandbox_file_path = Path(self.sandbox_executor.results_volume) / filename
+                        # ✅ FIX: Copy from Docker volume, not from local filesystem
+                        # The results_volume is a Docker volume name, not a local path
+                        # We need to use docker cp to extract files from the volume
+                        # Create temporary container to access volume
+                        temp_container_id = subprocess.check_output(
+                            ["docker", "create", "-v", f"{results_volume}:/data", "alpine"],
+                            text=True,
+                            timeout=10
+                        ).strip()
                         
-                        # Copy to workflow plots directory
-                        dest_path = session_plots_dir / filename
-                        if sandbox_file_path.exists():
-                            shutil.copy(sandbox_file_path, dest_path)
+                        try:
+                            # Copy file from volume to local directory
+                            subprocess.run(
+                                ["docker", "cp", f"{temp_container_id}:/data/{filename}", str(session_plots_dir / filename)],
+                                check=True,
+                                timeout=30
+                            )
                             
                             # Create API URL
                             api_url = f"/api/workflow/plot/{workflow_id}/{filename}"
@@ -1756,8 +1825,9 @@ Generate comprehensive, production-ready Python code:"""
                             })
                             
                             self.logger.info(f"✅ Extracted evaluation plot: {filename} → {api_url}")
-                        else:
-                            self.logger.warning(f"Plot file not found in sandbox: {sandbox_file_path}")
+                        finally:
+                            # Remove temporary container
+                            subprocess.run(["docker", "rm", temp_container_id], check=False)
                     except Exception as e:
                         self.logger.warning(f"Failed to extract plot {filename}: {e}")
                         continue
@@ -1766,6 +1836,148 @@ Generate comprehensive, production-ready Python code:"""
             self.logger.warning(f"Failed to extract evaluation plots from sandbox: {e}")
         
         return evaluation_plots
+    
+    def _generate_evaluation_plots(
+        self,
+        y_test: pd.Series,
+        y_pred: np.ndarray,
+        y_pred_proba: Optional[np.ndarray],
+        confusion_matrix_data: Dict[str, Any],
+        roc_curve_data: Dict[str, Any],
+        workflow_id: str
+    ) -> List[Dict[str, str]]:
+        """
+        Generate evaluation plots (confusion matrix, ROC curve) in Layer 1.
+        
+        Similar to how EDA agent generates plots, saves them to plots/{workflow_id}/ directory.
+        
+        Args:
+            y_test: True labels
+            y_pred: Predicted labels
+            y_pred_proba: Predicted probabilities (optional)
+            confusion_matrix_data: Confusion matrix data dictionary
+            roc_curve_data: ROC curve data dictionary
+            workflow_id: Workflow ID for plot directory
+            
+        Returns:
+            List of plot dictionaries with title, name, path, url
+        """
+        from pathlib import Path
+        import os
+        
+        plots = []
+        
+        # Determine plots directory (same logic as EDA agent)
+        cwd = os.getcwd()
+        if cwd.endswith('/backend'):
+            base_plots_dir = Path("plots")
+        else:
+            base_plots_dir = Path("backend/plots")
+        
+        session_plots_dir = base_plots_dir / workflow_id
+        session_plots_dir.mkdir(parents=True, exist_ok=True)
+        
+        self.logger.info(f"  📁 Created evaluation plots directory: {session_plots_dir}")
+        
+        try:
+            # Plot 1: Confusion Matrix
+            if confusion_matrix_data and 'confusion_matrix' in confusion_matrix_data:
+                cm = np.array(confusion_matrix_data['confusion_matrix'])
+                class_names = confusion_matrix_data.get('class_names', [f'Class {i}' for i in range(len(cm))])
+                
+                plt.figure(figsize=(10, 8))
+                sns.heatmap(
+                    cm, annot=True, fmt='d', cmap='Blues',
+                    xticklabels=class_names, yticklabels=class_names,
+                    cbar_kws={'label': 'Count'}
+                )
+                plt.title('Confusion Matrix', fontsize=16, fontweight='bold', pad=15)
+                plt.ylabel('True Label', fontsize=12)
+                plt.xlabel('Predicted Label', fontsize=12)
+                plt.tight_layout()
+                
+                plot_path = session_plots_dir / "confusion_matrix.png"
+                plt.savefig(plot_path, dpi=150, bbox_inches='tight')
+                plt.close()
+                
+                api_url = f"/api/workflow/plot/{workflow_id}/confusion_matrix.png"
+                plots.append({
+                    "title": "Confusion Matrix",
+                    "name": "confusion_matrix.png",
+                    "path": api_url,
+                    "url": api_url,
+                    "workflow_id": workflow_id
+                })
+                self.logger.info(f"  📊 Generated confusion matrix plot: {api_url}")
+            
+            # Plot 2: ROC Curve
+            if y_pred_proba is not None and roc_curve_data:
+                plt.figure(figsize=(10, 8))
+                
+                # Handle binary vs multi-class
+                if len(np.unique(y_test)) == 2:
+                    # Binary classification
+                    fpr = roc_curve_data.get('fpr', [])
+                    tpr = roc_curve_data.get('tpr', [])
+                    auc_score = roc_curve_data.get('auc', 0)
+                    
+                    if fpr and tpr:
+                        plt.plot(fpr, tpr, color='darkorange', lw=2, 
+                                label=f'ROC curve (AUC = {auc_score:.3f})')
+                        plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', 
+                                label='Random classifier')
+                        plt.xlim([0.0, 1.0])
+                        plt.ylim([0.0, 1.05])
+                        plt.xlabel('False Positive Rate', fontsize=12)
+                        plt.ylabel('True Positive Rate', fontsize=12)
+                        plt.title('ROC Curve', fontsize=16, fontweight='bold', pad=15)
+                        plt.legend(loc="lower right", fontsize=11)
+                        plt.grid(alpha=0.3)
+                else:
+                    # Multi-class - plot micro and macro averages if available
+                    if 'fpr_micro' in roc_curve_data and 'tpr_micro' in roc_curve_data:
+                        fpr_micro = roc_curve_data['fpr_micro']
+                        tpr_micro = roc_curve_data['tpr_micro']
+                        auc_micro = roc_curve_data.get('auc_micro', 0)
+                        plt.plot(fpr_micro, tpr_micro, color='deeppink', linestyle=':', linewidth=4,
+                                label=f'Micro-average ROC (AUC = {auc_micro:.3f})')
+                    
+                    if 'fpr_macro' in roc_curve_data and 'tpr_macro' in roc_curve_data:
+                        fpr_macro = roc_curve_data['fpr_macro']
+                        tpr_macro = roc_curve_data['tpr_macro']
+                        auc_macro = roc_curve_data.get('auc_macro', 0)
+                        plt.plot(fpr_macro, tpr_macro, color='navy', linestyle=':', linewidth=4,
+                                label=f'Macro-average ROC (AUC = {auc_macro:.3f})')
+                    
+                    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', 
+                            label='Random classifier')
+                    plt.xlim([0.0, 1.0])
+                    plt.ylim([0.0, 1.05])
+                    plt.xlabel('False Positive Rate', fontsize=12)
+                    plt.ylabel('True Positive Rate', fontsize=12)
+                    plt.title('ROC Curve (Multi-class)', fontsize=16, fontweight='bold', pad=15)
+                    plt.legend(loc="lower right", fontsize=11)
+                    plt.grid(alpha=0.3)
+                
+                plt.tight_layout()
+                plot_path = session_plots_dir / "roc_curve.png"
+                plt.savefig(plot_path, dpi=150, bbox_inches='tight')
+                plt.close()
+                
+                api_url = f"/api/workflow/plot/{workflow_id}/roc_curve.png"
+                plots.append({
+                    "title": "ROC Curve",
+                    "name": "roc_curve.png",
+                    "path": api_url,
+                    "url": api_url,
+                    "workflow_id": workflow_id
+                })
+                self.logger.info(f"  📊 Generated ROC curve plot: {api_url}")
+            
+        except Exception as e:
+            self.logger.error(f"Error generating evaluation plots: {e}")
+        
+        return plots
     
     def _generate_evaluation_plot_title(self, filename: str) -> str:
         """

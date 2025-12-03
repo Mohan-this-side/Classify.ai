@@ -1,615 +1,176 @@
-# Classify AI: Automated ML Pipeline with Real-Time Education
+# Classify AI - Multi-Agent Classification System
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com/)
-[![Next.js](https://img.shields.io/badge/Next.js-14+-black.svg)](https://nextjs.org/)
-[![Status: Production Ready](https://img.shields.io/badge/Status-Production%20Ready-green.svg)](https://github.com/Mohan-this-side/Classify.ai)
+A comprehensive machine learning pipeline system that uses multiple AI agents to perform end-to-end classification tasks, from data discovery to model evaluation and reporting.
 
-## Overview
+## 🚀 Features
 
-**Classify AI** is an intelligent, end-to-end machine learning automation system that transforms raw datasets into production-ready classification models through a sophisticated multi-agent architecture. The system automates the entire ML pipeline—from data cleaning to model deployment—while maintaining transparency, security, and educational value throughout the process.
+- **Multi-Agent Architecture**: Specialized AI agents for each stage of the ML pipeline
+- **Double-Layer Execution**: Layer 1 (hardcoded) + Layer 2 (LLM-generated code in Docker sandbox)
+- **Real-time Progress Tracking**: WebSocket-based progress updates
+- **Comprehensive Analysis**: Automated EDA, feature engineering, model building, and evaluation
+- **Interactive Project Manager**: AI-powered chatbot for answering questions about the workflow
+- **Secure Code Execution**: Docker sandbox for safe execution of LLM-generated code
 
-### Key Value Proposition
+## 🎥 Demo Walkthrough
 
-- **Automated Pipeline**: Upload a dataset, receive a trained model, cleaned data, Jupyter notebook, and comprehensive technical report
-- **Double-Layer Architecture**: Combines reliable hardcoded analysis with adaptive LLM-generated code for optimal results
-- **Educational Transparency**: Real-time explanations of every decision and transformation through an interactive Project Manager
-- **Production Ready**: Generates deployment-ready models with complete documentation
-- **Secure Execution**: All LLM-generated code runs in isolated Docker sandboxes with comprehensive monitoring
+Watch a complete demonstration of the Classify AI system in action:
 
----
+[![Classify AI Demo Walkthrough](https://img.youtube.com/vi/pHOhsWIxguo/maxresdefault.jpg)](https://www.youtube.com/watch?v=pHOhsWIxguo&t=1s)
 
-## User Interface
+**Click the image above to watch the full demo video on YouTube**
 
-### Upload Page
-The clean, intuitive interface makes it easy to get started with your machine learning project:
+The demo covers:
+- Dataset upload and configuration
+- Real-time workflow execution
+- Interactive Project Manager
+- Model training and evaluation
+- Results visualization and download
 
-![Upload Page Interface](docs/images/upload-page.png)
+## 📁 Project Structure
 
-**Features:**
-- **Drag & Drop Upload**: Simply drag your CSV or Excel file into the upload zone
-- **Smart Column Detection**: Automatic detection of available columns for target selection
-- **API Key Integration**: Support for Gemini, OpenAI, and Anthropic API keys
-- **File Validation**: Automatic validation with size and format constraints (Max 100MB, up to 1M rows)
-
-### Workflow Page
-Real-time monitoring of your ML pipeline with interactive Project Manager:
-
-![Workflow Page with Project Manager](docs/images/workflow-page.png)
-
-**Features:**
-- **Real-time Progress**: Live tracking of all 8 agents with execution times and Layer 1/Layer 2 indicators
-- **Interactive Project Manager**: Educational chat interface with Q&A capabilities
-- **Approval Gates**: Human-in-the-loop decision points with educational context
-- **Sandbox Monitoring**: Real-time CPU, memory, and execution time monitoring
-- **Agent Status**: Detailed status for each agent with completion indicators
-
----
-
-## System Architecture
-
-### Multi-Agent Workflow System
-
-Our system employs **8 specialized AI agents** working in concert to handle different aspects of the ML pipeline:
-
-```mermaid
-graph TB
-    subgraph AgentWorkflow["Agent Workflow"]
-        DD["Data Discovery Agent<br/>Dataset Profiling"]
-        EDA["EDA Agent<br/>Exploratory Analysis"]
-        DC["Data Cleaning Agent<br/>Quality Improvement"]
-        FE["Feature Engineering Agent<br/>Feature Creation"]
-        ML["ML Builder Agent<br/>Model Training"]
-        ME["Model Evaluation Agent<br/>Performance Analysis"]
-        TR["Technical Reporter Agent<br/>Documentation"]
-        PM["Project Manager Agent<br/>Education & Guidance"]
-    end
-    
-    DD --> EDA
-    EDA --> DC
-    DC --> FE
-    FE --> ML
-    ML --> ME
-    ME --> TR
-    PM -.-> DD
-    PM -.-> EDA
-    PM -.-> DC
-    PM -.-> FE
-    PM -.-> ML
-    PM -.-> ME
-    PM -.-> TR
+```
+ds-capstone-project/
+├── backend/                 # FastAPI backend
+│   ├── app/
+│   │   ├── agents/         # AI agents (data discovery, EDA, cleaning, etc.)
+│   │   ├── api/            # API routes
+│   │   ├── services/       # Core services (LLM, sandbox, validation)
+│   │   └── workflows/      # Workflow orchestration
+│   └── tests/              # Test suites
+├── frontend/                # Next.js frontend
+│   └── app/                # React components
+├── docs/                    # Documentation
+│   ├── important/          # Critical documentation
+│   ├── fixes/              # Bug fixes and improvements
+│   ├── guides/             # User guides
+│   ├── architecture/       # Technical architecture
+│   └── test-results/       # Test results
+├── docker/                 # Docker configurations
+├── config/                 # Configuration files
+└── test_data/             # Sample datasets
 ```
 
-### Double-Layer Architecture
-
-Each agent employs a sophisticated two-layer approach:
-
-**Layer 1 - Hardcoded Analysis**
-- Pre-written, battle-tested Python functions
-- Comprehensive data quality assessment
-- Statistical profiling and pattern detection
-- Reliable baseline analysis that never fails
-
-**Layer 2 - LLM Code Generation**
-- Custom code tailored to specific dataset characteristics
-- Adaptive processing based on Layer 1 insights
-- Validated and executed in secure Docker sandboxes
-- Enhanced analysis with dataset-specific optimizations
-
-### High-Level Architecture
-
-```mermaid
-graph TB
-    subgraph FrontendLayer["Frontend Layer"]
-        UI["Web Interface<br/>Next.js + React"]
-        PMWin["Project Manager<br/>Window"]
-    end
-    
-    subgraph OrchestrationLayer["Orchestration Layer"]
-        API["FastAPI<br/>REST API"]
-        WS["WebSocket<br/>Real-time Updates"]
-        LG["LangGraph<br/>Workflow Engine"]
-    end
-    
-    subgraph AgentLayer["Agent Layer"]
-        DC["Data Cleaning<br/>Agent"]
-        DD["Data Discovery<br/>Agent"]
-        EDA["EDA<br/>Agent"]
-        FE["Feature Engineering<br/>Agent"]
-        ML["ML Builder<br/>Agent"]
-        ME["Model Evaluation<br/>Agent"]
-        TR["Technical Reporter<br/>Agent"]
-        PMA["Project Manager<br/>Agent"]
-    end
-    
-    subgraph ServiceLayer["Service Layer"]
-        LLM["LLM Service<br/>Gemini/OpenAI/Anthropic"]
-        VAL["Code Validator<br/>Security Scanner"]
-        SAND["Docker Sandbox<br/>Secure Execution"]
-        STOR["Storage Service<br/>Results Management"]
-    end
-    
-    subgraph DataLayer["Data Layer"]
-        DB[("PostgreSQL<br/>Metadata")]
-        REDIS[("Redis<br/>Cache")]
-        FS["File System<br/>Results & Models"]
-    end
-    
-    UI --> API
-    UI --> WS
-    PMWin --> WS
-    API --> LG
-    WS --> LG
-    
-    LG --> DC
-    LG --> DD
-    LG --> EDA
-    LG --> FE
-    LG --> ML
-    LG --> ME
-    LG --> TR
-    LG --> PMA
-    
-    DC --> LLM
-    DD --> LLM
-    EDA --> LLM
-    FE --> LLM
-    ML --> LLM
-    ME --> LLM
-    TR --> LLM
-    PMA --> LLM
-    
-    LLM --> VAL
-    VAL --> SAND
-    
-    DC --> STOR
-    ML --> STOR
-    ME --> STOR
-    TR --> STOR
-    
-    STOR --> FS
-    LG --> DB
-    LG --> REDIS
-```
-
-### Workflow Sequence
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Frontend
-    participant API
-    participant Workflow
-    participant Agents
-    participant LLM
-    participant Sandbox
-    participant Storage
-    
-    User->>Frontend: Upload Dataset
-    Frontend->>API: POST /workflow/start
-    API->>Workflow: Initialize Pipeline
-    
-    loop For Each Agent
-        Workflow->>Agents: Execute Agent
-        
-        Note over Agents: Layer 1: Hardcoded Analysis
-        Agents->>Agents: Data Profiling
-        Agents->>Agents: Statistical Analysis
-        Agents->>Agents: Quality Assessment
-        
-        Note over Agents,LLM: Layer 2: LLM Generation
-        Agents->>LLM: Generate Custom Code
-        LLM->>Agents: Python Code
-        
-        Agents->>Agents: Validate Code
-        Agents->>Sandbox: Execute in Docker
-        Sandbox->>Agents: Results
-        
-        Agents->>Storage: Save Outputs
-        Agents->>Workflow: Update State
-        Workflow->>Frontend: Progress Update
-        Frontend->>User: Real-time Status
-    end
-    
-    Workflow->>Storage: Save Final Results
-    Storage->>API: Results Ready
-    API->>Frontend: Workflow Complete
-    Frontend->>User: Download Links
-```
-
----
-
-## Core Features
-
-### 1. Interactive Project Manager
-A dedicated AI assistant that provides:
-- **Educational Messages**: Real-time explanations of each processing step
-- **Q&A System**: Ask questions about the workflow and get intelligent answers
-- **Approval Gates**: Interactive decision points with educational context
-- **Progress Updates**: Detailed status updates and completion notifications
-
-### 2. Human-in-the-Loop Control
-Critical decision points where the workflow pauses for user approval:
-- **Data Cleaning Strategies**: Choose between different imputation methods
-- **Feature Engineering Approaches**: Approve or modify feature creation
-- **Model Selection Decisions**: Review and approve model choices
-- **Educational Context**: Learn about each decision with detailed explanations
-
-### 3. Secure Code Execution
-All LLM-generated code runs in isolated Docker containers with:
-- **No Network Access**: Complete isolation from external systems
-- **Resource Limits**: CPU, memory, and execution time constraints
-- **Complete Audit Trail**: Full logging of all operations
-- **Security Validation**: Multi-layer code validation and security scanning
-
-### 4. Comprehensive Deliverables
-Every workflow generates:
-- **Cleaned Dataset**: Processed CSV with quality improvements
-- **Trained Model**: Serialized `.joblib` model file
-- **Jupyter Notebook**: Reproducible analysis notebook
-- **Technical Report**: Comprehensive documentation and insights
-- **Visualizations**: EDA plots, performance charts, and feature importance
-- **Execution Logs**: Complete audit trail of all operations
-
----
-
-## Technology Stack
-
-### Backend
-- **Framework**: FastAPI (Python 3.9+)
-- **Workflow Engine**: LangGraph for stateful multi-agent orchestration
-- **ML Libraries**: scikit-learn, XGBoost, LightGBM, CatBoost
-- **Data Processing**: pandas, NumPy, SciPy
-- **Visualization**: Plotly, Matplotlib, Seaborn
-- **LLM Integration**: Google Gemini, OpenAI GPT, Anthropic Claude
-
-### Frontend
-- **Framework**: Next.js 14+ (React)
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS with custom components
-- **Icons**: Lucide React
-- **State Management**: React Hooks with real-time updates
-- **UI Components**: Custom-built components with modern design
-
-### Infrastructure
-- **Containerization**: Docker with Docker Compose
-- **Database**: PostgreSQL for workflow state and metadata
-- **Cache**: Redis for task queues and caching
-- **Message Queue**: Celery for asynchronous task processing
-- **WebSocket**: FastAPI WebSocket for real-time communication
-
----
-
-## Quick Start
+## 🛠️ Setup
 
 ### Prerequisites
-- Python 3.9 or higher
-- Node.js 16 or higher
-- Docker and Docker Compose
-- Git
+
+- Python 3.11+
+- Node.js 18+
+- Docker Desktop
+- API Key (Gemini, OpenAI, or Anthropic)
 
 ### Installation
 
 1. **Clone the repository**
-```bash
-git clone https://github.com/Mohan-this-side/Classify.ai.git
-cd Classify.ai
-```
+   ```bash
+   git clone <repository-url>
+   cd ds-capstone-project
+   ```
 
-2. **Set up environment variables**
-```bash
-cp env.example .env
-# Edit .env with your API keys (optional for basic usage)
-```
+2. **Backend Setup**
+   ```bash
+   cd backend
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
 
-3. **Start the system**
-```bash
-# Using Docker Compose (Recommended)
-docker-compose -f docker/docker-compose.yml up -d
+3. **Frontend Setup**
+   ```bash
+   cd frontend
+   npm install
+   ```
 
-# Or using the setup script
-chmod +x setup.sh
-./setup.sh
-```
+4. **Environment Configuration**
+   ```bash
+   cp config/env.example .env
+   # Edit .env with your API keys
+   ```
 
-4. **Access the application**
-- **Frontend**: http://localhost:3001
-- **Backend API**: http://localhost:8000
-- **API Documentation**: http://localhost:8000/docs
+## 🚀 Running the Application
 
-### Manual Setup
-
-**Backend**:
+### Start Backend
 ```bash
 cd backend
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+source venv/bin/activate
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-**Frontend**:
+### Start Frontend
 ```bash
 cd frontend
-npm install
 npm run dev
 ```
 
----
-
-## Usage Guide
-
-### Basic Workflow
-
-1. **Prepare Your Dataset**
-   - CSV or Excel format
-   - Include a target column for classification
-   - Any number of features (tested up to 50+ features)
-
-2. **Upload and Configure**
-   - Navigate to http://localhost:3001
-   - Upload your dataset using drag & drop or file browser
-   - Select your target column from the dropdown
-   - Provide an LLM API key (optional for Layer 1 functionality)
-
-3. **Monitor Progress**
-   - Watch real-time progress updates in the workflow view
-   - Read educational explanations from the Project Manager
-   - Respond to approval gates when prompted
-   - Ask questions using the Q&A interface
-
-4. **Download Results**
-   - Cleaned dataset (CSV)
-   - Trained model (.joblib)
-   - Jupyter notebook (.ipynb)
-   - Technical report (.md)
-   - Visualizations (.png)
-
-### Example: Loan Approval Prediction
-
-```python
-# Example workflow result for a 2,000-row loan dataset:
-# - Processing time: ~5 minutes
-# - Model accuracy: 100%
-# - Deliverables: 5 files (652KB model, 111KB dataset, 30KB notebook, etc.)
-# - Educational messages: 12 interactive updates
-# - Approval gates: 2 decision points
-```
-
----
-
-## Performance Metrics
-
-Based on comprehensive testing with real-world datasets:
-
-| Dataset | Size | Processing Time | Accuracy | Deliverables | Educational Value |
-|---------|------|----------------|----------|--------------|-------------------|
-| Loan Approval | 2,000 rows | ~5 minutes | 100% | 5 files (737KB) | 12 messages, 2 gates |
-| Iris Dataset | 150 rows | ~2 minutes | 97% | 5 files (42KB) | 8 messages, 1 gate |
-| Clean Test | 100 rows | ~1 minute | 100% | 5 files (58KB) | 6 messages, 1 gate |
-
-**System Capabilities**:
-- Handles datasets up to 100,000+ rows
-- Supports 50+ features
-- Trains 9+ ML algorithms in parallel
-- Generates complete documentation automatically
-- Provides real-time educational guidance
-
----
-
-## Security Features
-
-### Code Validation
-- **AST Parsing**: Syntax validation for all generated code
-- **Security Scanning**: Detection of dangerous operations
-- **Import Validation**: Whitelist-based import checking
-- **Resource Usage**: CPU, memory, and time limit enforcement
-
-### Sandboxed Execution
-- **Docker Isolation**: Complete container isolation
-- **No Network Access**: Zero external connectivity
-- **Resource Limits**: Strict CPU and memory constraints
-- **Execution Timeouts**: Automatic termination of long-running code
-- **Non-root Execution**: Security-first execution environment
-
-### Audit Trail
-- **Complete Logging**: Full audit trail of all operations
-- **Generated Code Storage**: All LLM-generated code is stored
-- **Execution Results**: Comprehensive tracking of sandbox results
-- **User Decisions**: Complete logging of approval gate responses
-
----
-
-## Testing
-
-### Run Backend Tests
-```bash
-cd backend
-pytest tests/
-```
-
-### Run Frontend Tests
-```bash
-cd frontend
-npm test
-```
-
-### End-to-End Testing
-```bash
-# Test complete workflow with sample dataset
-python test_complete_workflow.py
-```
-
----
-
-## Deployment
-
-### Docker Deployment (Recommended)
-```bash
-docker-compose -f docker/docker-compose.yml up -d
-```
-
-### Production Deployment
-For production deployment, see our detailed guides:
-- **Kubernetes**: [docs/deployment/kubernetes/](docs/deployment/kubernetes/)
-- **Cloud Providers**: AWS, GCP, Azure configurations
-- **SSL/TLS**: Security configuration
-- **Monitoring**: Logging and performance monitoring
-- **Scaling**: Horizontal scaling strategies
-
----
-
-## Roadmap
-
-### Current Features (v1.0)
-- Multi-agent classification pipeline
-- Real-time progress tracking with Project Manager
-- Interactive approval gates with educational context
-- Q&A system with LLM integration
-- Automated model training and evaluation
-- Comprehensive deliverables generation
-- Secure sandboxed code execution
-- Double-layer architecture (Layer 1 + Layer 2)
-
-### Upcoming Features (v2.0)
-- Regression support
-- Time series forecasting
-- Multi-class classification enhancements
-- Advanced feature engineering
-- Model ensemble techniques
-- A/B testing framework
-
-### Future Enhancements
-- Custom agent creation
-- Advanced approval gate workflows
-- Integration with MLOps platforms
-- Model monitoring and drift detection
-- Automated retraining pipelines
-
----
-
-## Troubleshooting
-
-### Common Issues
-
-**Backend won't start**:
-```bash
-# Check if port 8000 is in use
-lsof -ti:8000 | xargs kill -9
-
-# Restart backend
-cd backend && source venv/bin/activate
-python -m uvicorn app.main:app --reload --port 8000
-```
-
-**Frontend won't build**:
-```bash
-# Clear cache and reinstall
-cd frontend
-rm -rf node_modules .next
-npm install
-npm run dev
-```
-
-**Docker issues**:
-```bash
-# Rebuild containers
-docker-compose -f docker/docker-compose.yml down
-docker-compose -f docker/docker-compose.yml up --build
-```
-
-**Project Manager not responding**:
-```bash
-# Check WebSocket connection
-# Ensure backend is running on port 8000
-# Check browser console for WebSocket errors
-```
-
----
-
-## Contributing
-
-We welcome contributions! Please see our contributing guidelines:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-### Development Guidelines
-- Follow PEP 8 for Python code
-- Use TypeScript for frontend development
-- Write tests for new features
-- Update documentation as needed
-- Follow the existing code style and patterns
-
----
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-```
-MIT License
-
-Copyright (c) 2025 Classify AI Team
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
----
-
-## Acknowledgments
-
-- **FastAPI** for the excellent web framework
-- **LangChain/LangGraph** for workflow orchestration
-- **scikit-learn** for ML algorithms
-- **Next.js** for the modern frontend framework
-- **Tailwind CSS** for beautiful styling
-- **The open-source community** for inspiration and support
-
----
-
-## Contact
-
-- **Project Repository**: [https://github.com/Mohan-this-side/Classify.ai](https://github.com/Mohan-this-side/Classify.ai)
-- **Documentation**: [https://classify-ai.readthedocs.io](https://classify-ai.readthedocs.io)
-- **Issues**: [https://github.com/Mohan-this-side/Classify.ai/issues](https://github.com/Mohan-this-side/Classify.ai/issues)
-- **Discussions**: [https://github.com/Mohan-this-side/Classify.ai/discussions](https://github.com/Mohan-this-side/Classify.ai/discussions)
-
----
-
-## Citation
-
-If you use Classify AI in your research or project, please cite:
-
-```bibtex
-@software{classify_ai_2025,
-  title={Classify AI: Automated ML Pipeline with Real-Time Education},
-  author={Classify AI Team},
-  year={2025},
-  url={https://github.com/Mohan-this-side/Classify.ai},
-  note={Production-ready automated machine learning system with educational transparency}
-}
-```
-
----
+The application will be available at:
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8000
+- API Docs: http://localhost:8000/docs
 
+## 📖 Documentation
+
+All documentation is organized in the `docs/` directory:
+
+### Documentation Structure
+
+- **`docs/important/`** - Critical documentation and important notes
+  - See `docs/important/README.md` for overview
+  - Contains links to all critical fixes and improvements
+
+- **`docs/fixes/`** - Bug fixes, root cause analyses, and technical improvements
+  - See `docs/fixes/README.md` for complete list
+  - 15+ fix documents covering Layer 2, Docker, code validation, and more
+
+- **`docs/changelog/`** - Project status updates and changelog
+  - See `docs/changelog/README.md` for status history
+
+- **`docs/guides/`** - User guides and quick start documentation
+  - Quick Start Guide
+  - Docker workflow requirements
+  - Deployment guides
+
+- **`docs/architecture/`** - Technical architecture documentation
+  - System architecture
+  - Double-layer architecture details
+
+- **`docs/test-results/`** - Test results and evaluation reports
+
+### Key Documents
+
+- **Quick Start**: `docs/guides/QUICK_START_GUIDE.md`
+- **Architecture**: `docs/architecture/TECHNICAL_ARCHITECTURE.md`
+- **API Documentation**: `docs/API.md`
+- **Project Structure**: `docs/PROJECT_STRUCTURE.md`
+- **Important Fixes**: `docs/important/README.md`
+
+## 🤖 Agents
+
+The system uses specialized AI agents:
+
+1. **Data Discovery** - Analyzes dataset structure and characteristics
+2. **EDA Analysis** - Performs exploratory data analysis
+3. **Data Cleaning** - Cleans and preprocesses data
+4. **Feature Engineering** - Creates and selects features
+5. **ML Builder** - Builds and trains classification models
+6. **Model Evaluation** - Evaluates model performance
+7. **Technical Reporter** - Generates technical documentation
+8. **Project Manager** - Coordinates workflow and answers questions
+
+## 🔒 Security
+
+- LLM-generated code runs in isolated Docker containers
+- No network access from sandbox containers
+- Resource limits and timeouts enforced
+- Code validation before execution
+
+## 📝 License
+
+See LICENSE file for details.
+
+## 🤝 Contributing
+
+This is a capstone project for Northeastern University. For questions or issues, please contact the development team.
+
+## 📧 Contact
+
+Classify AI Team

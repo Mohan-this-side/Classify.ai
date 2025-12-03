@@ -39,6 +39,27 @@ class PMInsightsService:
             user_description = state.get("user_description", "")
             best_model = state.get("best_model", "")
             metrics = state.get("evaluation_metrics", {})
+            
+            # ✅ CRITICAL FIX: Normalize metrics to match top bar (same as get_workflow_results)
+            if metrics:
+                is_binary = metrics.get("is_binary", False)
+                if is_binary:
+                    # Binary classification: use binary metrics with fallback to weighted
+                    if "precision" not in metrics:
+                        metrics["precision"] = metrics.get("precision_binary", metrics.get("precision_weighted", 0))
+                    if "recall" not in metrics:
+                        metrics["recall"] = metrics.get("recall_binary", metrics.get("recall_weighted", 0))
+                    if "f1_score" not in metrics:
+                        metrics["f1_score"] = metrics.get("f1_binary", metrics.get("f1_weighted", 0))
+                else:
+                    # Multi-class: use weighted averages
+                    if "precision" not in metrics:
+                        metrics["precision"] = metrics.get("precision_weighted", metrics.get("precision_macro", 0))
+                    if "recall" not in metrics:
+                        metrics["recall"] = metrics.get("recall_weighted", metrics.get("recall_macro", 0))
+                    if "f1_score" not in metrics:
+                        metrics["f1_score"] = metrics.get("f1_weighted", metrics.get("f1_macro", 0))
+            
             feature_importance = state.get("feature_importance_model", {})
             eda_plots = state.get("eda_plots", [])
             cleaning_actions = state.get("cleaning_actions_taken", [])
@@ -56,12 +77,12 @@ class PMInsightsService:
             if user_description:
                 context_parts.append(f"User Goal: {user_description}")
             
-            # Model performance
+            # Model performance - ✅ FIX: Use same keys as top bar (f1_score, precision, recall) with fallbacks
             if metrics:
                 accuracy = metrics.get("accuracy", 0)
-                f1 = metrics.get("f1_weighted", 0)
-                precision = metrics.get("precision_weighted", 0)
-                recall = metrics.get("recall_weighted", 0)
+                f1 = metrics.get("f1_score", metrics.get("f1_weighted", metrics.get("f1_binary", 0)))
+                precision = metrics.get("precision", metrics.get("precision_weighted", metrics.get("precision_binary", 0)))
+                recall = metrics.get("recall", metrics.get("recall_weighted", metrics.get("recall_binary", 0)))
                 context_parts.append(f"Model Performance: Accuracy={accuracy*100:.1f}%, F1={f1:.3f}, Precision={precision*100:.1f}%, Recall={recall*100:.1f}%")
             
             if best_model:
@@ -117,21 +138,29 @@ Generate a comprehensive summary that includes:
 - Make it readable and professional
 - Include specific numbers and percentages
 - Use clear section headers (## for main sections, ### for subsections)
+- **CRITICAL: F1 Score must ALWAYS be shown as a decimal (e.g., 0.853) NEVER as a percentage (e.g., 85.3%)**
+- Accuracy, Precision, and Recall should be shown as percentages (e.g., 85.3%)
 
 **Example Format:**
 
+# Comprehensive Analysis of {target_column.replace('_', ' ').title()} Prediction Model
+
+We have successfully developed and evaluated a machine learning model designed to predict {target_column.replace('_', ' ')} based on {dataset_shape[1] if dataset_shape else 'N/A'} key features.
+
 ## Executive Summary
 
-✅ Workflow Complete! We've successfully analyzed your dataset ({dataset_shape[0] if dataset_shape else 'N/A'} rows × {dataset_shape[1] if dataset_shape else 'N/A'} columns) and built a classification model for '{target_column}'. The model achieved {metrics.get('accuracy', 0)*100:.1f}% accuracy, demonstrating strong predictive capability.
+✅ Workflow Complete! We have analyzed your dataset ({dataset_shape[0] if dataset_shape else 'N/A'} rows × {dataset_shape[1] if dataset_shape else 'N/A'} columns) and built a robust classification model using the {best_model if best_model != 'Unknown' else 'selected'} algorithm to predict '{target_column.replace('_', ' ')}'. The final model achieved strong predictive capability across all metrics, with an overall Accuracy of {metrics.get('accuracy', 0)*100:.1f}%, making it a highly reliable tool for supporting early risk detection.
 
 ## Model Performance
 
-| Metric | Value |
-|--------|-------|
-| Accuracy | {metrics.get('accuracy', 0)*100:.1f}% |
-| F1 Score | {metrics.get('f1_weighted', 0):.3f} |
-| Precision | {metrics.get('precision_weighted', 0)*100:.1f}% |
-| Recall | {metrics.get('recall_weighted', 0)*100:.1f}% |
+The {best_model if best_model != 'Unknown' else 'selected'} model demonstrated strong performance in identifying individuals at risk for {target_column.replace('_', ' ')} (Class 1).
+
+| Metric | Value | Interpretation |
+|--------|-------|----------------|
+| **Accuracy** | {metrics.get('accuracy', 0)*100:.1f}% | Overall percentage of correct predictions (both disease and normal). |
+| **F1 Score** | {metrics.get('f1_score', metrics.get('f1_weighted', metrics.get('f1_binary', 0))):.3f} | The balance between Precision and Recall—a high score indicating excellent overall test performance. |
+| **Precision** | {metrics.get('precision', metrics.get('precision_weighted', metrics.get('precision_binary', 0)))*100:.1f}% | Out of all patients predicted to have {target_column.replace('_', ' ')}, {metrics.get('precision', metrics.get('precision_weighted', metrics.get('precision_binary', 0)))*100:.1f}% actually had it (minimizes false alarms). |
+| **Recall** | {metrics.get('recall', metrics.get('recall_weighted', metrics.get('recall_binary', 0)))*100:.1f}% | Out of all patients who actually have {target_column.replace('_', ' ')}, {metrics.get('recall', metrics.get('recall_weighted', metrics.get('recall_binary', 0)))*100:.1f}% were correctly identified (minimizes missed cases). |
 
 ## Key Insights
 
@@ -175,6 +204,14 @@ Generate a comprehensive summary that includes:
                         model = self.llm_service.clients[LLMProvider.GEMINI]
                         response = model.generate_content(prompt)
                         summary = response.text.strip()
+                        # Clean up the summary: remove any '---' separators and improve formatting
+                        summary = summary.replace("---", "")
+                        # Remove excessive blank lines
+                        import re
+                        summary = re.sub(r'\n{3,}', '\n\n', summary)
+                        # Ensure proper spacing around headers
+                        summary = re.sub(r'\n(##+)\s+', r'\n\n\1 ', summary)
+                        summary = summary.strip()
                         return summary
                     elif LLMProvider.OPENAI in self.llm_service.clients:
                         import openai
@@ -182,9 +219,18 @@ Generate a comprehensive summary that includes:
                         response = client.chat.completions.create(
                             model="gpt-3.5-turbo",
                             messages=[{"role": "user", "content": prompt}],
-                            max_tokens=800
+                            max_tokens=1200
                         )
-                        return response.choices[0].message.content.strip()
+                        summary = response.choices[0].message.content.strip()
+                        # Clean up the summary: remove any '---' separators and improve formatting
+                        summary = summary.replace("---", "")
+                        # Remove excessive blank lines
+                        import re
+                        summary = re.sub(r'\n{3,}', '\n\n', summary)
+                        # Ensure proper spacing around headers
+                        summary = re.sub(r'\n(##+)\s+', r'\n\n\1 ', summary)
+                        summary = summary.strip()
+                        return summary
                 except Exception as e:
                     logger.error(f"Error generating workflow summary with LLM: {e}")
             
@@ -200,32 +246,60 @@ Generate a comprehensive summary that includes:
         dataset_shape = state.get("dataset_shape", [])
         target_column = state.get("target_column", "")
         metrics = state.get("evaluation_metrics", {})
+        
+        # ✅ CRITICAL FIX: Normalize metrics to match top bar (same as get_workflow_results)
+        if metrics:
+            is_binary = metrics.get("is_binary", False)
+            if is_binary:
+                # Binary classification: use binary metrics with fallback to weighted
+                if "precision" not in metrics:
+                    metrics["precision"] = metrics.get("precision_binary", metrics.get("precision_weighted", 0))
+                if "recall" not in metrics:
+                    metrics["recall"] = metrics.get("recall_binary", metrics.get("recall_weighted", 0))
+                if "f1_score" not in metrics:
+                    metrics["f1_score"] = metrics.get("f1_binary", metrics.get("f1_weighted", 0))
+            else:
+                # Multi-class: use weighted averages
+                if "precision" not in metrics:
+                    metrics["precision"] = metrics.get("precision_weighted", metrics.get("precision_macro", 0))
+                if "recall" not in metrics:
+                    metrics["recall"] = metrics.get("recall_weighted", metrics.get("recall_macro", 0))
+                if "f1_score" not in metrics:
+                    metrics["f1_score"] = metrics.get("f1_weighted", metrics.get("f1_macro", 0))
+        
         feature_importance = state.get("feature_importance_model", {})
         best_model = state.get("best_model", "Unknown")
         cleaning_actions = state.get("cleaning_actions_taken", [])
         
         summary_parts = [
+            f"# Comprehensive Analysis of {target_column.replace('_', ' ').title()} Prediction Model",
+            "",
+            f"We have successfully developed and evaluated a machine learning model designed to predict {target_column.replace('_', ' ')} based on {dataset_shape[1] if dataset_shape else 'N/A'} key features.",
+            "",
             "## Executive Summary",
             "",
-            f"✅ **Workflow Complete!** We've successfully analyzed your dataset ({dataset_shape[0] if dataset_shape else 'N/A'} rows × {dataset_shape[1] if dataset_shape else 'N/A'} columns) and built a classification model for **{target_column}**."
+            f"✅ **Workflow Complete!** We have analyzed your dataset ({dataset_shape[0] if dataset_shape else 'N/A'} rows × {dataset_shape[1] if dataset_shape else 'N/A'} columns) and built a robust classification model using the {best_model if best_model != 'Unknown' else 'selected'} algorithm to predict **{target_column.replace('_', ' ')}**. The final model achieved strong predictive capability across all metrics, with an overall Accuracy of {metrics.get('accuracy', 0)*100:.1f}%, making it a highly reliable tool for supporting early risk detection."
         ]
         
         if metrics:
             accuracy = metrics.get("accuracy", 0)
-            f1 = metrics.get("f1_weighted", metrics.get("f1_score", 0))
-            precision = metrics.get("precision_weighted", metrics.get("precision_score", 0))
-            recall = metrics.get("recall_weighted", metrics.get("recall_score", 0))
+            # ✅ FIX: Use same keys as top bar (f1_score, precision, recall) with same fallback chain
+            f1 = metrics.get("f1_score", metrics.get("f1_weighted", metrics.get("f1_binary", 0)))
+            precision = metrics.get("precision", metrics.get("precision_weighted", metrics.get("precision_binary", 0)))
+            recall = metrics.get("recall", metrics.get("recall_weighted", metrics.get("recall_binary", 0)))
             
             summary_parts.extend([
                 "",
                 "## Model Performance",
                 "",
-                "| Metric | Value |",
-                "|--------|-------|",
-                f"| Accuracy | {accuracy*100:.1f}% |",
-                f"| F1 Score | {f1:.3f} |",
-                f"| Precision | {precision*100:.1f}% |",
-                f"| Recall | {recall*100:.1f}% |",
+                f"The {best_model if best_model != 'Unknown' else 'selected'} model demonstrated strong performance in identifying individuals at risk for {target_column.replace('_', ' ')} (Class 1).",
+                "",
+                "| Metric | Value | Interpretation |",
+                "|--------|-------|----------------|",
+                f"| **Accuracy** | {accuracy*100:.1f}% | Overall percentage of correct predictions (both disease and normal). |",
+                f"| **F1 Score** | {f1:.3f} | The balance between Precision and Recall—a high score indicating excellent overall test performance. |",
+                f"| **Precision** | {precision*100:.1f}% | Out of all patients predicted to have {target_column.replace('_', ' ')}, {precision*100:.1f}% actually had it (minimizes false alarms). |",
+                f"| **Recall** | {recall*100:.1f}% | Out of all patients who actually have {target_column.replace('_', ' ')}, {recall*100:.1f}% were correctly identified (minimizes missed cases). |",
                 ""
             ])
         
@@ -245,12 +319,14 @@ Generate a comprehensive summary that includes:
             summary_parts.extend([
                 "## Top Important Features",
                 "",
-                "| Feature | Importance |",
-                "|---------|------------|"
+                "The following features have the strongest predictive power for identifying {target_column.replace('_', ' ')}:",
+                "",
+                "| Feature | Importance Score |",
+                "|---------|------------------|"
             ])
             
             for feat, imp in top_features[:10]:
-                summary_parts.append(f"| {feat} | {imp:.3f} |")
+                summary_parts.append(f"| {feat.replace('_', ' ').title()} | {imp:.3f} |")
             
             summary_parts.extend([
                 "",
@@ -258,10 +334,25 @@ Generate a comprehensive summary that includes:
                 ""
             ])
             
+            summary_parts.extend([
+                "",
+                "## Key Insights and Actionable Recommendations",
+                "",
+                f"The model highlights specific features that drive the strongest predictive power. Understanding these features is critical for informed decision-making.",
+                ""
+            ])
+            
             for i, (feat, imp) in enumerate(top_features[:5], 1):
-                summary_parts.append(f"### {i}. {feat} Impact")
-                summary_parts.append(f"{feat} is a key factor in predicting {target_column} with an importance score of {imp:.3f}. This feature significantly influences the model's predictions.")
-                summary_parts.append("")
+                summary_parts.extend([
+                    f"### {i}. {feat.replace('_', ' ').title()} Impact",
+                    "",
+                    f"**Impact:** {feat.replace('_', ' ').title()} is a key factor in predicting {target_column.replace('_', ' ')} with an importance score of {imp:.3f}. This feature significantly influences the model's predictions.",
+                    "",
+                    f"**Why it Matters:** Understanding the role of {feat.replace('_', ' ').lower()} helps identify critical patterns in the data that drive classification decisions.",
+                    "",
+                    f"**Action Item:** Monitor and analyze {feat.replace('_', ' ').lower()} values closely, as they are among the most influential factors in the model's predictions.",
+                    ""
+                ])
         
         if cleaning_actions:
             summary_parts.extend([
@@ -275,13 +366,26 @@ Generate a comprehensive summary that includes:
         summary_parts.extend([
             "## Recommended Next Steps",
             "",
-            "• Review the model performance metrics above",
-            "• Examine the feature importance rankings to understand key drivers",
-            "• Download the trained model and cleaned dataset for further analysis",
-            "• Use the generated notebook to explore the analysis in detail"
+            "• **Review Model Performance:** Examine the metrics above to understand the model's strengths and limitations",
+            "• **Analyze Feature Importance:** Use the feature rankings to identify the most critical factors",
+            "• **Download Resources:** Access the trained model, cleaned dataset, and analysis notebook for further exploration",
+            "• **Validate Predictions:** Test the model on new data to ensure consistent performance",
+            "• **Iterate and Improve:** Consider feature engineering or model tuning based on insights gained"
         ])
         
-        return "\n".join(summary_parts)
+        # Clean up the summary: remove any '---' separators and improve formatting
+        summary_text = "\n".join(summary_parts)
+        # Remove markdown horizontal rules (---)
+        summary_text = summary_text.replace("---", "")
+        # Remove excessive blank lines (more than 2 consecutive)
+        import re
+        summary_text = re.sub(r'\n{3,}', '\n\n', summary_text)
+        # Ensure proper spacing around headers
+        summary_text = re.sub(r'\n(##+)\s+', r'\n\n\1 ', summary_text)
+        # Clean up any remaining formatting issues
+        summary_text = summary_text.strip()
+        
+        return summary_text
     
     async def generate_feature_insights(self, state: Dict[str, Any], question: str) -> str:
         """

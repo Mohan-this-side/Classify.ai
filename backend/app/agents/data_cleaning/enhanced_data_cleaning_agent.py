@@ -207,7 +207,8 @@ class EnhancedDataCleaningAgent(BaseAgent):
         cleaning_actions.extend(type_actions)
         
         # Advanced missing value handling (returns reasoning)
-        cleaned_df, missing_actions, missing_reasoning = await self._advanced_missing_value_handling(cleaned_df)
+        # ✅ CRITICAL: Pass target_column to skip it during imputation
+        cleaned_df, missing_actions, missing_reasoning = await self._advanced_missing_value_handling(cleaned_df, target_column)
         cleaning_actions.extend(missing_actions)
         cleaning_reasoning.update(missing_reasoning)
         
@@ -857,8 +858,13 @@ class EnhancedDataCleaningAgent(BaseAgent):
         
         return series.replace(standardizations)
     
-    async def _advanced_missing_value_handling(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str], Dict[str, Any]]:
-        """Advanced missing value imputation strategies with detailed reasoning tracking"""
+    async def _advanced_missing_value_handling(self, df: pd.DataFrame, target_column: Optional[str] = None) -> Tuple[pd.DataFrame, List[str], Dict[str, Any]]:
+        """Advanced missing value imputation strategies with detailed reasoning tracking
+        
+        Args:
+            df: DataFrame to process
+            target_column: Target column name to EXCLUDE from imputation (should already have nulls removed)
+        """
         actions = []
         original_missing = df.isnull().sum().sum()
         missing_reasoning = {}
@@ -868,6 +874,28 @@ class EnhancedDataCleaningAgent(BaseAgent):
             return df, actions, missing_reasoning
         
         self.logger.info(f"Found {original_missing} missing values")
+        
+        # ✅ CRITICAL: Exclude target column from imputation
+        # Target column nulls should have been removed earlier, but skip it just in case
+        # Use case-insensitive matching to find the actual target column name
+        actual_target_col = None
+        if target_column:
+            target_lower = target_column.lower()
+            matching_cols = [col for col in df.columns if col.lower() == target_lower]
+            if matching_cols:
+                actual_target_col = matching_cols[0]
+                if actual_target_col != target_column:
+                    self.logger.info(f"Using case-matched target column: '{actual_target_col}' (requested: '{target_column}')")
+        
+        columns_to_process = [col for col in df.columns if col != actual_target_col] if actual_target_col else df.columns
+        
+        if actual_target_col and actual_target_col in df.columns:
+            target_missing = df[actual_target_col].isnull().sum()
+            if target_missing > 0:
+                self.logger.warning(f"⚠️ WARNING: Target column '{actual_target_col}' still has {target_missing} nulls! This should have been removed earlier.")
+                actions.append(f"⚠️ WARNING: Target column '{actual_target_col}' has {target_missing} nulls - skipping imputation (should be removed)")
+            else:
+                self.logger.info(f"✅ Target column '{actual_target_col}' excluded from imputation (no nulls)")
         
         # Calculate missing percentages for all columns
         missing_pct = (df.isnull().sum() / len(df) * 100).to_dict()
@@ -883,7 +911,7 @@ class EnhancedDataCleaningAgent(BaseAgent):
                     "action": "location_aware_imputation"
                 }
         
-        for column in df.columns:
+        for column in columns_to_process:  # ✅ FIX: Only process non-target columns
             missing_count = df[column].isnull().sum()
             if missing_count == 0:
                 continue
@@ -1296,11 +1324,22 @@ Generate clean, production-ready Python code:"""
         # Additional validation can be added here
         # Compare with Layer 1 to ensure quality improvement
         
+        # ✅ CRITICAL FIX: Preserve Layer 1's cleaned_dataset if Layer 2 doesn't produce a valid DataFrame
+        # Layer 2 sandbox code typically returns metadata, not the actual DataFrame
+        # We need to keep Layer 1's cleaned_dataset to avoid data loss
         result = {
             "cleaned_data": cleaned_data,
             "layer2_success": True,
             "sandbox_execution_time": sandbox_output.get("execution_time", 0)
         }
+        
+        # ✅ CRITICAL: Preserve Layer 1's cleaned_dataset - Layer 2 only adds metadata/insights
+        # Layer 2 sandbox code doesn't return the DataFrame (it's too large), so we keep Layer 1's
+        if "cleaned_dataset" in layer1_results and layer1_results["cleaned_dataset"] is not None:
+            result["cleaned_dataset"] = layer1_results["cleaned_dataset"]
+            self.logger.info(f"✅ Preserved Layer 1 cleaned_dataset with shape {layer1_results['cleaned_dataset'].shape}")
+        else:
+            self.logger.warning("⚠️ Layer 1 cleaned_dataset not found - this should not happen!")
         
         self.logger.info("✅ LAYER 2: Sandbox results processed and validated")
         return result

@@ -7,7 +7,8 @@ the multi-agent classification workflow.
 
 import logging
 import io
-from typing import Dict, Any, Optional
+import subprocess
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 import asyncio
 from pathlib import Path
@@ -104,7 +105,8 @@ def _get_educational_message(agent_name: str, status: str, state: Optional[Dict[
             elif agent_name == "model_evaluation":
                 metrics = state.get("evaluation_metrics") or {}
                 accuracy = metrics.get("accuracy", 0) or 0
-                f1 = metrics.get("f1_weighted", 0) or 0
+                # ✅ FIX: Use f1_score (main metric) with fallback to f1_weighted for consistency
+                f1 = metrics.get("f1_score", metrics.get("f1_weighted", 0)) or 0
                 return template.format(accuracy, f1)
         except Exception as e:
             logger.warning(f"Error formatting educational message: {e}")
@@ -198,9 +200,10 @@ async def _generate_pm_answer(question: str, state: Dict[str, Any]) -> str:
         metrics = state.get("evaluation_metrics", {})
         if metrics:
             acc = metrics.get("accuracy", 0)
-            f1 = metrics.get("f1_weighted", 0)
-            precision = metrics.get("precision_weighted", 0)
-            recall = metrics.get("recall_weighted", 0)
+            # ✅ FIX: Use main metrics (f1_score, precision, recall) with fallback to weighted for consistency
+            f1 = metrics.get("f1_score", metrics.get("f1_weighted", 0))
+            precision = metrics.get("precision", metrics.get("precision_weighted", 0))
+            recall = metrics.get("recall", metrics.get("recall_weighted", 0))
             context_parts.append(f"Model Performance: Accuracy={acc*100:.1f}%, F1={f1:.3f}, Precision={precision*100:.1f}%, Recall={recall*100:.1f}%")
         
         # Training metrics
@@ -268,7 +271,6 @@ Use this information to provide SPECIFIC, ACTIONABLE insights. Do NOT repeat gen
 - Act as a mentor helping the user understand their data and make data-driven decisions
 - Always reference specific metrics, feature names, and numbers from the workflow results""" if is_completed else """**Instructions:**
 - Answer quickly and knowledgeably as a project coordinator
-- Reference Mohan as the project owner when relevant
 - Be SPECIFIC about the CURRENT dataset and workflow state
 - If asked "what the data is about" or "what have you found", provide DETAILED insights about the dataset based on the context above
 - If asked "who are you", explain your role as Project Manager for this system
@@ -281,7 +283,7 @@ Use this information to provide SPECIFIC, ACTIONABLE insights. Do NOT repeat gen
         prompt = f"""{role_description}
 
 **Project Context:**
-- Project Owner: Mohan
+- Project Owner: Classify AI Team
 - Institution: Northeastern University (Fall 2025)
 - Project Type: DS Capstone Project - Multi-Agent AI System
 - System: Classify AI - Automated ML Pipeline with 8 specialized AI agents
@@ -294,7 +296,7 @@ You are the Project Manager coordinating all agents. You know everything about:
 - Each agent's purpose and current status
 - Data science concepts and ML best practices
 - The double-layer architecture and how it works
-- Project goals and Mohan's requirements
+- Project goals and Classify AI Team's requirements
 - The CURRENT dataset being analyzed
 - Classification results, feature importance, and model performance
 
@@ -313,15 +315,38 @@ You are the Project Manager coordinating all agents. You know everything about:
         if llm_service and llm_service.clients:
             # Use LLM to generate detailed answer
             try:
-                # Try Gemini first
+                # ✅ CRITICAL FIX: Try Gemini first (synchronous call, but with timeout wrapper)
                 if LLMProvider.GEMINI in llm_service.clients:
                     model = llm_service.clients[LLMProvider.GEMINI]
-                    response = model.generate_content(prompt)
-                    answer = response.text.strip()
-                    if answer:
-                        # Remove any markdown formatting from LLM response
-                        answer = answer.replace("**", "").replace("*", "")
-                        return f"🤖 {answer}"
+                    # ✅ CRITICAL FIX: Use threading to add timeout to synchronous Gemini call
+                    import threading
+                    import queue
+                    result_queue = queue.Queue()
+                    exception_queue = queue.Queue()
+                    
+                    def call_gemini():
+                        try:
+                            response = model.generate_content(prompt)
+                            result_queue.put(response)
+                        except Exception as e:
+                            exception_queue.put(e)
+                    
+                    thread = threading.Thread(target=call_gemini, daemon=True)
+                    thread.start()
+                    thread.join(timeout=8.0)  # 8 second timeout
+                    
+                    if thread.is_alive():
+                        logger.warning("Gemini LLM response timed out after 8 seconds")
+                        # Fall through to next provider
+                    elif not exception_queue.empty():
+                        raise exception_queue.get()
+                    elif not result_queue.empty():
+                        response = result_queue.get()
+                        answer = response.text.strip()
+                        if answer:
+                            # Remove any markdown formatting from LLM response
+                            answer = answer.replace("**", "").replace("*", "")
+                            return f"🤖 {answer}"
                 # Try OpenAI if Gemini fails
                 if LLMProvider.OPENAI in llm_service.clients:
                     import openai
@@ -551,11 +576,72 @@ async def start_workflow(
                 detail="Dataset must have at least 2 columns"
             )
         
+        # ✅ Clean up old plots from sandbox_results volume when starting new workflow
+        # ✅ CRITICAL FIX: Make this non-blocking - don't create SandboxExecutor synchronously
+        try:
+            logger.info("Cleaning up old plots from sandbox_results volume...")
+            # ✅ CRITICAL FIX: Use subprocess directly instead of SandboxExecutor to avoid blocking
+            try:
+                # Use docker run to clear PNG files from results volume (non-blocking)
+                subprocess.Popen(
+                    ["docker", "run", "--rm", "-v", "sandbox_results:/data", "busybox:latest",
+                     "sh", "-c", "rm -f /data/*.png /data/*.jpg /data/*.jpeg /data/*.svg"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                logger.info("✅ Plot cleanup started in background (non-blocking)")
+            except Exception as e:
+                logger.warning(f"Could not clean old plots (non-critical): {e}")
+        except Exception as e:
+            logger.warning(f"Plot cleanup error (non-critical): {e}")
+        
         # Get workflow instance
         workflow = get_workflow()
         
         # Start workflow in background
         workflow_id = workflow.workflow_id
+        
+        # ✅ FIX: Clean up old plots from previous workflows to avoid confusion
+        # Only keep plots from the current workflow
+        try:
+            from pathlib import Path
+            import os
+            import shutil
+            
+            # Determine plots directory
+            cwd = os.getcwd()
+            if cwd.endswith('/backend'):
+                base_plots_dir = Path("plots")
+            else:
+                base_plots_dir = Path("backend/plots")
+            
+            if base_plots_dir.exists():
+                # Clean up plots from other workflows (keep only current workflow_id)
+                for plot_dir in base_plots_dir.iterdir():
+                    if plot_dir.is_dir() and plot_dir.name != workflow_id:
+                        try:
+                            # Only delete if it's an old workflow directory
+                            # (workflow IDs are UUIDs, so they're easy to identify)
+                            shutil.rmtree(plot_dir)
+                            logger.info(f"🧹 Cleaned up old plots directory: {plot_dir.name}")
+                        except Exception as e:
+                            logger.warning(f"⚠️ Failed to clean up old plots directory {plot_dir.name}: {e}")
+                
+                # Ensure current workflow plots directory exists and is clean
+                current_plots_dir = base_plots_dir / workflow_id
+                if current_plots_dir.exists():
+                    # Remove any existing plots from a previous run of this workflow
+                    for plot_file in current_plots_dir.glob("*.png"):
+                        plot_file.unlink()
+                    for plot_file in current_plots_dir.glob("*.jpg"):
+                        plot_file.unlink()
+                    logger.info(f"🧹 Cleaned up existing plots for workflow {workflow_id}")
+                else:
+                    current_plots_dir.mkdir(parents=True, exist_ok=True)
+                    logger.info(f"✅ Created plots directory for workflow {workflow_id}")
+        except Exception as e:
+            logger.warning(f"⚠️ Plot cleanup failed (non-critical): {e}")
+            # Don't fail workflow if plot cleanup fails
         
         # Store workflow info (in production, this should be stored in a database)
         workflow_info = {
@@ -652,15 +738,22 @@ async def get_workflow_status(workflow_id: str) -> Dict[str, Any]:
             "current_agent": sandbox_metrics_raw.get("current_agent", "")
         }
         
+        # ✅ CRITICAL FIX: Ensure status is always a string (not enum) for frontend compatibility
+        status = state.get("status", WorkflowStatus.UNKNOWN)
+        if isinstance(status, WorkflowStatus):
+            status = status.value
+        else:
+            status = str(status)
+        
         return {
             "workflow_id": workflow_id,
-            "status": state.get("status", WorkflowStatus.UNKNOWN),
+            "status": status,  # ✅ Always a string
             "progress": state.get("progress", 0.0),
             "current_phase": state.get("current_agent", "Unknown"),
             "agent_status": state.get("agent_statuses", {}),
             "completed_agents": state.get("completed_agents", []),
             "errors": state.get("errors", []),
-            "message": f"Workflow is {state.get('status', 'unknown')}",
+            "message": f"Workflow is {status}",
             "sandbox_metrics": sandbox_metrics,  # ✅ Real-time sandbox metrics
             "layer_usage": state.get("layer_usage", {}),  # ✅ Layer 1/2 info per agent
             "current_agent_details": {
@@ -849,17 +942,42 @@ async def get_workflow_results(workflow_id: str) -> Dict[str, Any]:
             return obj
         
         def _extract_workflow_summary(state: Dict[str, Any]) -> Optional[str]:
-            """Extract workflow summary from PM messages"""
-            pm_messages = state.get("pm_messages", [])
-            for msg in reversed(pm_messages):  # Get the most recent completion summary
-                if msg.get("type") == "completion_summary":
-                    return msg.get("content", "")
+            """Extract workflow summary from comprehensive_summary field (Summary section only, not PM chatbot)"""
+            # ✅ FIX: Get comprehensive summary from dedicated field, not PM messages
+            comprehensive_summary = state.get("comprehensive_summary", "")
+            if comprehensive_summary:
+                return comprehensive_summary
+            # Fallback: check technical_reporting section
+            technical_reporting = state.get("technical_reporting", {})
+            if isinstance(technical_reporting, dict):
+                return technical_reporting.get("comprehensive_summary", "")
             return None
         
         # ✅ FIX: Extract evaluation metrics properly (check multiple locations)
         eval_metrics = state.get("evaluation_metrics") or {}
         if not eval_metrics and "model_evaluation" in state:
             eval_metrics = state.get("model_evaluation", {}).get("evaluation_metrics", {})
+        
+        # ✅ CRITICAL FIX: Ensure metrics have correct keys for frontend
+        # Frontend expects: accuracy, precision, recall, f1_score (without suffixes for binary)
+        if eval_metrics:
+            # If we have binary classification metrics, use the main keys
+            if eval_metrics.get("is_binary", False):
+                # Ensure main metrics are present
+                if "precision" not in eval_metrics:
+                    eval_metrics["precision"] = eval_metrics.get("precision_binary", eval_metrics.get("precision_weighted", 0))
+                if "recall" not in eval_metrics:
+                    eval_metrics["recall"] = eval_metrics.get("recall_binary", eval_metrics.get("recall_weighted", 0))
+                if "f1_score" not in eval_metrics:
+                    eval_metrics["f1_score"] = eval_metrics.get("f1_binary", eval_metrics.get("f1_weighted", 0))
+            else:
+                # Multi-class: use weighted averages as main metrics
+                if "precision" not in eval_metrics:
+                    eval_metrics["precision"] = eval_metrics.get("precision_weighted", eval_metrics.get("precision_macro", 0))
+                if "recall" not in eval_metrics:
+                    eval_metrics["recall"] = eval_metrics.get("recall_weighted", eval_metrics.get("recall_macro", 0))
+                if "f1_score" not in eval_metrics:
+                    eval_metrics["f1_score"] = eval_metrics.get("f1_weighted", eval_metrics.get("f1_macro", 0))
         
         # ✅ FIX: Build downloadable_files list from available files
         downloadable_files = state.get("downloadable_files", [])
@@ -968,6 +1086,7 @@ async def get_workflow_results(workflow_id: str) -> Dict[str, Any]:
                 "model_evaluation": {
                     "summary": "Model evaluation completed",
                     "evaluation_metrics": eval_metrics,
+                    "plots": state.get("evaluation_plots", []),  # ✅ ADD: Model evaluation plots
                     "confusion_matrix": state.get("confusion_matrix"),
                     "roc_curve_data": state.get("roc_curve_data", {}),
                     "precision_recall_curve": state.get("precision_recall_curve", {}),
@@ -981,6 +1100,7 @@ async def get_workflow_results(workflow_id: str) -> Dict[str, Any]:
                     "final_report": state.get("final_report", ""),
                     "executive_summary": state.get("executive_summary", ""),
                     "technical_documentation": state.get("technical_documentation", ""),
+                    "comprehensive_summary": state.get("comprehensive_summary", ""),  # ✅ ADD: Comprehensive analysis for Summary section
                     "recommendations": state.get("recommendations", []),
                     "limitations": state.get("limitations", []),
                     "future_improvements": state.get("future_improvements", [])
@@ -994,8 +1114,10 @@ async def get_workflow_results(workflow_id: str) -> Dict[str, Any]:
             },
             # ✅ FIX: Top-level downloadable_files for frontend convenience
             "downloadable_files": downloadable_files,
-            # ✅ ADD: Workflow summary from PM messages
-            "workflow_summary": _extract_workflow_summary(state),
+            # ✅ ADD: Workflow summary from comprehensive_summary field (Summary section only)
+            "workflow_summary": _extract_workflow_summary(state) or state.get("comprehensive_summary", ""),
+            # ✅ ADD: PM messages for frontend and testing
+            "pm_messages": state.get("pm_messages", []),
             "execution_info": {
                 "start_time": state.get("start_time"),
                 "end_time": state.get("end_time"),
@@ -1008,6 +1130,13 @@ async def get_workflow_results(workflow_id: str) -> Dict[str, Any]:
             }
         })
         
+        # ✅ FIX: Aggregate ALL plots from ALL agents before returning
+        all_plots = _aggregate_all_plots(state, workflow_id)
+        results["all_plots"] = all_plots
+        results["plots"] = all_plots  # Also add as 'plots' for consistency
+        results["eda_plots"] = state.get("eda_plots", [])  # EDA plots specifically
+        results["evaluation_plots"] = state.get("evaluation_plots", [])  # Model evaluation plots specifically
+        
         return results
         
     except HTTPException:
@@ -1015,6 +1144,147 @@ async def get_workflow_results(workflow_id: str) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error getting workflow results: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get workflow results: {str(e)}")
+
+
+def _aggregate_all_plots(state: Dict[str, Any], workflow_id: str) -> List[Dict[str, str]]:
+    """
+    ✅ FIX: Aggregate ALL plots from ALL agents.
+    
+    Collects plots from:
+    - EDA agent (eda_plots)
+    - Model evaluation agent (evaluation_plots)
+    - Any other agents that generate plots
+    
+    Args:
+        state: Workflow state dictionary
+        workflow_id: Workflow ID for plot directory
+        
+    Returns:
+        List of all plot dictionaries with title, name, path, url
+    """
+    all_plots = []
+    seen_paths = set()  # Track seen paths to avoid duplicates
+    
+    # 1. Get EDA plots
+    eda_plots = state.get("eda_plots", [])
+    if isinstance(eda_plots, list):
+        for plot in eda_plots:
+            if isinstance(plot, dict):
+                path = plot.get("path", "") or plot.get("url", "")
+                if path and path not in seen_paths:
+                    all_plots.append(plot)
+                    seen_paths.add(path)
+            elif isinstance(plot, str):
+                if plot not in seen_paths:
+                    all_plots.append({
+                        "title": _generate_plot_title_from_filename(Path(plot).name),
+                        "name": Path(plot).name,
+                        "path": plot,
+                        "url": plot,
+                        "workflow_id": workflow_id
+                    })
+                    seen_paths.add(plot)
+    elif isinstance(eda_plots, dict):
+        path = eda_plots.get("path", "") or eda_plots.get("url", "")
+        if path and path not in seen_paths:
+            all_plots.append(eda_plots)
+            seen_paths.add(path)
+    
+    # 2. Get Model Evaluation plots
+    eval_plots = state.get("evaluation_plots", [])
+    if isinstance(eval_plots, list):
+        for plot in eval_plots:
+            if isinstance(plot, dict):
+                path = plot.get("path", "") or plot.get("url", "")
+                if path and path not in seen_paths:
+                    all_plots.append(plot)
+                    seen_paths.add(path)
+            elif isinstance(plot, str):
+                if plot not in seen_paths:
+                    all_plots.append({
+                        "title": _generate_plot_title_from_filename(Path(plot).name),
+                        "name": Path(plot).name,
+                        "path": plot,
+                        "url": plot,
+                        "workflow_id": workflow_id
+                    })
+                    seen_paths.add(plot)
+    elif isinstance(eval_plots, dict):
+        path = eval_plots.get("path", "") or eval_plots.get("url", "")
+        if path and path not in seen_paths:
+            all_plots.append(eval_plots)
+            seen_paths.add(path)
+    
+    # 3. Also check plot_paths (backward compatibility)
+    plot_paths = state.get("plot_paths", [])
+    if isinstance(plot_paths, list):
+        for path in plot_paths:
+            if isinstance(path, str) and path not in seen_paths:
+                # Convert path to plot dict format
+                filename = Path(path).name if "/" in path else path
+                all_plots.append({
+                    "title": _generate_plot_title_from_filename(filename),
+                    "name": filename,
+                    "path": path,
+                    "url": path,
+                    "workflow_id": workflow_id
+                })
+                seen_paths.add(path)
+    
+    # 4. Load plots from filesystem as fallback
+    import os
+    cwd = os.getcwd()
+    if cwd.endswith('/backend'):
+        base_plots_dir = Path("plots")
+    else:
+        base_plots_dir = Path("backend/plots")
+    
+    workflow_plots_dir = base_plots_dir / workflow_id
+    if workflow_plots_dir.exists():
+        plot_files = list(workflow_plots_dir.glob("*.png")) + list(workflow_plots_dir.glob("*.jpg"))
+        for plot_file in plot_files:
+            api_url = f"/api/workflow/plot/{workflow_id}/{plot_file.name}"
+            # Check if already in all_plots
+            if api_url not in seen_paths:
+                all_plots.append({
+                    "title": _generate_plot_title_from_filename(plot_file.name),
+                    "name": plot_file.name,
+                    "path": api_url,
+                    "url": api_url,
+                    "workflow_id": workflow_id
+                })
+                seen_paths.add(api_url)
+    
+    logger.info(f"✅ Aggregated {len(all_plots)} plots from all agents for workflow {workflow_id}")
+    return all_plots
+
+
+def _generate_plot_title_from_filename(filename: str) -> str:
+    """Generate a readable title from plot filename"""
+    # Remove extension
+    name = filename.replace(".png", "").replace(".jpg", "").replace(".svg", "")
+    
+    # Common plot name mappings
+    plot_mappings = {
+        "correlation_heatmap": "Correlation Heatmap",
+        "distributions_histograms": "Feature Distributions",
+        "outliers_boxplots": "Outlier Analysis",
+        "target_distribution": "Target Variable Distribution",
+        "confusion_matrix": "Confusion Matrix",
+        "roc_curve": "ROC Curve",
+        "precision_recall": "Precision-Recall Curve",
+        "feature_importance": "Feature Importance"
+    }
+    
+    name_lower = name.lower()
+    for key, title in plot_mappings.items():
+        if key in name_lower:
+            return title
+    
+    # Convert filename to title
+    title = name.replace("_", " ").replace("-", " ")
+    title = " ".join(word.capitalize() for word in title.split())
+    return title
 
 
 @router.get("/plot/{plot_path:path}")
@@ -1762,7 +2032,25 @@ async def execute_workflow_with_progress(
                         "timestamp": datetime.now().isoformat()
                     })
                 
-                # ✅ ADD: Check for approval gates
+                # ✅ CRITICAL FIX: Verify Layer 2 completed before checking approval gates
+                # Check if Layer 2 was attempted and ensure it completed
+                layer_usage = current_state.get("layer_usage", {}).get(agent_name, "layer1")
+                layer2_attempted = current_state.get("agent_results", {}).get(agent_name, {}).get("layer2_attempted", False)
+                
+                if layer2_attempted:
+                    # Verify Layer 2 completion by checking for completion log or results
+                    layer2_complete = (
+                        layer_usage == "layer2" or  # Layer 2 was used
+                        current_state.get("agent_results", {}).get(agent_name, {}).get("layer2_error") is not None or  # Layer 2 failed (but completed)
+                        "LAYER 2 COMPLETE" in str(current_state.get("agent_results", {}).get(agent_name, {}))  # Completion marker
+                    )
+                    
+                    if not layer2_complete:
+                        logger.warning(f"⚠️ Layer 2 was attempted for {agent_name} but completion not verified. Waiting...")
+                        # Wait a bit more for Layer 2 to complete (shouldn't happen, but safety check)
+                        await asyncio.sleep(2)
+                
+                # ✅ ADD: Check for approval gates (AFTER Layer 2 completion verified)
                 approval_gate = _should_trigger_approval_gate(agent_name, current_state)
                 if approval_gate:
                     logger.info(f"Triggering approval gate at {approval_gate['stage']}")
@@ -1972,7 +2260,7 @@ async def execute_workflow_with_progress(
             except Exception as e:
                 logger.warning(f"Failed to mark workflow completion in SandboxExecutor: {e}")
         
-        # ✅ ADD: Generate and send workflow completion summary with actionable insights
+        # ✅ ADD: Generate workflow completion summary for Summary section only (NOT PM chatbot)
         try:
             from ..services.pm_insights_service import get_pm_insights_service
             # ✅ FIX: Get API key from workflow state
@@ -1980,18 +2268,22 @@ async def execute_workflow_with_progress(
             pm_service = get_pm_insights_service(api_key=api_key) if api_key and api_key != "dummy_key" else get_pm_insights_service()
             completion_summary = await pm_service.generate_workflow_summary(workflow_states[workflow_id])
             
-            # Add summary to PM messages
+            # ✅ FIX: Store summary in workflow state for Summary section (NOT in PM messages)
+            # This keeps PM chatbot clean and active for user queries
+            workflow_states[workflow_id]["comprehensive_summary"] = completion_summary
+            
+            # Add a simple completion message to PM instead of the full summary
             if "pm_messages" not in workflow_states[workflow_id]:
                 workflow_states[workflow_id]["pm_messages"] = []
             
             workflow_states[workflow_id]["pm_messages"].append({
-                "type": "completion_summary",
-                "agent": "Project Manager",
-                "content": completion_summary,
+                "type": "system",
+                "agent": "System",
+                "content": "✅ Workflow Complete! The comprehensive analysis is available in the Summary section. I'm here to answer any questions about the dataset, classification process, or data science concepts.",
                 "timestamp": datetime.now().isoformat()
             })
             
-            logger.info("✅ Generated workflow completion summary with actionable insights")
+            logger.info("✅ Generated workflow completion summary for Summary section (not PM chatbot)")
         except Exception as e:
             logger.warning(f"Failed to generate workflow completion summary: {e}")
         

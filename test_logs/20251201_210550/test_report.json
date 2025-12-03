@@ -1,0 +1,36 @@
+{
+  "test_summary": {
+    "workflow_id": "059c7632-80de-4823-b9df-9d8ebdf11386",
+    "duration_seconds": 59.956754,
+    "duration_minutes": 0.9992792333333332,
+    "start_time": "2025-12-01T21:05:50.252409",
+    "end_time": "2025-12-01T21:06:50.209163"
+  },
+  "agents": {},
+  "plots": [],
+  "pm_messages": {
+    "total": 0,
+    "informative": 0,
+    "messages": []
+  },
+  "summary": {
+    "length": 6816,
+    "has_executive_summary": true,
+    "has_metrics": true,
+    "has_insights": true,
+    "has_action_items": true,
+    "has_tables": true,
+    "preview": "## Comprehensive Classification Results Summary: Heart Disease Prediction\n\nThis summary outlines the results of the initial machine learning modeling exercise aimed at predicting the presence of Heart Disease based on patient clinical features.\n\n---\n\n## Executive Summary\n\nWe successfully deployed an initial LightGBM model to predict Heart Disease from 11 clinical features, achieving a high overall **Accuracy of 87.5%**. However, a critical review of the performance metrics reveals a fundamental "
+  },
+  "metrics": {
+    "accuracy": 0.875,
+    "precision": 0.8749547920433997,
+    "recall": 0.875,
+    "f1_score": 0.8747412008281572,
+    "precision_macro": 0.8748040988547318,
+    "recall_macro": 0.8717120994739359,
+    "f1_macro": 0.873015873015873
+  },
+  "errors": [],
+  "warnings": []
+}
