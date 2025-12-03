@@ -640,6 +640,15 @@ SOFTWARE.
 
 ---
 
+## Quick Links
+
+- **Demo Video**: [Watch on YouTube](https://www.youtube.com/watch?v=pHOhsWIxguo&t=1s)
+- **Architecture Details**: See `docs/architecture/TECHNICAL_ARCHITECTURE.md`
+- **Quick Start Guide**: See `docs/guides/QUICK_START_GUIDE.md`
+- **API Documentation**: See `docs/API.md`
+
+---
+
 ## Citation
 
 If you use Classify AI in your research or project, please cite:
