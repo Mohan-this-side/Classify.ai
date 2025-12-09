@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { toast } from 'react-hot-toast'
 import { 
   Upload, CheckCircle, Loader, Circle, Play, Download, MessageSquare, 
@@ -30,6 +30,86 @@ export default function ClassifyAI() {
   const [sandboxMetrics, setSandboxMetrics] = useState({ cpu: 0, memory: 0, time: 0 })
   const [results, setResults] = useState<any>(null)
   const [workflowCompletedNotified, setWorkflowCompletedNotified] = useState(false) // ✅ FIX: Track if completion notification shown
+  const [approvalNotified, setApprovalNotified] = useState(false) // ✅ FIX: Track if approval notification shown
+  const [currentApprovalId, setCurrentApprovalId] = useState<string | null>(null) // ✅ FIX: Track current approval gate ID
+
+  // ✅ FIX: Reset state function (memoized with useCallback)
+  const resetAppState = useCallback(() => {
+    console.log('🔄 Resetting app state...')
+    setActiveView('upload')
+    setWorkflowId(null)
+    setWorkflowStatus('idle')
+    setAgents([])
+    setPmMessages([])
+    setSandboxMetrics({ cpu: 0, memory: 0, time: 0 })
+    setResults(null)
+    setWorkflowCompletedNotified(false)
+    setApprovalNotified(false)
+    setCurrentApprovalId(null)
+    setPendingApproval(false)
+    setFile(null)
+    setTargetColumn('')
+    setDescription('')
+    setApiKey('')
+    setColumnOptions([])
+  }, [])
+
+  // ✅ FIX: Cancel any running workflows and reset state on page load/refresh
+  useEffect(() => {
+    const cancelRunningWorkflows = async () => {
+      try {
+        // Use the cancel-all endpoint for efficiency
+        const response = await fetch('http://localhost:8000/api/workflow/cancel-all', {
+          method: 'DELETE'
+        })
+        if (response.ok) {
+          const data = await response.json()
+          if (data.cancelled_count > 0) {
+            console.log(`✅ Cancelled ${data.cancelled_count} running workflow(s) on page load`)
+          }
+        }
+      } catch (error) {
+        console.error('Error cancelling running workflows:', error)
+        // Try individual cancellation as fallback
+        try {
+          const listResponse = await fetch('http://localhost:8000/api/workflow/list?status=running&limit=10')
+          if (listResponse.ok) {
+            const data = await listResponse.json()
+            const runningWorkflows = data.workflows || []
+            for (const workflow of runningWorkflows) {
+              if (workflow.workflow_id) {
+                try {
+                  await fetch(`http://localhost:8000/api/workflow/${workflow.workflow_id}`, {
+                    method: 'DELETE'
+                  })
+                } catch (e) {
+                  // Ignore individual errors
+                }
+              }
+            }
+          }
+        } catch (e) {
+          // Ignore fallback errors
+        }
+      }
+      
+      // Reset frontend state
+      resetAppState()
+    }
+
+    cancelRunningWorkflows()
+  }, [resetAppState]) // Run once on mount
+
+  // ✅ Function to navigate to workflow view
+  const navigateToWorkflowView = () => {
+    console.log('🔄 Navigating to workflow view...')
+    // Set workflow view immediately
+    setActiveView('workflow')
+    // Scroll to top to ensure workflow view is visible
+    setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }, 100)
+  }
 
   const parseCSVHeaders = async (file: File) => {
     return new Promise<string[]>((resolve, reject) => {
@@ -84,6 +164,10 @@ export default function ClassifyAI() {
         apiKeyLength: apiKey.length
       })
 
+      // ✅ Navigate to workflow view immediately (before backend response)
+      // This gives immediate feedback to the user
+      navigateToWorkflowView()
+
       // Create FormData for file upload
       const formData = new FormData()
       formData.append('file', file!)
@@ -118,6 +202,8 @@ export default function ClassifyAI() {
       setWorkflowId(data.workflow_id)
       setWorkflowStatus('running')
       setWorkflowCompletedNotified(false) // ✅ FIX: Reset completion notification flag
+      setApprovalNotified(false) // ✅ FIX: Reset approval notification flag
+      setCurrentApprovalId(null) // ✅ FIX: Reset approval ID
       
       // Initialize agents status
       setAgents([
@@ -131,8 +217,8 @@ export default function ClassifyAI() {
         { id: 'pm', label: 'PM', status: 'active', time: '' },
       ])
 
-      // Switch to workflow view
-      setActiveView('workflow')
+      // Note: Navigation already happened at the start of the function
+      // This ensures user sees workflow page immediately
       toast.success('Workflow started successfully!')
 
       // Start polling for status
@@ -147,13 +233,42 @@ export default function ClassifyAI() {
   const pollWorkflowStatus = async (wfId: string) => {
     let intervalId: NodeJS.Timeout | null = null
     let hasCompleted = false // ✅ FIX: Track if workflow has completed to prevent duplicate notifications
+    let errorCount = 0 // ✅ FIX: Track consecutive errors for exponential backoff
+    let pollInterval = 3000 // ✅ FIX: Start with 3 seconds instead of 2
+    const maxInterval = 10000 // Maximum 10 seconds between polls
+    const minInterval = 2000 // Minimum 2 seconds between polls
     
-    const interval = setInterval(async () => {
+    const poll = async (): Promise<boolean> => {
+      // ✅ CRITICAL FIX: Return early if already completed
+      if (hasCompleted) return false
+      
       try {
-        const response = await fetch(`http://localhost:8000/api/workflow/status/${wfId}`)
+        // ✅ FIX: Add timeout and abort controller to prevent hanging requests
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 5000) // 5 second timeout
+        
+        const response = await fetch(`http://localhost:8000/api/workflow/status/${wfId}`, {
+          signal: controller.signal,
+          headers: {
+            'Cache-Control': 'no-cache'
+          }
+        })
+        clearTimeout(timeoutId)
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+        }
+        
         const data = await response.json()
+        
+        // ✅ CRITICAL FIX: Check status first - normalize to string for comparison
+        const status = String(data.status || '').toLowerCase()
+        
+        // ✅ FIX: Reset error count on success
+        errorCount = 0
+        pollInterval = Math.max(minInterval, pollInterval - 500) // Gradually decrease interval on success
 
-        setWorkflowStatus(data.status)
+        setWorkflowStatus(status)
 
         // Map backend agent names to frontend agent IDs
         const agentMapping: { [key: string]: string } = {
@@ -175,15 +290,15 @@ export default function ClassifyAI() {
             )
             
             if (backendAgentName && data.agent_status[backendAgentName]) {
-              const status = data.agent_status[backendAgentName]
+              const agentStatus = data.agent_status[backendAgentName]
               const layer = data.layer_usage?.[backendAgentName] || 'layer1'
               // Standardize layer naming: always "Layer 1" or "Layer 2"
               const layerName = layer.toLowerCase().includes('layer2') || layer.toLowerCase().includes('2') ? 'Layer 2' : 'Layer 1'
               const layerEmoji = layerName === 'Layer 2' ? '🐳' : '⚡'
               return { 
                 ...agent, 
-                status: status === 'running' ? 'active' : status === 'completed' ? 'complete' : status,
-                time: status === 'completed' ? `${layerEmoji} ${layerName}` : (status === 'running' ? `${layerEmoji} ${layerName}...` : ''),
+                status: agentStatus === 'running' ? 'active' : agentStatus === 'completed' ? 'complete' : agentStatus,
+                time: agentStatus === 'completed' ? `${layerEmoji} ${layerName}` : (agentStatus === 'running' ? `${layerEmoji} ${layerName}...` : ''),
                 layer: layerName
               }
             }
@@ -197,10 +312,60 @@ export default function ClassifyAI() {
         }
         
         // ✅ Update pending approval from backend
-        if (data.pending_approval) {
+        // ✅ FIX NOTIFICATION SPAM: Only show one notification per approval gate
+        const hasPendingApproval = !!data.pending_approval
+        const approvalId = data.pending_approval?.id || data.pending_approval?.timestamp || null
+        
+        if (hasPendingApproval && !pendingApproval) {
+          // Approval gate just appeared
           setPendingApproval(true)
-        } else {
+          
+          // ✅ FIX: Only notify if this is a new approval gate (different ID)
+          if (approvalId !== currentApprovalId && !approvalNotified) {
+            setCurrentApprovalId(approvalId)
+            setApprovalNotified(true)
+          
+          // Request browser notification permission if not already granted
+          if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission()
+          }
+          
+            // Show browser notification if permission granted (only once)
+          if ('Notification' in window && Notification.permission === 'granted') {
+              // Close any existing notification with same tag first
+              try {
+                const existingNotification = new Notification('', { tag: 'approval-gate' })
+                existingNotification.close()
+              } catch (e) {
+                // Ignore errors
+              }
+              
+            new Notification('⏸️ Approval Required', {
+              body: 'The workflow is paused and waiting for your approval. Click to review.',
+              icon: '/favicon.ico',
+                tag: 'approval-gate', // ✅ Same tag ensures only one browser notification
+              requireInteraction: true
+            })
+          }
+          
+            // Show toast notification (only once)
+            toast('⏸️ Approval Required - Workflow is paused', {
+            duration: 10000,
+              position: 'top-right',
+              icon: undefined, // ✅ FIX: Remove duplicate emoji icon
+              id: 'approval-gate-toast' // ✅ Same ID ensures only one toast
+          })
+          
+          // Auto-expand PM chat if minimized to show approval gate
+          if (!pmExpanded) {
+            setPmExpanded(true)
+            }
+          }
+        } else if (!hasPendingApproval && pendingApproval) {
+          // Approval gate resolved - reset notification flags
           setPendingApproval(false)
+          setApprovalNotified(false)
+          setCurrentApprovalId(null)
         }
 
         // ✅ Update sandbox metrics from backend
@@ -221,33 +386,109 @@ export default function ClassifyAI() {
           setSandboxMetrics({ cpu: 0, memory: 0, time: 0 })
         }
 
-        // ✅ FIX: Check if workflow is complete (only once)
-        if (data.status === 'completed' && !hasCompleted) {
+        // ✅ CRITICAL FIX: Check if workflow is complete (only once) - normalize status comparison
+        if (status === 'completed' && !hasCompleted) {
           hasCompleted = true
-          clearInterval(interval)
-          intervalId = null
+          // ✅ CRITICAL FIX: Clear the timeout, not undefined 'interval'
+          if (intervalId) {
+            clearTimeout(intervalId)
+            intervalId = null
+          }
           // Reset sandbox metrics
           setSandboxMetrics({ cpu: 0, memory: 0, time: 0 })
           // Fetch results (this will show the single completion notification)
           await fetchResults(wfId)
-        } else if (data.status === 'failed' && !hasCompleted) {
+          return false // Stop polling
+        } else if (status === 'failed' && !hasCompleted) {
           hasCompleted = true
-          clearInterval(interval)
-          intervalId = null
+          if (intervalId) {
+            clearTimeout(intervalId)
+            intervalId = null
+          }
           toast.error('Workflow failed')
+          return false // Stop polling
         }
-      } catch (error) {
-        console.error('Error polling status:', error)
+        
+        return true // Continue polling
+      } catch (error: any) {
+        errorCount++
+        // ✅ FIX: Exponential backoff on errors
+        pollInterval = Math.min(maxInterval, pollInterval * 1.5)
+        
+        // Only log errors occasionally to avoid console spam
+        if (errorCount % 5 === 1) {
+          console.error(`Error polling status (attempt ${errorCount}):`, error)
+        }
+        
+        // ✅ FIX: Stop polling if too many consecutive errors
+        if (errorCount > 20) {
+          console.error('Too many polling errors, stopping...')
+          hasCompleted = true // Mark as completed to stop polling
+          if (intervalId) {
+            clearTimeout(intervalId)
+            intervalId = null
+          }
+          toast.error('Lost connection to workflow. Please refresh the page.')
+          return false // Stop polling
+        }
+        
+        return true // Continue polling on error (with backoff)
       }
-    }, 2000) // Poll every 2 seconds
+    }
+    
+    // ✅ CRITICAL FIX: Use dynamic interval with exponential backoff - properly handle completion
+    const scheduleNextPoll = async () => {
+      if (hasCompleted) {
+        if (intervalId) {
+          clearTimeout(intervalId)
+          intervalId = null
+        }
+        return
+      }
+      
+      const shouldContinue = await poll()
+      if (shouldContinue && !hasCompleted) {
+        intervalId = setTimeout(() => {
+          scheduleNextPoll()
+        }, pollInterval)
+      } else {
+        if (intervalId) {
+          clearTimeout(intervalId)
+          intervalId = null
+        }
+      }
+    }
+    
+    // Start polling
+    scheduleNextPoll()
   }
 
   // ✅ Fetch workflow results when complete
-  const fetchResults = async (wfId: string) => {
+  const fetchResults = async (wfId: string, retryCount = 0) => {
+    const maxRetries = 3
+    const retryDelay = 2000 // 2 seconds
+    
     try {
-      const response = await fetch(`http://localhost:8000/api/workflow/results/${wfId}`)
+      // ✅ CRITICAL FIX: Add timeout to prevent hanging
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+      
+      const response = await fetch(`http://localhost:8000/api/workflow/results/${wfId}`, {
+        signal: controller.signal,
+        headers: {
+          'Cache-Control': 'no-cache'
+        }
+      })
+      clearTimeout(timeoutId)
+      
       if (!response.ok) {
-        throw new Error('Failed to fetch results')
+        if (response.status === 404 && retryCount < maxRetries) {
+          // Workflow might not be fully saved yet, retry
+          console.log(`Results not ready yet, retrying... (${retryCount + 1}/${maxRetries})`)
+          setTimeout(() => fetchResults(wfId, retryCount + 1), retryDelay)
+          return
+        }
+        throw new Error(`Failed to fetch results: HTTP ${response.status}`)
       }
       
       const data = await response.json()
@@ -257,12 +498,15 @@ export default function ClassifyAI() {
       const structuredResults = {
         // Model evaluation metrics - check top-level first, then nested
         model_evaluation: {
-          evaluation_metrics: data.evaluation_metrics || data.results?.model_evaluation?.evaluation_metrics || data.results?.evaluation_metrics || {}
+          evaluation_metrics: data.evaluation_metrics || data.results?.model_evaluation?.evaluation_metrics || data.results?.evaluation_metrics || {},
+          plots: data.evaluation_plots || data.results?.model_evaluation?.plots || []
         },
-        // EDA plots - check multiple locations
+        // ✅ FIX: Use aggregated plots from all agents
         eda_analysis: {
-          plots: data.results?.eda_analysis?.plots || data.results?.eda_plots || data.results?.plots || data.eda_plots || []
+          plots: data.all_plots || data.plots || data.results?.eda_analysis?.plots || data.results?.eda_plots || data.results?.plots || data.eda_plots || []
         },
+        // ✅ ADD: All plots aggregated
+        all_plots: data.all_plots || data.plots || [],
         // Feature importance - check multiple locations
         feature_importance: data.feature_importance_model || data.results?.feature_importance_model || data.results?.model_evaluation?.feature_importance || data.results?.feature_importance || {},
         // Dataset info
@@ -270,15 +514,21 @@ export default function ClassifyAI() {
         // Downloadable files - check top-level first, then nested
         downloadable_files: data.downloadable_files || data.results?.downloadable_files || data.downloads?.downloadable_files || [],
         // Execution info for notification
-        execution_info: data.execution_info || {}
+        execution_info: data.execution_info || {},
+        // ✅ ADD: Workflow summary
+        workflow_summary: data.workflow_summary || ""
       }
       
       console.log('Structured results:', structuredResults) // Debug
+      
+      // Store workflow ID in results for use in ResultsView
+      ;(structuredResults as any).workflow_id = wfId
       
       setResults(structuredResults)
       setActiveView('results')
       
       // ✅ FIX: Show single, informative completion notification (only once)
+      // ✅ FIX NOTIFICATION SPAM: Show single, informative completion notification (only once)
       if (!workflowCompletedNotified) {
         setWorkflowCompletedNotified(true)
         const completedAgentsCount = data.execution_info?.completed_agents?.length || 7
@@ -289,26 +539,57 @@ export default function ClassifyAI() {
           `🎉 Analysis Complete! ${completedAgentsCount} agents finished successfully. Model accuracy: ${accuracy}`,
           {
             duration: 5000,
-            icon: '🎉',
-            style: {
-              background: '#10b981',
-              color: '#fff',
-              fontSize: '14px',
-              padding: '16px',
-              borderRadius: '8px',
-            }
+            icon: undefined, // ✅ FIX: Remove duplicate emoji icon
+            id: 'workflow-completed-toast' // ✅ Same ID ensures only one toast
           }
         )
+        
+        // Show browser notification (only once)
+        if ('Notification' in window && Notification.permission === 'granted') {
+          // Close any existing notification with same tag first
+          try {
+            const existingNotification = new Notification('', { tag: 'workflow-completed' })
+            existingNotification.close()
+          } catch (e) {
+            // Ignore errors
+          }
+          
+          new Notification('🎉 Workflow Completed', {
+            body: `Analysis complete! ${completedAgentsCount} agents finished. Model accuracy: ${accuracy}`,
+            icon: '/favicon.ico',
+            tag: 'workflow-completed' // ✅ Same tag ensures only one browser notification
+          })
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching results:', error)
-      toast.error('Failed to fetch results')
+      
+      // ✅ CRITICAL FIX: Retry on network errors or timeouts
+      if (retryCount < maxRetries && (error.name === 'AbortError' || error.message.includes('fetch'))) {
+        console.log(`Retrying results fetch... (${retryCount + 1}/${maxRetries})`)
+        setTimeout(() => fetchResults(wfId, retryCount + 1), retryDelay)
+        return
+      }
+      
+      // ✅ CRITICAL FIX: Show error but don't leave user stuck on loading screen
+      toast.error(`Failed to fetch results${retryCount >= maxRetries ? ' after retries' : ''}. Please refresh the page.`)
+      
+      // Still try to show something if we have partial data
+      if (results && Object.keys(results).length > 0) {
+        setActiveView('results')
+      }
     }
   }
 
   // ✅ Handle approval gate responses
   const handleApprovalResponse = async (action: 'approve' | 'reject' | 'modify', comment?: string) => {
-    if (!workflowId) return
+    if (!workflowId) {
+      console.error('❌ No workflowId available for approval')
+      toast.error('Workflow ID not found. Please refresh the page.')
+      return
+    }
+    
+    console.log(`🔄 Handling approval: ${action} for workflow ${workflowId}`)
     
     try {
       const response = await fetch(`http://localhost:8000/api/workflow/${workflowId}/pm/approval`, {
@@ -322,15 +603,25 @@ export default function ClassifyAI() {
         })
       })
       
+      console.log(`✅ Approval response status: ${response.status}`)
+      
       if (response.ok) {
+        const data = await response.json()
+        console.log('✅ Approval successful:', data)
         toast.success(`Approval ${action}d successfully`)
         setPendingApproval(false)
+        // Refresh workflow status after approval
+        if (workflowId) {
+          pollWorkflowStatus(workflowId)
+        }
       } else {
-        toast.error(`Failed to ${action} workflow`)
+        const errorText = await response.text()
+        console.error('❌ Approval failed:', errorText)
+        toast.error(`Failed to ${action} workflow: ${response.status}`)
       }
-    } catch (error) {
-      console.error('Error handling approval:', error)
-      toast.error('Failed to process approval')
+    } catch (error: any) {
+      console.error('❌ Error handling approval:', error)
+      toast.error(`Failed to process approval: ${error.message || error}`)
     }
   }
 
@@ -422,12 +713,34 @@ export default function ClassifyAI() {
           pmMessages={pmMessages}
           sandboxMetrics={sandboxMetrics}
           workflowStatus={workflowStatus}
+          workflowId={workflowId}
           onApprovalResponse={handleApprovalResponse}
           onPMQuestion={handlePMQuestion}
+          onCancelWorkflow={async () => {
+            if (workflowId && (workflowStatus === 'running' || workflowStatus === 'paused')) {
+              try {
+                const response = await fetch(`http://localhost:8000/api/workflow/${workflowId}`, {
+                  method: 'DELETE'
+                })
+                if (response.ok) {
+                  toast.success('Workflow cancelled')
+                  // ✅ FIX: Reset all state on cancel
+                  resetAppState()
+                } else {
+                  toast.error('Failed to cancel workflow')
+                }
+              } catch (error) {
+                console.error('Error cancelling workflow:', error)
+                toast.error('Failed to cancel workflow')
+                // Still reset state even if cancel request fails
+                resetAppState()
+              }
+            }
+          }}
         />
       )}
       
-      {activeView === 'results' && <ResultsView results={results} />}
+      {activeView === 'results' && <ResultsView results={results} workflowId={workflowId} />}
     </div>
   )
 }
@@ -533,17 +846,44 @@ function UploadView({ file, handleFileChange, targetColumn, setTargetColumn, des
 
         {/* Start Button */}
         <button
-          onClick={(e) => {
+          type="button"
+          onClick={async (e) => {
             e.preventDefault()
-            console.log('Button clicked!', {
+            e.stopPropagation()
+            console.log('🔵🔵🔵 Button clicked!', {
               file: !!file,
               targetColumn: !!targetColumn,
-              description: !!description && description.trim() !== '',
-              apiKey: !!apiKey && apiKey.trim() !== ''
+              description: !!(description && description.trim()),
+              apiKey: !!(apiKey && apiKey.trim()),
+              onStartType: typeof onStart,
+              onStartExists: !!onStart
             })
-            onStart()
+            
+            // Validate fields
+            if (!file || !targetColumn || !(description && description.trim()) || !(apiKey && apiKey.trim())) {
+              console.error('❌ Validation failed')
+              toast.error('Please fill in all required fields')
+              return
+            }
+            
+            // Call onStart function directly
+            console.log('✅ About to call onStart function...')
+            if (onStart && typeof onStart === 'function') {
+              console.log('✅ Calling onStart function...')
+              try {
+                const result = await onStart()
+                console.log('✅ onStart completed:', result)
+              } catch (error: any) {
+                console.error('❌ Error in onStart:', error)
+                toast.error(`Failed to start workflow: ${error.message || error}`)
+              }
+            } else {
+              console.error('❌ onStart is not a function:', typeof onStart, onStart)
+              toast.error('Workflow start function not available. Please refresh the page.')
+            }
           }}
-          disabled={!file || !targetColumn || !description || !description.trim() || !apiKey || !apiKey.trim()}
+          disabled={!file || !targetColumn || !(description && description.trim()) || !(apiKey && apiKey.trim())}
+          style={{ pointerEvents: 'auto', cursor: 'pointer', zIndex: 10 }}
           className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-4 rounded-lg font-semibold text-lg hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl flex items-center justify-center space-x-2"
         >
           <Play className="w-6 h-6" />
@@ -553,7 +893,7 @@ function UploadView({ file, handleFileChange, targetColumn, setTargetColumn, des
         {/* Debug info */}
         {process.env.NODE_ENV === 'development' && (
           <div className="text-xs text-gray-400 mt-2">
-            Debug: File={file ? '✓' : '✗'} | Target={targetColumn ? '✓' : '✗'} | Desc={description?.trim() ? '✓' : '✗'} | API={apiKey?.trim() ? '✓' : '✗'}
+            Debug: File={file ? '✓' : '✗'} | Target={targetColumn ? '✓' : '✗'} | Desc={description?.trim() ? '✓' : '✗'} | API={apiKey?.trim() ? '✓' : '✗'} | Button Disabled={(!file || !targetColumn || !description || !description.trim() || !apiKey || !apiKey.trim()) ? 'YES' : 'NO'} | onStart={typeof onStart}
           </div>
         )}
       </div>
@@ -561,7 +901,8 @@ function UploadView({ file, handleFileChange, targetColumn, setTargetColumn, des
   )
 }
 
-function WorkflowView({ agents, pmExpanded, setPmExpanded, pendingApproval, setPendingApproval, pmMessages, sandboxMetrics, workflowStatus, onApprovalResponse, onPMQuestion }: any) {
+function WorkflowView({ agents, pmExpanded, setPmExpanded, pendingApproval, setPendingApproval, pmMessages, sandboxMetrics, workflowStatus, workflowId, onApprovalResponse, onPMQuestion, onCancelWorkflow }: any) {
+  // Pass workflowId to CompletedAgent components
   // Map agent IDs to icons and labels
   const iconMap: any = {
     discovery: TrendingUp,
@@ -608,6 +949,26 @@ function WorkflowView({ agents, pmExpanded, setPmExpanded, pendingApproval, setP
     <div className="flex-1 flex overflow-hidden">
       {/* Main Content */}
       <div className={`flex-1 flex flex-col transition-all ${pmExpanded ? 'mr-96' : 'mr-0'}`}>
+        {/* Workflow Header with Cancel Button */}
+        {(workflowStatus === 'running' || workflowStatus === 'paused') && workflowId && (
+          <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shadow-sm">
+            <div className="flex items-center space-x-4">
+              <div className={`w-3 h-3 rounded-full ${workflowStatus === 'running' ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`}></div>
+              <span className="text-sm font-medium text-gray-700">
+                {workflowStatus === 'running' ? 'Workflow Running' : 'Workflow Paused'}
+              </span>
+            </div>
+            {onCancelWorkflow && (
+              <button
+                onClick={onCancelWorkflow}
+                className="px-4 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-medium hover:bg-red-200 transition-colors flex items-center space-x-2"
+              >
+                <span>✕</span>
+                <span>Cancel Workflow</span>
+              </button>
+            )}
+          </div>
+        )}
         {/* Timeline */}
         <div className="bg-white border-b border-gray-200 px-6 py-6 overflow-x-auto shadow-sm">
           <div className="flex items-center justify-between min-w-max max-w-6xl mx-auto">
@@ -666,6 +1027,7 @@ function WorkflowView({ agents, pmExpanded, setPmExpanded, pendingApproval, setP
                 name={agent.label || agent.name} 
                 time={agent.time || 'Completed'}
                 agentId={agent.id}
+                workflowId={workflowId}
               />
             ))}
           </div>
@@ -732,7 +1094,75 @@ function WorkflowView({ agents, pmExpanded, setPmExpanded, pendingApproval, setP
   )
 }
 
-function ResultsView({ results }: any) {
+function ResultsView({ results, workflowId }: any) {
+  // Get workflowId from props or from results
+  const currentWorkflowId = workflowId || results?.workflow_id || null
+  
+  // ✅ ADD: Full-screen image viewer state
+  const [fullScreenImage, setFullScreenImage] = useState<string | null>(null)
+  
+  // ✅ ADD: PM chatbot state for results page
+  const [pmExpanded, setPmExpanded] = useState(true)
+  const [pmMessages, setPmMessages] = useState<any[]>([])
+  const [pmQuestion, setPmQuestion] = useState('')
+  
+  // ✅ ADD: Fetch PM messages for results page
+  useEffect(() => {
+    if (currentWorkflowId) {
+      const fetchPMMessages = async () => {
+        try {
+          const response = await fetch(`http://localhost:8000/api/workflow/status/${currentWorkflowId}`)
+          if (response.ok) {
+            const data = await response.json()
+            setPmMessages(data.pm_messages || [])
+          }
+        } catch (error) {
+          console.error('Error fetching PM messages:', error)
+        }
+      }
+      fetchPMMessages()
+    }
+  }, [currentWorkflowId])
+  
+  // ✅ ADD: Handle PM questions on results page
+  const handlePMQuestion = async (question: string) => {
+    if (!currentWorkflowId || !question.trim()) return
+    
+    try {
+      const response = await fetch(`http://localhost:8000/api/workflow/${currentWorkflowId}/pm/question`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question })
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        setPmMessages(prev => [...prev, {
+          type: 'question',
+          content: question,
+          timestamp: new Date().toISOString(),
+          agent: 'You'
+        }, {
+          type: 'answer',
+          content: data.answer,
+          timestamp: new Date().toISOString(),
+          agent: 'Project Manager'
+        }])
+        setPmQuestion('')
+      }
+    } catch (error) {
+      console.error('Error asking PM question:', error)
+    }
+  }
+  
+  // Auto-scroll PM chat to bottom
+  const pmMessagesEndRef = React.useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (pmMessagesEndRef.current) {
+      pmMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [pmMessages])
+  
   if (!results) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -744,6 +1174,8 @@ function ResultsView({ results }: any) {
     )
   }
   return (
+    <div className="flex-1 flex overflow-hidden">
+      {/* Main Results Content */}
     <div className="flex-1 overflow-y-auto p-8 bg-gray-50">
       <div className="max-w-7xl mx-auto space-y-8">
         <div className="flex items-center justify-between">
@@ -768,7 +1200,9 @@ function ResultsView({ results }: any) {
             label="F1 Score" 
             value={(() => {
               const metrics = results?.model_evaluation?.evaluation_metrics || results?.evaluation_metrics || {}
-              return metrics.f1_weighted ? metrics.f1_weighted.toFixed(3) : 'N/A'
+              // ✅ FIX: Use f1_score (main metric) first, then fallback to weighted
+              const f1 = metrics.f1_score || metrics.f1_weighted || metrics.f1 || metrics['f1-weighted'] || 0
+              return f1 ? f1.toFixed(3) : 'N/A'
             })()} 
             gradient="from-green-500 to-green-600" 
           />
@@ -776,7 +1210,9 @@ function ResultsView({ results }: any) {
             label="Precision" 
             value={(() => {
               const metrics = results?.model_evaluation?.evaluation_metrics || results?.evaluation_metrics || {}
-              return metrics.precision_weighted ? `${(metrics.precision_weighted * 100).toFixed(1)}%` : 'N/A'
+              // ✅ FIX: Use precision (main metric) first, then fallback to weighted
+              const precision = metrics.precision || metrics.precision_weighted || metrics.precision_score || metrics['precision-weighted'] || 0
+              return precision ? `${(precision * 100).toFixed(1)}%` : 'N/A'
             })()} 
             gradient="from-purple-500 to-purple-600" 
           />
@@ -784,7 +1220,9 @@ function ResultsView({ results }: any) {
             label="Recall" 
             value={(() => {
               const metrics = results?.model_evaluation?.evaluation_metrics || results?.evaluation_metrics || {}
-              return metrics.recall_weighted ? `${(metrics.recall_weighted * 100).toFixed(1)}%` : 'N/A'
+              // ✅ FIX: Use recall (main metric) first, then fallback to weighted
+              const recall = metrics.recall || metrics.recall_weighted || metrics.recall_score || metrics['recall-weighted'] || 0
+              return recall ? `${(recall * 100).toFixed(1)}%` : 'N/A'
             })()} 
             gradient="from-orange-500 to-orange-600" 
           />
@@ -797,43 +1235,135 @@ function ResultsView({ results }: any) {
             <span>Exploratory Data Analysis</span>
           </h3>
           <div className="grid grid-cols-2 gap-6">
-            {results?.eda_analysis?.plots && results.eda_analysis.plots.length > 0 ? (
-              results.eda_analysis.plots.map((plot: any, idx: number) => (
-                <div key={idx} className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg border border-purple-200 p-4">
-                  <p className="font-medium text-sm mb-2">{plot.title || plot.name || `Plot ${idx + 1}`}</p>
+            {(() => {
+              // ✅ FIX: Use ALL plots from ALL agents (EDA + Model Evaluation)
+              const allPlots = results?.all_plots || results?.eda_analysis?.plots || results?.model_evaluation?.plots || []
+              const validPlots = allPlots
+                .filter((plot: any) => {
+                  const title = (plot.title || plot.name || '').toLowerCase()
+                  const name = (plot.name || '').toLowerCase()
+                  
+                  // Filter out placeholder/empty plots
+                  const placeholderPatterns = [
+                    'plot 2', 'plot2', 'basic plot', 'multiple plots',
+                    'empty', 'placeholder', 'test', 'demo', 'sample'
+                  ]
+                  
+                  // Check if plot has meaningful title/name
+                  const hasValidTitle = title && title.length > 2 && 
+                    !placeholderPatterns.some(pattern => title.includes(pattern))
+                  
+                  // Check if plot path/url exists
+                  const hasValidPath = plot.path || plot.url
+                  
+                  // Ensure plot is for current workflow (check path contains workflow_id)
+                  const isCurrentWorkflow = !currentWorkflowId || 
+                    (plot.path && plot.path.includes(currentWorkflowId)) ||
+                    (plot.url && plot.url.includes(currentWorkflowId))
+                  
+                  return hasValidTitle && hasValidPath && isCurrentWorkflow
+                })
+              
+              return validPlots.length > 0 ? (
+                validPlots.map((plot: any, idx: number) => {
+                  const plotUrl = `http://localhost:8000${plot.path || plot.url}`
+                  // ✅ FIX: Generate meaningful title from filename if not provided
+                  let plotTitle = plot.title || plot.name || `Plot ${idx + 1}`
+                  if (!plot.title && plot.name) {
+                    // Convert filename to readable title
+                    plotTitle = plot.name
+                      .replace(/_/g, ' ')
+                      .replace(/\.png$/i, '')
+                      .replace(/\b\w/g, (l: string) => l.toUpperCase())
+                  }
+                  
+                  return (
+                    <div key={idx} className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg border border-purple-200 p-4 cursor-pointer hover:shadow-lg transition-shadow" onClick={() => setFullScreenImage(plotUrl)}>
+                      <p className="font-medium text-sm mb-2">{plotTitle}</p>
                   <img 
-                    src={`http://localhost:8000${plot.path || plot.url}`} 
-                    alt={plot.title || plot.name || `Plot ${idx + 1}`}
+                        src={plotUrl} 
+                        alt={plotTitle}
                     className="w-full h-auto rounded"
                     onError={(e) => {
                       (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iI2Y1ZjVmNSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5QbG90IG5vdCBhdmFpbGFibGU8L3RleHQ+PC9zdmc+'
                     }}
                   />
                 </div>
-              ))
+                  )
+                })
             ) : (
               <div className="col-span-2 text-center py-8 text-gray-500">
                 <p>No EDA plots generated. Check backend logs for EDA agent execution.</p>
+                </div>
+              )
+            })()}
+          </div>
+          
+          {/* ✅ ADD: Full-screen image viewer */}
+          {fullScreenImage && (
+            <div 
+              className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4"
+              onClick={() => setFullScreenImage(null)}
+            >
+              <div className="relative max-w-7xl max-h-full">
+                <button
+                  onClick={() => setFullScreenImage(null)}
+                  className="absolute top-4 right-4 bg-white rounded-full p-2 hover:bg-gray-200 transition-colors z-10"
+                  aria-label="Close"
+                >
+                  <X className="w-6 h-6 text-gray-800" />
+                </button>
+                <img 
+                  src={fullScreenImage} 
+                  alt="Full screen plot"
+                  className="max-w-full max-h-[90vh] object-contain rounded-lg"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </div>
               </div>
             )}
           </div>
+
+        {/* Summary - ✅ ADD: Comprehensive workflow summary */}
+        {results?.workflow_summary && (
+          <div className="bg-white rounded-xl shadow-md border border-gray-200 p-8">
+            <h3 className="text-2xl font-bold text-gray-900 mb-6 flex items-center space-x-3">
+              <FileText className="w-7 h-7 text-blue-600" />
+              <span>Summary</span>
+            </h3>
+            <div className="prose prose-sm max-w-none">
+              <MarkdownContent content={results.workflow_summary} />
         </div>
+          </div>
+        )}
 
         {/* Feature Importance */}
         <div className="bg-white rounded-xl shadow-md border border-gray-200 p-8">
           <h3 className="text-2xl font-bold text-gray-900 mb-6">Feature Importance</h3>
           <div className="space-y-4">
             {results?.feature_importance && Object.keys(results.feature_importance).length > 0 ? (
-              Object.entries(results.feature_importance)
+              (() => {
+                // ✅ FIX: Normalize feature importance values relative to max value
+                const entries = Object.entries(results.feature_importance)
+                  .map(([name, val]: any) => [name, Math.abs(val || 0)])
                 .sort(([, a]: any, [, b]: any) => b - a)
                 .slice(0, 10)
-                .map(([feature, importance]: any) => (
+                
+                // Find max value for normalization
+                const maxValue = entries.length > 0 ? Math.max(...entries.map(([, val]: any) => val)) : 1
+                
+                return entries.map(([feature, importance]: any) => {
+                  // Normalize to 0-100 relative to max value
+                  const normalizedValue = maxValue > 0 ? (importance / maxValue) * 100 : 0
+                  return (
                   <FeatureBar 
                     key={feature} 
                     label={feature} 
-                    value={Math.round((importance || 0) * 100)} 
+                      value={Math.round(Math.min(Math.max(normalizedValue, 0), 100))} 
                   />
-                ))
+                  )
+                })
+              })()
             ) : (
               <p className="text-gray-500 text-center py-4">No feature importance data available</p>
             )}
@@ -854,24 +1384,202 @@ function ResultsView({ results }: any) {
                   name={file.name || `file_${idx + 1}`} 
                   size={file.size || 'Unknown'} 
                   downloadUrl={file.path || file.url}
-                  workflowId={workflowId}
+                  workflowId={currentWorkflowId || undefined}
                 />
               ))
             ) : (
               <>
-                <DeliverableItem name="cleaned_dataset.csv" size="Processing..." workflowId={workflowId} />
-                <DeliverableItem name="trained_model.joblib" size="Processing..." workflowId={workflowId} />
-                <DeliverableItem name="analysis_notebook.ipynb" size="Processing..." workflowId={workflowId} />
+                <DeliverableItem name="cleaned_dataset.csv" size="Processing..." workflowId={currentWorkflowId || undefined} />
+                <DeliverableItem name="trained_model.joblib" size="Processing..." workflowId={currentWorkflowId || undefined} />
+                <DeliverableItem name="analysis_notebook.ipynb" size="Processing..." workflowId={currentWorkflowId || undefined} />
               </>
             )}
           </div>
         </div>
       </div>
+      </div>
+      
+      {/* ✅ ADD: PM Chatbot Panel (similar to WorkflowView) */}
+      {pmExpanded && (
+        <div className="w-96 bg-white border-l border-gray-200 flex flex-col shadow-xl">
+          <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-4 flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <MessageSquare className="w-6 h-6" />
+              <h3 className="font-bold text-lg">Project Manager</h3>
+            </div>
+            <button
+              onClick={() => setPmExpanded(false)}
+              className="text-white hover:text-gray-200 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-gray-50">
+            {pmMessages.length === 0 ? (
+              <div className="text-center text-gray-500 py-8">
+                <MessageSquare className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                <p className="text-sm">No messages yet. Ask me anything about your results!</p>
+              </div>
+            ) : (
+              <>
+                {pmMessages.map((message: any, index: number) => (
+                  <PMMessage 
+                    key={index}
+                    agent={message.agent || 'System'} 
+                    time={new Date(message.timestamp).toLocaleTimeString()} 
+                    message={message.content}
+                    type={message.type}
+                  />
+                ))}
+                <div ref={pmMessagesEndRef} />
+              </>
+            )}
+          </div>
+
+          <div className="p-4 border-t border-gray-200 bg-white">
+            <div className="flex space-x-2">
+              <input
+                type="text"
+                value={pmQuestion}
+                onChange={(e) => setPmQuestion(e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && pmQuestion.trim()) {
+                    handlePMQuestion(pmQuestion)
+                  }
+                }}
+                placeholder="Ask about your results..."
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+              <button
+                onClick={() => pmQuestion.trim() && handlePMQuestion(pmQuestion)}
+                className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating PM Button */}
+      {!pmExpanded && (
+        <button
+          onClick={() => setPmExpanded(true)}
+          className="fixed right-6 bottom-6 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-full p-5 shadow-2xl hover:shadow-3xl transition-all hover:scale-110 z-50"
+        >
+          <MessageSquare className="w-7 h-7" />
+        </button>
+      )}
     </div>
   )
 }
 
 // ========== HELPER COMPONENTS ==========
+
+// ✅ ADD: Markdown content renderer for Summary box
+function MarkdownContent({ content }: { content: string }) {
+  if (!content) return null
+  
+  // Enhanced markdown parser with better table support
+  const parseMarkdown = (text: string) => {
+    let html = text
+    
+    // Process tables first (before other replacements)
+    const tableRegex = /(\|.+\|\n\|[-:|\s]+\|\n(?:\|.+\|\n?)+)/g
+    html = html.replace(tableRegex, (match) => {
+      const lines = match.trim().split('\n').filter(l => l.trim())
+      if (lines.length < 2) return match
+      
+      // Skip separator line
+      const dataLines = lines.filter(l => !l.match(/^\|[-:\s|]+\|$/))
+      
+      let tableHtml = '<div class="overflow-x-auto my-4"><table class="min-w-full border-collapse border border-gray-300 bg-white"><thead><tr class="bg-gray-50">'
+      
+      // Header row
+      const headerCells = dataLines[0].split('|').filter(c => c.trim())
+      headerCells.forEach(cell => {
+        tableHtml += `<th class="px-4 py-3 border border-gray-300 text-left font-semibold text-gray-900">${cell.trim()}</th>`
+      })
+      tableHtml += '</tr></thead><tbody>'
+      
+      // Data rows
+      for (let i = 1; i < dataLines.length; i++) {
+        const cells = dataLines[i].split('|').filter(c => c.trim())
+        tableHtml += '<tr class="hover:bg-gray-50">'
+        cells.forEach(cell => {
+          tableHtml += `<td class="px-4 py-2 border border-gray-300 text-gray-700">${cell.trim()}</td>`
+        })
+        tableHtml += '</tr>'
+      }
+      
+      tableHtml += '</tbody></table></div>'
+      return tableHtml
+    })
+    
+    // Headers
+    html = html.replace(/^### (.*$)/gim, '<h3 class="text-lg font-bold mt-6 mb-3 text-gray-900">$1</h3>')
+    html = html.replace(/^## (.*$)/gim, '<h2 class="text-xl font-bold mt-8 mb-4 text-gray-900">$1</h2>')
+    html = html.replace(/^# (.*$)/gim, '<h1 class="text-2xl font-bold mt-8 mb-4 text-gray-900">$1</h1>')
+    
+    // Bold
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-900">$1</strong>')
+    
+    // Italic
+    html = html.replace(/\*(.*?)\*/g, '<em class="italic text-gray-700">$1</em>')
+    
+    // Bullet points and lists
+    const lines = html.split('\n')
+    let inList = false
+    let listItems: string[] = []
+    let processedLines: string[] = []
+    
+    lines.forEach((line, idx) => {
+      const trimmed = line.trim()
+      const isListItem = trimmed.match(/^[•\-\*]\s+(.+)$/) || trimmed.match(/^\d+\.\s+(.+)$/)
+      
+      if (isListItem) {
+        if (!inList) {
+          inList = true
+          listItems = []
+        }
+        const content = isListItem[1] || trimmed.replace(/^[•\-\*]\s+/, '').replace(/^\d+\.\s+/, '')
+        listItems.push(`<li class="ml-4 mb-2 text-gray-700">${content}</li>`)
+      } else {
+        if (inList && listItems.length > 0) {
+          processedLines.push(`<ul class="list-disc space-y-1 mb-4 ml-6">${listItems.join('')}</ul>`)
+          listItems = []
+          inList = false
+        }
+        if (trimmed && !trimmed.startsWith('<')) {
+          processedLines.push(`<p class="mb-4 text-gray-700 leading-relaxed">${trimmed}</p>`)
+        } else if (trimmed) {
+          processedLines.push(line)
+        }
+      }
+    })
+    
+    if (inList && listItems.length > 0) {
+      processedLines.push(`<ul class="list-disc space-y-1 mb-4 ml-6">${listItems.join('')}</ul>`)
+    }
+    
+    html = processedLines.join('\n')
+    
+    // Clean up multiple consecutive <p> tags
+    html = html.replace(/<\/p>\n<p class="mb-4 text-gray-700 leading-relaxed">/g, '<br />')
+    
+    return html
+  }
+  
+  const htmlContent = parseMarkdown(content)
+  
+  return (
+    <div 
+      className="markdown-content text-gray-800 prose prose-sm max-w-none"
+      dangerouslySetInnerHTML={{ __html: htmlContent }}
+    />
+  )
+}
 
 function AgentStep({ icon: Icon, label, status, time }: any) {
   const colors = {
@@ -912,8 +1620,37 @@ function MetricBar({ label, value, color }: any) {
   )
 }
 
-function CompletedAgent({ icon: Icon, name, time, agentId }: any) {
+function CompletedAgent({ icon: Icon, name, time, agentId, workflowId }: any) {
   const [showDetails, setShowDetails] = useState(false)
+  const [summary, setSummary] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  
+  const fetchSummary = async () => {
+    if (!workflowId || !agentId || summary !== null) return
+    
+    setLoading(true)
+    try {
+      const response = await fetch(`http://localhost:8000/api/workflow/${workflowId}/agent/${agentId}/summary`)
+      if (response.ok) {
+        const data = await response.json()
+        setSummary(data.summary || "Agent execution completed successfully.")
+      } else {
+        setSummary("Agent execution completed successfully. Details will be available in the final report.")
+      }
+    } catch (error) {
+      console.error('Error fetching agent summary:', error)
+      setSummary("Agent execution completed successfully. Details will be available in the final report.")
+    } finally {
+      setLoading(false)
+    }
+  }
+  
+  const handleToggleDetails = () => {
+    if (!showDetails && summary === null) {
+      fetchSummary()
+    }
+    setShowDetails(!showDetails)
+  }
   
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:shadow-md transition-all">
@@ -926,7 +1663,7 @@ function CompletedAgent({ icon: Icon, name, time, agentId }: any) {
           </div>
         </div>
         <button 
-          onClick={() => setShowDetails(!showDetails)}
+          onClick={handleToggleDetails}
           className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
         >
           {showDetails ? 'Hide Details' : 'View Details'}
@@ -934,9 +1671,31 @@ function CompletedAgent({ icon: Icon, name, time, agentId }: any) {
       </div>
       {showDetails && (
         <div className="mt-4 pt-4 border-t border-gray-200">
-          <p className="text-sm text-gray-600">
-            Agent execution completed successfully. Details will be available in the final report.
-          </p>
+          {loading ? (
+            <div className="flex items-center space-x-2 text-sm text-gray-600">
+              <Loader className="w-4 h-4 animate-spin" />
+              <span>Loading summary...</span>
+            </div>
+          ) : summary ? (
+            <div className="text-sm text-gray-700 whitespace-pre-line space-y-2">
+              {summary.split('\n').map((line, idx) => {
+                // Format markdown-style headers
+                if (line.startsWith('**') && line.endsWith('**')) {
+                  return <h5 key={idx} className="font-bold text-gray-900 mt-3 mb-1">{line.replace(/\*\*/g, '')}</h5>
+                }
+                // Format bullet points
+                if (line.startsWith('- ')) {
+                  return <div key={idx} className="ml-4">{line}</div>
+                }
+                // Regular text
+                return <p key={idx}>{line}</p>
+              })}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-600">
+              Agent execution completed successfully. Details will be available in the final report.
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -1010,7 +1769,100 @@ function PMMessage({ agent, time, message, type }: any) {
         return 'bg-white border-gray-200 text-gray-700'
     }
   }
-
+  
+  // ✅ ENHANCED: Render markdown properly (tables, headers, lists, bold, etc.)
+  const renderMarkdown = (msg: string) => {
+    if (!msg) return ''
+    
+    let html = msg
+    
+    // Process tables first (before other markdown)
+    const tableRegex = /(\|.+\|\n\|[-:|\s]+\|\n(?:\|.+\|\n?)+)/g
+    html = html.replace(tableRegex, (match) => {
+      const rows = match.trim().split('\n').filter(r => r.trim())
+      if (rows.length < 2) return match
+      
+      let tableHtml = '<div class="overflow-x-auto my-4"><table class="min-w-full border-collapse border border-gray-300 bg-white"><thead><tr class="bg-gray-50">'
+      
+      // Header row
+      const headerRow = rows[0].split('|').filter(c => c.trim())
+      headerRow.forEach(cell => {
+        tableHtml += `<th class="border border-gray-300 px-4 py-2 text-left font-semibold text-gray-900">${cell.trim()}</th>`
+      })
+      tableHtml += '</tr></thead><tbody>'
+      
+      // Data rows (skip separator row)
+      for (let i = 2; i < rows.length; i++) {
+        const cells = rows[i].split('|').filter(c => c.trim())
+        tableHtml += '<tr>'
+        cells.forEach(cell => {
+          tableHtml += `<td class="border border-gray-300 px-4 py-2 text-gray-700">${cell.trim()}</td>`
+        })
+        tableHtml += '</tr>'
+      }
+      
+      tableHtml += '</tbody></table></div>'
+      return tableHtml
+    })
+    
+    // Headers
+    html = html.replace(/^### (.*$)/gim, '<h3 class="text-lg font-bold mt-4 mb-2 text-gray-900">$1</h3>')
+    html = html.replace(/^## (.*$)/gim, '<h2 class="text-xl font-bold mt-6 mb-3 text-gray-900">$1</h2>')
+    html = html.replace(/^# (.*$)/gim, '<h1 class="text-2xl font-bold mt-6 mb-4 text-gray-900">$1</h1>')
+    
+    // Bold and italic
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold">$1</strong>')
+    html = html.replace(/\*(.*?)\*/g, '<em class="italic">$1</em>')
+    
+    // Lists
+    html = html.replace(/^\* (.*$)/gim, '<li class="ml-4">$1</li>')
+    html = html.replace(/^- (.*$)/gim, '<li class="ml-4">$1</li>')
+    html = html.replace(/(<li.*<\/li>)/s, '<ul class="list-disc space-y-1 mb-4 ml-6">$1</ul>')
+    
+    // Paragraphs (lines that don't start with HTML tags)
+    const lines = html.split('\n')
+    const processedLines: string[] = []
+    let inList = false
+    let listItems: string[] = []
+    
+    lines.forEach(line => {
+      const trimmed = line.trim()
+      if (trimmed.startsWith('<li')) {
+        inList = true
+        listItems.push(trimmed)
+      } else if (trimmed.startsWith('</ul>')) {
+        if (inList && listItems.length > 0) {
+          processedLines.push(`<ul class="list-disc space-y-1 mb-4 ml-6">${listItems.join('')}</ul>`)
+          listItems = []
+        }
+        inList = false
+        processedLines.push(trimmed)
+      } else {
+        if (inList && listItems.length > 0) {
+          processedLines.push(`<ul class="list-disc space-y-1 mb-4 ml-6">${listItems.join('')}</ul>`)
+          listItems = []
+        }
+        inList = false
+        if (trimmed && !trimmed.startsWith('<') && !trimmed.match(/^#+\s/)) {
+          processedLines.push(`<p class="mb-2 text-gray-700 leading-relaxed">${trimmed}</p>`)
+        } else if (trimmed) {
+          processedLines.push(trimmed)
+        }
+      }
+    })
+    
+    if (inList && listItems.length > 0) {
+      processedLines.push(`<ul class="list-disc space-y-1 mb-4 ml-6">${listItems.join('')}</ul>`)
+    }
+    
+    html = processedLines.join('\n')
+    
+    // Clean up multiple consecutive <p> tags
+    html = html.replace(/<\/p>\n<p class="mb-2 text-gray-700 leading-relaxed">/g, '<br />')
+    
+    return html
+  }
+  
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
@@ -1018,7 +1870,10 @@ function PMMessage({ agent, time, message, type }: any) {
         <span className="text-xs text-gray-400">{time}</span>
       </div>
       <div className={`rounded-lg p-4 text-sm leading-relaxed shadow-sm border ${getMessageStyle()}`}>
-        {message}
+        <div 
+          className="prose prose-sm max-w-none"
+          dangerouslySetInnerHTML={{ __html: renderMarkdown(message) }}
+        />
       </div>
     </div>
   )
@@ -1026,6 +1881,28 @@ function PMMessage({ agent, time, message, type }: any) {
 
 // ✅ Approval Gate Component
 function ApprovalGate({ onApprovalResponse }: any) {
+  const [isProcessing, setIsProcessing] = useState(false)
+  
+  const handleApproval = async (action: 'approve' | 'reject' | 'modify') => {
+    if (isProcessing) return // Prevent double clicks
+    
+    setIsProcessing(true)
+    console.log(`🔄 Processing approval: ${action}`)
+    
+    try {
+      if (onApprovalResponse && typeof onApprovalResponse === 'function') {
+        await onApprovalResponse(action)
+      } else {
+        console.error('onApprovalResponse is not a function:', typeof onApprovalResponse)
+      }
+    } catch (error) {
+      console.error('Error in approval handler:', error)
+    } finally {
+      // Reset after a short delay to allow UI update
+      setTimeout(() => setIsProcessing(false), 1000)
+    }
+  }
+  
   return (
     <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-5 space-y-4">
       <div className="flex items-start space-x-3">
@@ -1045,20 +1922,41 @@ function ApprovalGate({ onApprovalResponse }: any) {
 
           <div className="grid grid-cols-3 gap-2">
             <button
-              onClick={() => onApprovalResponse('approve')}
-              className="bg-green-600 text-white py-2.5 px-4 rounded-lg text-sm font-semibold hover:bg-green-700 transition-colors"
+              type="button"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                handleApproval('approve')
+              }}
+              disabled={isProcessing}
+              style={{ pointerEvents: isProcessing ? 'none' : 'auto', cursor: isProcessing ? 'wait' : 'pointer' }}
+              className="bg-green-600 text-white py-2.5 px-4 rounded-lg text-sm font-semibold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              ✓ Approve
+              {isProcessing ? 'Processing...' : '✓ Approve'}
             </button>
             <button
-              onClick={() => onApprovalResponse('modify')}
-              className="bg-gray-200 text-gray-700 py-2.5 px-4 rounded-lg text-sm font-semibold hover:bg-gray-300 transition-colors"
+              type="button"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                handleApproval('modify')
+              }}
+              disabled={isProcessing}
+              style={{ pointerEvents: isProcessing ? 'none' : 'auto', cursor: isProcessing ? 'wait' : 'pointer' }}
+              className="bg-gray-200 text-gray-700 py-2.5 px-4 rounded-lg text-sm font-semibold hover:bg-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Modify
             </button>
             <button
-              onClick={() => onApprovalResponse('reject')}
-              className="bg-red-100 text-red-700 py-2.5 px-4 rounded-lg text-sm font-semibold hover:bg-red-200 transition-colors"
+              type="button"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                handleApproval('reject')
+              }}
+              disabled={isProcessing}
+              style={{ pointerEvents: isProcessing ? 'none' : 'auto', cursor: isProcessing ? 'wait' : 'pointer' }}
+              className="bg-red-100 text-red-700 py-2.5 px-4 rounded-lg text-sm font-semibold hover:bg-red-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Reject
             </button>
@@ -1131,14 +2029,21 @@ function PlotCard({ title, type }: any) {
 }
 
 function FeatureBar({ label, value }: any) {
+  // ✅ FIX: Cap value at 100% to prevent overflow
+  const cappedValue = Math.min(Math.max(value, 0), 100)
+  const displayValue = Math.round(cappedValue)
+  
   return (
-    <div>
+    <div className="w-full">
       <div className="flex justify-between text-sm mb-2">
-        <span className="font-semibold text-gray-900">{label}</span>
-        <span className="text-gray-500">{value}%</span>
+        <span className="font-semibold text-gray-900 truncate pr-2" title={label}>{label}</span>
+        <span className="text-gray-500 whitespace-nowrap">{displayValue}%</span>
       </div>
-      <div className="w-full bg-gray-200 rounded-full h-3">
-        <div className="bg-gradient-to-r from-blue-500 to-purple-600 h-3 rounded-full transition-all" style={{width: `${value}%`}} />
+      <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+        <div 
+          className="bg-gradient-to-r from-blue-500 to-purple-600 h-3 rounded-full transition-all" 
+          style={{width: `${cappedValue}%`, maxWidth: '100%'}} 
+        />
       </div>
     </div>
   )
@@ -1199,4 +2104,5 @@ function DeliverableItem({ name, size, downloadUrl, workflowId }: any) {
     </div>
   )
 }
+
 

@@ -69,6 +69,10 @@ class CodeValidator:
         security_issues = []
         suggestions = []
         
+        # 0. Pre-clean code aggressively to fix common issues
+        # _clean_code already handles empty blocks, but ensure it's applied
+        code = self._clean_code(code)
+        
         # 1. Syntax validation
         syntax_valid, syntax_errors = self._validate_syntax(code)
         if not syntax_valid:
@@ -114,13 +118,281 @@ class CodeValidator:
             suggestions=suggestions
         )
     
-    def _validate_syntax(self, code: str) -> Tuple[bool, List[str]]:
-        """Validate Python syntax"""
+    def _clean_code(self, code: str) -> str:
+        """Clean and fix common LLM-generated code issues, including indentation"""
+        if not code:
+            return code
+        
+        original_code = code
+        
+        # Remove markdown code fences
+        code = code.strip()
+        if code.startswith('```python'):
+            code = code[9:].strip()
+        elif code.startswith('```'):
+            code = code[3:].strip()
+        if code.endswith('```'):
+            code = code[:-3].strip()
+        
+        lines = code.split('\n')
+        cleaned_lines = []
+        skip_until_code = True
+        expected_indent = 0  # Track expected indentation level
+        
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            
+            # Skip empty lines at the start
+            if skip_until_code and not stripped:
+                continue
+            
+            # Detect start of actual code
+            if skip_until_code:
+                if stripped.startswith('import ') or stripped.startswith('from ') or stripped.startswith('def ') or stripped.startswith('class '):
+                    skip_until_code = False
+                else:
+                    # Skip explanatory text
+                    continue
+            
+            # Process code lines
+            if not skip_until_code:
+                # ✅ CRITICAL FIX: Fix indentation issues
+                # Module-level statements should be at column 0
+                if stripped.startswith('import ') or stripped.startswith('from ') or stripped.startswith('def ') or stripped.startswith('class '):
+                    # These should be at column 0 - remove ALL leading whitespace
+                    cleaned_lines.append(stripped)
+                    expected_indent = 0
+                elif stripped.startswith('#'):
+                    # Comments - keep indentation relative to context
+                    # If previous line was module-level, this should be module-level too
+                    if expected_indent == 0:
+                        cleaned_lines.append(stripped)
+                    else:
+                        # Preserve relative indentation for comments
+                        cleaned_lines.append(line)
+                elif not stripped:
+                    # Empty line - preserve it
+                    cleaned_lines.append('')
+                else:
+                    # ✅ CRITICAL FIX: Fix mixed indentation
+                    # Count leading spaces/tabs
+                    leading_spaces = len(line) - len(line.lstrip())
+                    # Convert tabs to 4 spaces
+                    if '\t' in line[:leading_spaces]:
+                        # Replace tabs with 4 spaces
+                        line = line.replace('\t', '    ')
+                        leading_spaces = len(line) - len(line.lstrip())
+                    
+                    # Check if indentation is consistent (multiple of 4)
+                    if leading_spaces % 4 != 0:
+                        # Round to nearest multiple of 4
+                        leading_spaces = (leading_spaces // 4) * 4
+                        line = ' ' * leading_spaces + line.lstrip()
+                    
+                    # ✅ CRITICAL FIX: Fix unexpected indent errors
+                    # If line has indentation but previous line was module-level, check context
+                    if leading_spaces > 0 and i > 0:
+                        prev_line = lines[i-1] if i > 0 else ""
+                        prev_stripped = prev_line.strip()
+                        # If previous line doesn't end with ':' and this line is indented, might be error
+                        if prev_stripped and not prev_stripped.endswith(':') and not prev_stripped.endswith('\\'):
+                            # Check if this should actually be at module level
+                            if stripped.startswith(('import ', 'from ', 'def ', 'class ')):
+                                # This should be at module level
+                                line = stripped
+                                leading_spaces = 0
+                    
+                    # ✅ CRITICAL FIX: Fix unindent errors
+                    # If line starts with elif/else/except/finally and previous was at module level, it's an error
+                    if stripped.startswith(('elif ', 'else:', 'except', 'finally:')) and expected_indent == 0:
+                        # This is an indentation error - add proper indentation
+                        cleaned_lines.append('    ' + stripped)
+                        expected_indent = 4
+                    else:
+                        # ✅ CRITICAL FIX: Handle empty try/except blocks
+                        # If we see 'try:' or 'except' followed by another control structure, add pass
+                        if stripped.startswith('try:') and i + 1 < len(lines):
+                            # Check if next non-empty line is except/else/finally
+                            next_non_empty = None
+                            for j in range(i + 1, min(i + 5, len(lines))):
+                                next_stripped = lines[j].strip()
+                                if next_stripped:
+                                    next_non_empty = next_stripped
+                                    break
+                            if next_non_empty and (next_non_empty.startswith('except') or next_non_empty.startswith('else:') or next_non_empty.startswith('finally:')):
+                                # Empty try block - add pass
+                                cleaned_lines.append(line)
+                                cleaned_lines.append(' ' * (leading_spaces + 4) + 'pass')
+                                expected_indent = leading_spaces + 4
+                            else:
+                                cleaned_lines.append(line)
+                                if stripped.endswith(':'):
+                                    expected_indent = leading_spaces + 4
+                                else:
+                                    expected_indent = leading_spaces
+                        else:
+                            cleaned_lines.append(line)
+                            # Update expected indent based on line content
+                            if stripped.endswith(':'):
+                                # This line starts a block - next line should be indented
+                                expected_indent = leading_spaces + 4
+                            elif leading_spaces == 0:
+                                expected_indent = 0
+                            else:
+                                expected_indent = leading_spaces
+        
+        # Join and clean up
+        code_str = '\n'.join(cleaned_lines)
+        
+        # Final pass: ensure first import/def is at column 0
+        final_lines = code_str.split('\n')
+        if final_lines:
+            # Find first actual code line
+            first_code_idx = None
+            for i, line in enumerate(final_lines):
+                stripped = line.strip()
+                if stripped and (stripped.startswith('import ') or stripped.startswith('from ') or stripped.startswith('def ') or stripped.startswith('class ')):
+                    first_code_idx = i
+                    break
+            
+            if first_code_idx is not None and first_code_idx > 0:
+                # Remove everything before first code
+                final_lines = final_lines[first_code_idx:]
+            
+            # Ensure first line starts at column 0
+            if final_lines and final_lines[0].strip():
+                first_line = final_lines[0]
+                if first_line.startswith(' ') or first_line.startswith('\t'):
+                    final_lines[0] = final_lines[0].lstrip()
+            
+            code_str = '\n'.join(final_lines)
+        
+        result = code_str.strip()
+        
+        # ✅ CRITICAL FIX: Additional pass to fix empty try/except/class/def blocks
+        # This handles cases where blocks are empty (which causes syntax errors)
+        lines = result.split('\n')
+        fixed_lines = []
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            stripped = line.strip()
+            indent = len(line) - len(line.lstrip())
+            
+            # Check if this is a try: statement
+            if stripped == 'try:' or (stripped.startswith('try:') and len(stripped.split()) == 1):
+                # Check if next non-empty line is except/else/finally (empty try block)
+                j = i + 1
+                next_non_empty = None
+                while j < len(lines):
+                    if lines[j].strip():
+                        next_non_empty = lines[j].strip()
+                        break
+                    j += 1
+                
+                if next_non_empty and (next_non_empty.startswith('except') or next_non_empty.startswith('else:') or next_non_empty.startswith('finally:')):
+                    # Empty try block - add pass
+                    fixed_lines.append(line)
+                    fixed_lines.append(' ' * (indent + 4) + 'pass')
+                    i += 1
+                    continue
+            
+            # Check if this is an except: statement (might be empty)
+            if stripped.startswith('except') and (stripped == 'except:' or stripped.endswith('except:')):
+                # Check if next non-empty line is else/finally or another except (empty except block)
+                j = i + 1
+                next_non_empty = None
+                while j < len(lines):
+                    if lines[j].strip():
+                        next_non_empty = lines[j].strip()
+                        break
+                    j += 1
+                
+                if next_non_empty and (next_non_empty.startswith('except') or next_non_empty.startswith('else:') or next_non_empty.startswith('finally:') or next_non_empty.startswith('try:')):
+                    # Empty except block - add pass
+                    fixed_lines.append(line)
+                    fixed_lines.append(' ' * (indent + 4) + 'pass')
+                    i += 1
+                    continue
+            
+            # ✅ CRITICAL FIX: Check if this is a class definition (might be empty)
+            if stripped.startswith('class ') and stripped.endswith(':'):
+                # Check if next non-empty line is at same or less indentation (empty class)
+                j = i + 1
+                next_non_empty = None
+                next_non_empty_indent = None
+                while j < len(lines):
+                    if lines[j].strip():
+                        next_non_empty = lines[j].strip()
+                        next_non_empty_indent = len(lines[j]) - len(lines[j].lstrip())
+                        break
+                    j += 1
+                
+                # If no next line OR next line is at same or less indentation, class is empty
+                if next_non_empty is None or (next_non_empty_indent is not None and next_non_empty_indent <= indent):
+                    # Empty class block - add pass
+                    fixed_lines.append(line)
+                    fixed_lines.append(' ' * (indent + 4) + 'pass')
+                    i += 1
+                    continue
+            
+            # ✅ CRITICAL FIX: Check if this is a function definition (might be empty)
+            if stripped.startswith('def ') and stripped.endswith(':'):
+                # Check if next non-empty line is at same or less indentation (empty function)
+                j = i + 1
+                next_non_empty = None
+                next_non_empty_indent = None
+                while j < len(lines):
+                    if lines[j].strip():
+                        next_non_empty = lines[j].strip()
+                        next_non_empty_indent = len(lines[j]) - len(lines[j].lstrip())
+                        break
+                    j += 1
+                
+                # If no next line OR next line is at same or less indentation, function is empty
+                if next_non_empty is None or (next_non_empty_indent is not None and next_non_empty_indent <= indent):
+                    # Empty function block - add pass
+                    fixed_lines.append(line)
+                    fixed_lines.append(' ' * (indent + 4) + 'pass')
+                    i += 1
+                    continue
+            
+            fixed_lines.append(line)
+            i += 1
+        
+        result = '\n'.join(fixed_lines)
+        
+        # Try to parse to verify syntax is now correct
         try:
-            ast.parse(code)
+            import ast
+            ast.parse(result)
+        except (SyntaxError, ValueError) as e:
+            # If still has syntax errors, log but return cleaned code anyway
+            # The validation step will catch it and provide better error messages
+            logger.debug(f"Code still has syntax errors after cleaning: {e}")
+        
+        # Log if significant cleaning happened
+        if len(result) < len(original_code) * 0.8:
+            logger.debug(f"Significant code cleaning: {len(original_code)} -> {len(result)} chars")
+        
+        return result
+    
+    def _validate_syntax(self, code: str) -> Tuple[bool, List[str]]:
+        """Validate Python syntax, with automatic cleaning"""
+        # First try to clean the code
+        cleaned_code = self._clean_code(code)
+        
+        # Try parsing cleaned code
+        try:
+            ast.parse(cleaned_code)
             return True, []
         except SyntaxError as e:
-            return False, [f"Syntax error at line {e.lineno}: {e.msg}"]
+            # If cleaned code still fails, try original
+            try:
+                ast.parse(code)
+                return True, []
+            except SyntaxError as e2:
+                return False, [f"Syntax error at line {e2.lineno}: {e2.msg}"]
         except Exception as e:
             return False, [f"Parse error: {str(e)}"]
     
@@ -128,12 +400,15 @@ class CodeValidator:
         """Scan for security issues (RELAXED for sandbox environment)"""
         issues = []
         
-        # Check for CRITICAL dangerous operations only
-        critical_dangerous = ['eval', 'exec', '__import__', 'os.system', 'subprocess.call']
+        # In sandbox environment, exec/eval are safe (isolated execution)
+        # Only block truly dangerous operations that could escape sandbox
+        critical_dangerous = ['os.system', 'subprocess.call', 'subprocess.run', 'subprocess.Popen']
         for dangerous in critical_dangerous:
             if dangerous in code:
                 issues.append(f"Critical dangerous operation: {dangerous}")
         
+        # exec/eval are OK in sandbox (code runs in isolated Docker container)
+        # __import__ is OK in sandbox (limited to allowed imports)
         # File system operations are OK in sandbox (has limited access)
         # Network operations are OK in sandbox (network is isolated)
         # Most built-ins are OK in sandbox

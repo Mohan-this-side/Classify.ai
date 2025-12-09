@@ -1,0 +1,188 @@
+{
+  "dataset_name": "severe_imbalance",
+  "file_path": "Evaluation/datasets/synthetic/severe_imbalance.csv",
+  "source": "synthetic",
+  "kaggle_id": null,
+  "description": "99:1 ratio with high majority class accuracy trap",
+  "analysis": {
+    "dataset_name": "severe_imbalance",
+    "file_path": "Evaluation/datasets/synthetic/severe_imbalance.csv",
+    "shape": [
+      1000,
+      16
+    ],
+    "columns": [
+      "feature_0",
+      "feature_1",
+      "feature_2",
+      "feature_3",
+      "feature_4",
+      "feature_5",
+      "feature_6",
+      "feature_7",
+      "feature_8",
+      "feature_9",
+      "feature_10",
+      "feature_11",
+      "feature_12",
+      "feature_13",
+      "feature_14",
+      "target"
+    ],
+    "target_column": null,
+    "has_target": false,
+    "missing_values": {
+      "counts": {
+        "feature_0": 0,
+        "feature_1": 0,
+        "feature_2": 0,
+        "feature_3": 0,
+        "feature_4": 0,
+        "feature_5": 0,
+        "feature_6": 0,
+        "feature_7": 0,
+        "feature_8": 0,
+        "feature_9": 0,
+        "feature_10": 0,
+        "feature_11": 0,
+        "feature_12": 0,
+        "feature_13": 0,
+        "feature_14": 0,
+        "target": 0
+      },
+      "percentages": {
+        "feature_0": 0.0,
+        "feature_1": 0.0,
+        "feature_2": 0.0,
+        "feature_3": 0.0,
+        "feature_4": 0.0,
+        "feature_5": 0.0,
+        "feature_6": 0.0,
+        "feature_7": 0.0,
+        "feature_8": 0.0,
+        "feature_9": 0.0,
+        "feature_10": 0.0,
+        "feature_11": 0.0,
+        "feature_12": 0.0,
+        "feature_13": 0.0,
+        "feature_14": 0.0,
+        "target": 0.0
+      },
+      "total_missing_pct": 0.0
+    },
+    "data_types": {
+      "all": {
+        "feature_0": "float64",
+        "feature_1": "float64",
+        "feature_2": "float64",
+        "feature_3": "float64",
+        "feature_4": "float64",
+        "feature_5": "float64",
+        "feature_6": "float64",
+        "feature_7": "float64",
+        "feature_8": "float64",
+        "feature_9": "float64",
+        "feature_10": "float64",
+        "feature_11": "float64",
+        "feature_12": "float64",
+        "feature_13": "float64",
+        "feature_14": "float64",
+        "target": "int64"
+      },
+      "numeric": [
+        "feature_0",
+        "feature_1",
+        "feature_2",
+        "feature_3",
+        "feature_4",
+        "feature_5",
+        "feature_6",
+        "feature_7",
+        "feature_8",
+        "feature_9",
+        "feature_10",
+        "feature_11",
+        "feature_12",
+        "feature_13",
+        "feature_14",
+        "target"
+      ],
+      "categorical": [],
+      "mixed_types": false
+    },
+    "correlations": {
+      "high_correlation_pairs": [],
+      "has_multicollinearity": false
+    },
+    "dimensionality": {
+      "n_samples": 1000,
+      "n_features": 16,
+      "features_per_sample": 0.016,
+      "curse_of_dimensionality": false
+    }
+  },
+  "expected_issues": [],
+  "expected_behavior": [
+    {
+      "should_detect_imbalance": true
+    },
+    {
+      "should_apply_class_balancing": true
+    },
+    {
+      "should_check_minority_recall": true
+    }
+  ],
+  "pass_fail_criteria": {
+    "data_discovery": {
+      "should_detect_types": true,
+      "should_identify_target": false,
+      "should_report_shape": true,
+      "type_detection_accuracy_min": 0.9
+    },
+    "eda_analysis": {
+      "should_detect_imbalance": false,
+      "should_flag_severe_imbalance": false,
+      "should_detect_missing_values": "False",
+      "should_detect_correlations": false,
+      "should_not_celebrate_high_accuracy_if_imbalanced": false
+    },
+    "data_cleaning": {
+      "should_handle_missing_values": "False",
+      "should_remove_duplicates": true,
+      "should_handle_outliers": true,
+      "imputation_appropriateness_min": null
+    },
+    "feature_engineering": {
+      "should_detect_multicollinearity": false,
+      "should_remove_redundant_features": false,
+      "should_encode_categoricals": false,
+      "should_scale_features": true
+    },
+    "ml_builder": {
+      "should_apply_class_balancing": false,
+      "should_not_celebrate_majority_class_accuracy": false,
+      "should_flag_suspicious_accuracy": false,
+      "should_check_minority_recall": false,
+      "anti_cheating_score_min": 0.7
+    },
+    "model_evaluation": {
+      "should_compute_comprehensive_metrics": true,
+      "should_flag_imbalance_issues": false,
+      "should_check_minority_class_performance": false,
+      "should_flag_suspicious_accuracy": false,
+      "metric_completeness_min": 0.9
+    },
+    "technical_reporter": {
+      "should_document_all_steps": true,
+      "should_include_visualizations": true,
+      "report_completeness_min": 0.85
+    },
+    "project_manager": {
+      "should_explain_imbalance": false,
+      "should_explain_data_leakage": false,
+      "should_provide_educational_explanations": true,
+      "explanation_accuracy_min": 4.0
+    }
+  }
+}

@@ -1,0 +1,184 @@
+{
+  "dataset_name": "wine_quality",
+  "file_path": "Evaluation/datasets/real_world/wine_quality.csv",
+  "source": "kaggle",
+  "kaggle_id": "uciml/red-wine-quality-cortez-et-al-2009",
+  "description": "",
+  "analysis": {
+    "dataset_name": "wine_quality",
+    "file_path": "Evaluation/datasets/real_world/wine_quality.csv",
+    "shape": [
+      32561,
+      15
+    ],
+    "columns": [
+      "age",
+      "workclass",
+      "fnlwgt",
+      "education",
+      "education.num",
+      "marital.status",
+      "occupation",
+      "relationship",
+      "race",
+      "sex",
+      "capital.gain",
+      "capital.loss",
+      "hours.per.week",
+      "native.country",
+      "income"
+    ],
+    "target_column": "quality",
+    "has_target": false,
+    "missing_values": {
+      "counts": {
+        "age": 0,
+        "workclass": 0,
+        "fnlwgt": 0,
+        "education": 0,
+        "education.num": 0,
+        "marital.status": 0,
+        "occupation": 0,
+        "relationship": 0,
+        "race": 0,
+        "sex": 0,
+        "capital.gain": 0,
+        "capital.loss": 0,
+        "hours.per.week": 0,
+        "native.country": 0,
+        "income": 0
+      },
+      "percentages": {
+        "age": 0.0,
+        "workclass": 0.0,
+        "fnlwgt": 0.0,
+        "education": 0.0,
+        "education.num": 0.0,
+        "marital.status": 0.0,
+        "occupation": 0.0,
+        "relationship": 0.0,
+        "race": 0.0,
+        "sex": 0.0,
+        "capital.gain": 0.0,
+        "capital.loss": 0.0,
+        "hours.per.week": 0.0,
+        "native.country": 0.0,
+        "income": 0.0
+      },
+      "total_missing_pct": 0.0
+    },
+    "data_types": {
+      "all": {
+        "age": "int64",
+        "workclass": "object",
+        "fnlwgt": "int64",
+        "education": "object",
+        "education.num": "int64",
+        "marital.status": "object",
+        "occupation": "object",
+        "relationship": "object",
+        "race": "object",
+        "sex": "object",
+        "capital.gain": "int64",
+        "capital.loss": "int64",
+        "hours.per.week": "int64",
+        "native.country": "object",
+        "income": "object"
+      },
+      "numeric": [
+        "age",
+        "fnlwgt",
+        "education.num",
+        "capital.gain",
+        "capital.loss",
+        "hours.per.week"
+      ],
+      "categorical": [
+        "workclass",
+        "education",
+        "marital.status",
+        "occupation",
+        "relationship",
+        "race",
+        "sex",
+        "native.country",
+        "income"
+      ],
+      "mixed_types": true
+    },
+    "correlations": {
+      "high_correlation_pairs": [],
+      "has_multicollinearity": false
+    },
+    "dimensionality": {
+      "n_samples": 32561,
+      "n_features": 14,
+      "features_per_sample": 0.00042996222474739717,
+      "curse_of_dimensionality": false
+    }
+  },
+  "expected_issues": [
+    {
+      "multiclass_classification": true
+    },
+    {
+      "numeric_features": true
+    },
+    {
+      "quality_classification": true
+    }
+  ],
+  "expected_behavior": {},
+  "pass_fail_criteria": {
+    "data_discovery": {
+      "should_detect_types": true,
+      "should_identify_target": false,
+      "should_report_shape": true,
+      "type_detection_accuracy_min": 0.9
+    },
+    "eda_analysis": {
+      "should_detect_imbalance": false,
+      "should_flag_severe_imbalance": false,
+      "should_detect_missing_values": "False",
+      "should_detect_correlations": false,
+      "should_not_celebrate_high_accuracy_if_imbalanced": false
+    },
+    "data_cleaning": {
+      "should_handle_missing_values": "False",
+      "should_remove_duplicates": true,
+      "should_handle_outliers": true,
+      "imputation_appropriateness_min": null
+    },
+    "feature_engineering": {
+      "should_detect_multicollinearity": false,
+      "should_remove_redundant_features": false,
+      "should_encode_categoricals": true,
+      "should_scale_features": true
+    },
+    "ml_builder": {
+      "should_apply_class_balancing": false,
+      "should_not_celebrate_majority_class_accuracy": false,
+      "should_flag_suspicious_accuracy": false,
+      "should_check_minority_recall": false,
+      "anti_cheating_score_min": 0.7
+    },
+    "model_evaluation": {
+      "should_compute_comprehensive_metrics": true,
+      "should_flag_imbalance_issues": false,
+      "should_check_minority_class_performance": false,
+      "should_flag_suspicious_accuracy": false,
+      "metric_completeness_min": 0.9
+    },
+    "technical_reporter": {
+      "should_document_all_steps": true,
+      "should_include_visualizations": true,
+      "report_completeness_min": 0.85
+    },
+    "project_manager": {
+      "should_explain_imbalance": false,
+      "should_explain_data_leakage": false,
+      "should_provide_educational_explanations": true,
+      "explanation_accuracy_min": 4.0
+    }
+  }
+}

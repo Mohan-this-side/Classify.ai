@@ -51,47 +51,71 @@ class LLMService:
     Supports multiple providers with automatic fallback.
     """
     
-    def __init__(self, primary_provider: LLMProvider = LLMProvider.GEMINI):
+    def __init__(self, primary_provider: LLMProvider = LLMProvider.GEMINI, api_key: Optional[str] = None):
         """
         Initialize LLM service with specified primary provider.
         
         Args:
             primary_provider: Primary LLM provider to use
+            api_key: User-provided API key (takes precedence over environment variables)
         """
         self.primary_provider = primary_provider
+        self.user_api_key = api_key
         self.logger = logging.getLogger("llm_service")
         
         # Initialize clients
         self._init_clients()
-        
+    
     def _init_clients(self):
         """Initialize LLM clients for all available providers"""
         self.clients = {}
         
-        # Initialize Gemini
-        if genai and settings.google_api_key:
+        # Initialize Gemini - prioritize user-provided API key
+        api_key = self.user_api_key or settings.gemini_api_key or settings.google_api_key
+        if genai and api_key:
             try:
-                genai.configure(api_key=settings.google_api_key)
+                # Validate API key format (basic check - Gemini keys typically start with AIza)
+                if self.user_api_key and not api_key.startswith("AIza") and api_key != "dummy_key":
+                    self.logger.warning(f"⚠️ API key format may be invalid (expected to start with 'AIza'): {api_key[:10]}...")
+                
+                genai.configure(api_key=api_key)
                 self.clients[LLMProvider.GEMINI] = genai.GenerativeModel('models/gemini-flash-latest')
-                self.logger.info("Gemini client initialized")
+                # Log without exposing the actual key
+                key_preview = f"{api_key[:10]}..." if len(api_key) > 10 else "***"
+                self.logger.info(f"✅ Gemini client initialized" + (f" with user-provided key ({key_preview})" if self.user_api_key else ""))
             except Exception as e:
-                self.logger.warning(f"Failed to initialize Gemini: {e}")
+                error_msg = str(e).lower()
+                if "403" in error_msg or "leaked" in error_msg:
+                    self.logger.error("❌ Gemini API key error: API key may be invalid or reported as leaked. Please use a different key.")
+                else:
+                    self.logger.warning(f"Failed to initialize Gemini: {e}")
+        elif genai:
+            self.logger.warning("⚠️ Gemini API key not found. Set GEMINI_API_KEY or GOOGLE_API_KEY environment variable, or provide via frontend.")
         
-        # Initialize OpenAI
-        if OpenAI and settings.openai_api_key:
+        # Initialize OpenAI - prioritize user-provided API key if it looks like OpenAI key
+        openai_key = self.user_api_key if (self.user_api_key and self.user_api_key.startswith("sk-")) else settings.openai_api_key
+        if OpenAI and openai_key:
             try:
-                self.clients[LLMProvider.OPENAI] = OpenAI(api_key=settings.openai_api_key)
-                self.logger.info("OpenAI client initialized")
+                self.clients[LLMProvider.OPENAI] = OpenAI(api_key=openai_key)
+                self.logger.info("✅ OpenAI client initialized" + (" with user-provided key" if (self.user_api_key and self.user_api_key.startswith("sk-")) else ""))
             except Exception as e:
                 self.logger.warning(f"Failed to initialize OpenAI: {e}")
+        elif OpenAI:
+            self.logger.warning("⚠️ OpenAI API key not found. Set OPENAI_API_KEY environment variable, or provide via frontend.")
         
-        # Initialize Anthropic
-        if Anthropic and settings.anthropic_api_key:
+        # Initialize Anthropic - prioritize user-provided API key if it looks like Anthropic key
+        anthropic_key = self.user_api_key if (self.user_api_key and self.user_api_key.startswith("sk-ant-")) else getattr(settings, 'anthropic_api_key', None)
+        if Anthropic and anthropic_key:
             try:
-                self.clients[LLMProvider.ANTHROPIC] = Anthropic(api_key=settings.anthropic_api_key)
-                self.logger.info("Anthropic client initialized")
+                self.clients[LLMProvider.ANTHROPIC] = Anthropic(api_key=anthropic_key)
+                self.logger.info("✅ Anthropic client initialized" + (" with user-provided key" if (self.user_api_key and self.user_api_key.startswith("sk-ant-")) else ""))
             except Exception as e:
                 self.logger.warning(f"Failed to initialize Anthropic: {e}")
+        elif Anthropic:
+            self.logger.warning("⚠️ Anthropic API key not found. Set ANTHROPIC_API_KEY environment variable, or provide via frontend.")
+        
+        if not self.clients:
+            self.logger.warning("⚠️ No LLM providers initialized. Layer 2 (LLM code generation) will not work. Please set at least one API key (GEMINI_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY) or provide via frontend.")
     
     async def generate_code(
         self,
@@ -166,27 +190,47 @@ class LLMService:
         
         model = self.clients[LLMProvider.GEMINI]
         
-        # Run blocking operation in executor to avoid blocking event loop
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, model.generate_content, prompt)
-        
-        # Check for blockers
-        if response.prompt_feedback.block_reason:
-            raise Exception(f"Content blocked: {response.prompt_feedback.block_reason}")
-        
-        # Get text safely
-        text = response.text if hasattr(response, 'text') else str(response)
-        code = self._extract_code_from_response(text)
-        
-        return {
-            "code": code,
-            "provider": "gemini",
-            "raw_response": text,
-            "metadata": {
-                "model": "gemini-flash-latest",
-                "tokens": len(text.split())
+        try:
+            # Run blocking operation in executor to avoid blocking event loop
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(None, model.generate_content, prompt)
+            
+            # Check for blockers
+            if response.prompt_feedback.block_reason:
+                raise Exception(f"Content blocked: {response.prompt_feedback.block_reason}")
+            
+            # Get text safely
+            text = response.text if hasattr(response, 'text') else str(response)
+            code = self._extract_code_from_response(text)
+            
+            return {
+                "code": code,
+                "provider": "gemini",
+                "raw_response": text,
+                "metadata": {
+                    "model": "gemini-flash-latest",
+                    "tokens": len(text.split())
+                }
             }
-        }
+        except Exception as e:
+            error_str = str(e).lower()
+            # Check for specific API errors
+            if "403" in error_str or "api key" in error_str or "leaked" in error_str:
+                error_msg = f"Gemini API key error (403): Your API key may be invalid or reported as leaked. Please use a different API key. Original error: {e}"
+                self.logger.error(error_msg)
+                raise Exception(error_msg) from e
+            elif "401" in error_str or "unauthorized" in error_str:
+                error_msg = f"Gemini API authentication failed (401): Invalid API key. Please check your API key. Original error: {e}"
+                self.logger.error(error_msg)
+                raise Exception(error_msg) from e
+            elif "429" in error_str or "quota" in error_str or "rate limit" in error_str:
+                error_msg = f"Gemini API rate limit exceeded (429): Please try again later or check your quota. Original error: {e}"
+                self.logger.warning(error_msg)
+                raise Exception(error_msg) from e
+            else:
+                # Re-raise other errors as-is
+                self.logger.error(f"Gemini API error: {e}")
+                raise
     
     async def _generate_with_openai(self, prompt: str) -> Dict[str, Any]:
         """Generate code using OpenAI"""
@@ -282,22 +326,46 @@ Generate the code now:
         return prompt
     
     def _extract_code_from_response(self, response: str) -> str:
-        """Extract Python code from LLM response"""
-        # Try to find code blocks
+        """Extract Python code from LLM response, cleaning it properly"""
+        code = response
+        
+        # Try to find code blocks first
         if "```python" in response:
             start = response.find("```python") + 9
             end = response.find("```", start)
             if end != -1:
-                return response[start:end].strip()
-        
+                code = response[start:end].strip()
         elif "```" in response:
             start = response.find("```") + 3
             end = response.find("```", start)
             if end != -1:
-                return response[start:end].strip()
+                code = response[start:end].strip()
         
-        # If no code blocks, return entire response
-        return response.strip()
+        # Clean the code: remove markdown artifacts
+        code = code.strip()
+        
+        # Remove any leading/trailing markdown artifacts
+        lines = code.split('\n')
+        cleaned_lines = []
+        in_code = False
+        
+        for line in lines:
+            # Skip markdown code fence lines
+            if line.strip().startswith('```'):
+                continue
+            # Skip explanatory text before code
+            if not in_code and (line.strip().startswith('import') or line.strip().startswith('from') or line.strip().startswith('def ') or line.strip().startswith('class ') or line.strip().startswith('#')):
+                in_code = True
+            if in_code:
+                cleaned_lines.append(line)
+        
+        code = '\n'.join(cleaned_lines).strip()
+        
+        # If still no code found, return original response
+        if not code or len(code) < 50:
+            return response.strip()
+        
+        return code
     
     async def generate_explanation(
         self,
@@ -343,13 +411,26 @@ Keep the explanation accessible and educational.
         return "Explanation generation failed."
 
 
-# Global LLM service instance
+# Global LLM service instance (for backward compatibility)
 _llm_service = None
 
 
-def get_llm_service(provider: LLMProvider = LLMProvider.GEMINI) -> LLMService:
-    """Get or create global LLM service instance"""
+def get_llm_service(provider: LLMProvider = LLMProvider.GEMINI, api_key: Optional[str] = None) -> LLMService:
+    """
+    Get or create LLM service instance.
+    
+    Args:
+        provider: Primary LLM provider to use
+        api_key: User-provided API key (creates new instance if provided)
+    
+    Returns:
+        LLMService instance
+    """
     global _llm_service
+    # If API key is provided, create a new instance (don't use global singleton)
+    if api_key:
+        return LLMService(provider, api_key=api_key)
+    # Otherwise use global singleton for backward compatibility
     if _llm_service is None:
         _llm_service = LLMService(provider)
     return _llm_service

@@ -1,0 +1,74 @@
+{
+  "dataset_name": "adult_income",
+  "file_path": "Evaluation/datasets/real_world/adult_income.csv",
+  "source": "kaggle",
+  "kaggle_id": "uciml/adult-census-income",
+  "description": "",
+  "analysis": {
+    "error": "could not convert string to float: '<=50K'"
+  },
+  "expected_issues": [
+    {
+      "mixed_categorical_numeric": true
+    },
+    {
+      "missing_values": true
+    },
+    {
+      "binary_classification": true
+    }
+  ],
+  "expected_behavior": {},
+  "pass_fail_criteria": {
+    "data_discovery": {
+      "should_detect_types": true,
+      "should_identify_target": false,
+      "should_report_shape": true,
+      "type_detection_accuracy_min": 0.9
+    },
+    "eda_analysis": {
+      "should_detect_imbalance": false,
+      "should_flag_severe_imbalance": false,
+      "should_detect_missing_values": false,
+      "should_detect_correlations": false,
+      "should_not_celebrate_high_accuracy_if_imbalanced": false
+    },
+    "data_cleaning": {
+      "should_handle_missing_values": false,
+      "should_remove_duplicates": true,
+      "should_handle_outliers": true,
+      "imputation_appropriateness_min": null
+    },
+    "feature_engineering": {
+      "should_detect_multicollinearity": false,
+      "should_remove_redundant_features": false,
+      "should_encode_categoricals": false,
+      "should_scale_features": false
+    },
+    "ml_builder": {
+      "should_apply_class_balancing": false,
+      "should_not_celebrate_majority_class_accuracy": false,
+      "should_flag_suspicious_accuracy": false,
+      "should_check_minority_recall": false,
+      "anti_cheating_score_min": 0.7
+    },
+    "model_evaluation": {
+      "should_compute_comprehensive_metrics": true,
+      "should_flag_imbalance_issues": false,
+      "should_check_minority_class_performance": false,
+      "should_flag_suspicious_accuracy": false,
+      "metric_completeness_min": 0.9
+    },
+    "technical_reporter": {
+      "should_document_all_steps": true,
+      "should_include_visualizations": true,
+      "report_completeness_min": 0.85
+    },
+    "project_manager": {
+      "should_explain_imbalance": false,
+      "should_explain_data_leakage": false,
+      "should_provide_educational_explanations": true,
+      "explanation_accuracy_min": 4.0
+    }
+  }
+}

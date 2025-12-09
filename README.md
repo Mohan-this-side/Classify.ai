@@ -1,4 +1,5 @@
-# Classify AI: Automated ML Pipeline with Real-Time Education
+# Classify AI:
+## A Multi-Agent LLM System for Explainable Classification Pipelines
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
@@ -8,7 +9,7 @@
 
 ## Overview
 
-**Classify AI** is an intelligent, end-to-end machine learning automation system that transforms raw datasets into production-ready classification models through a sophisticated multi-agent architecture. The system automates the entire ML pipeline—from data cleaning to model deployment—while maintaining transparency, security, and educational value throughout the process.
+**Classify AI: A Multi-Agent LLM System for Explainable Classification Pipelines** is an intelligent, end-to-end machine learning automation system that transforms raw datasets into production-ready classification models through a sophisticated multi-agent architecture. The system automates the entire ML pipeline—from data cleaning to model deployment—while maintaining transparency, security, and educational value throughout the process.
 
 ### Key Value Proposition
 
@@ -17,6 +18,23 @@
 - **Educational Transparency**: Real-time explanations of every decision and transformation through an interactive Project Manager
 - **Production Ready**: Generates deployment-ready models with complete documentation
 - **Secure Execution**: All LLM-generated code runs in isolated Docker sandboxes with comprehensive monitoring
+
+---
+
+## 🎥 Demo Walkthrough
+
+Watch a complete demonstration of the Classify AI system in action:
+
+[![Classify AI Demo Walkthrough](https://img.youtube.com/vi/pHOhsWIxguo/maxresdefault.jpg)](https://www.youtube.com/watch?v=pHOhsWIxguo&t=1s)
+
+**Click the image above to watch the full demo video on YouTube**
+
+The demo covers:
+- Dataset upload and configuration
+- Real-time workflow execution
+- Interactive Project Manager
+- Model training and evaluation
+- Results visualization and download
 
 ---
 
@@ -299,42 +317,43 @@ cd Classify.ai
 
 2. **Set up environment variables**
 ```bash
-cp env.example .env
+cp config/env.example .env
 # Edit .env with your API keys (optional for basic usage)
 ```
 
-3. **Start the system**
-```bash
-# Using Docker Compose (Recommended)
-docker-compose -f docker/docker-compose.yml up -d
-
-# Or using the setup script
-chmod +x setup.sh
-./setup.sh
-```
-
-4. **Access the application**
-- **Frontend**: http://localhost:3001
-- **Backend API**: http://localhost:8000
-- **API Documentation**: http://localhost:8000/docs
-
-### Manual Setup
-
-**Backend**:
+3. **Backend Setup**
 ```bash
 cd backend
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
 ```
 
-**Frontend**:
+4. **Frontend Setup**
 ```bash
 cd frontend
 npm install
+```
+
+### Running the Application
+
+**Backend:**
+```bash
+cd backend
+source venv/bin/activate
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+**Frontend:**
+```bash
+cd frontend
 npm run dev
 ```
+
+**Access the application:**
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **API Documentation**: http://localhost:8000/docs
 
 ---
 
@@ -348,7 +367,7 @@ npm run dev
    - Any number of features (tested up to 50+ features)
 
 2. **Upload and Configure**
-   - Navigate to http://localhost:3001
+   - Navigate to http://localhost:3000
    - Upload your dataset using drag & drop or file browser
    - Select your target column from the dropdown
    - Provide an LLM API key (optional for Layer 1 functionality)
@@ -421,17 +440,43 @@ Based on comprehensive testing with real-world datasets:
 
 ---
 
+## Project Structure
+
+```
+ds-capstone-project/
+├── backend/                 # FastAPI backend
+│   ├── app/
+│   │   ├── agents/         # AI agents (data discovery, EDA, cleaning, etc.)
+│   │   ├── api/            # API routes
+│   │   ├── services/       # Core services (LLM, sandbox, validation)
+│   │   └── workflows/      # Workflow orchestration
+│   └── tests/              # Test suites
+├── frontend/                # Next.js frontend
+│   └── app/                # React components
+├── docs/                    # Documentation
+│   ├── important/          # Critical documentation
+│   ├── fixes/              # Bug fixes and improvements
+│   ├── guides/             # User guides
+│   ├── architecture/       # Technical architecture
+│   └── test-results/       # Test results
+├── docker/                 # Docker configurations
+├── config/                 # Configuration files
+└── test_data/             # Sample datasets
+```
+
+---
+
 ## Testing
 
 ### Run Backend Tests
-```bash
-cd backend
+   ```bash
+   cd backend
 pytest tests/
-```
+   ```
 
 ### Run Frontend Tests
-```bash
-cd frontend
+   ```bash
+   cd frontend
 npm test
 ```
 
@@ -446,7 +491,7 @@ python test_complete_workflow.py
 ## Deployment
 
 ### Docker Deployment (Recommended)
-```bash
+   ```bash
 docker-compose -f docker/docker-compose.yml up -d
 ```
 
@@ -591,9 +636,18 @@ SOFTWARE.
 ## Contact
 
 - **Project Repository**: [https://github.com/Mohan-this-side/Classify.ai](https://github.com/Mohan-this-side/Classify.ai)
-- **Documentation**: [https://classify-ai.readthedocs.io](https://classify-ai.readthedocs.io)
+- **Documentation**: See `docs/` directory for comprehensive documentation
 - **Issues**: [https://github.com/Mohan-this-side/Classify.ai/issues](https://github.com/Mohan-this-side/Classify.ai/issues)
 - **Discussions**: [https://github.com/Mohan-this-side/Classify.ai/discussions](https://github.com/Mohan-this-side/Classify.ai/discussions)
+
+---
+
+## Quick Links
+
+- **Demo Video**: [Watch on YouTube](https://www.youtube.com/watch?v=pHOhsWIxguo&t=1s)
+- **Architecture Details**: See `docs/architecture/TECHNICAL_ARCHITECTURE.md`
+- **Quick Start Guide**: See `docs/guides/QUICK_START_GUIDE.md`
+- **API Documentation**: See `docs/API.md`
 
 ---
 
@@ -603,7 +657,7 @@ If you use Classify AI in your research or project, please cite:
 
 ```bibtex
 @software{classify_ai_2025,
-  title={Classify AI: Automated ML Pipeline with Real-Time Education},
+  title={Classify AI: A Multi-Agent LLM System for Explainable Classification Pipelines},
   author={Classify AI Team},
   year={2025},
   url={https://github.com/Mohan-this-side/Classify.ai},
@@ -612,4 +666,3 @@ If you use Classify AI in your research or project, please cite:
 ```
 
 ---
-

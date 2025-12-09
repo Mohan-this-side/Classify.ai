@@ -7,7 +7,8 @@ the multi-agent classification workflow.
 
 import logging
 import io
-from typing import Dict, Any, Optional
+import subprocess
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 import asyncio
 from pathlib import Path
@@ -21,6 +22,7 @@ from ..workflows.classification_workflow import ClassificationWorkflow
 from ..workflows.state_management import WorkflowStatus
 from ..config import get_settings
 from ..services.storage import storage_service
+from ..services.sandbox_executor import SandboxExecutor  # ✅ OPTION 3: For container management
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -37,35 +39,35 @@ workflow_states = {}
 # ===== EDUCATIONAL MESSAGE GENERATOR =====
 
 def _get_educational_message(agent_name: str, status: str, state: Optional[Dict[str, Any]] = None) -> str:
-    """Generate educational messages for each agent"""
+    """Generate educational messages for each agent (without markdown formatting)"""
     messages = {
         "data_discovery": {
-            "starting": "🔍 **Data Discovery**: Analyzing your dataset structure and understanding its characteristics...",
-            "completed": "✅ **Data Discovery Complete**: Found {} rows and {} columns. The system has identified the data types and target variable."
+            "starting": "🔍 Data Discovery: Analyzing your dataset structure and understanding its characteristics...",
+            "completed": "✅ Data Discovery Complete: Found {} rows and {} columns. The system has identified the data types and target variable."
         },
         "eda_analysis": {
-            "starting": "📊 **Exploratory Analysis**: Creating visualizations to understand patterns, distributions, and relationships in your data...",
-            "completed": "✅ **EDA Complete**: Generated {} plots showing correlations, distributions, and outliers. This helps identify important features."
+            "starting": "📊 Exploratory Analysis: Creating visualizations to understand patterns, distributions, and relationships in your data...",
+            "completed": "✅ EDA Complete: Generated {} plots showing correlations, distributions, and outliers. This helps identify important features."
         },
         "data_cleaning": {
-            "starting": "🧹 **Data Cleaning**: Checking for missing values, duplicates, and data quality issues...",
-            "completed": "✅ **Cleaning Complete**: Processed dataset is ready. Quality score: {}%. Layer {} used for adaptive cleaning."
+            "starting": "🧹 Data Cleaning: Checking for missing values, duplicates, and data quality issues...",
+            "completed": "✅ Cleaning Complete: Processed dataset is ready. Data quality has been assessed and improved. Layer {} used for adaptive cleaning."
         },
         "feature_engineering": {
-            "starting": "⚙️ **Feature Engineering**: Creating new features and transforming existing ones to improve model performance...",
-            "completed": "✅ **Features Ready**: Engineered {} new features. These transformations help the model learn better patterns."
+            "starting": "⚙️ Feature Engineering: Creating new features and transforming existing ones to improve model performance...",
+            "completed": "✅ Features Ready: Engineered {} new features. These transformations help the model learn better patterns."
         },
         "ml_building": {
-            "starting": "🤖 **Model Training**: Training multiple machine learning models and selecting the best one...",
-            "completed": "✅ **Model Trained**: Selected **{}** with accuracy of {:.2%}. Used cross-validation for robust evaluation."
+            "starting": "🤖 Model Training: Training multiple machine learning models and selecting the best one...",
+            "completed": "✅ Model Trained: Selected {} with accuracy of {:.2%}. Used cross-validation for robust evaluation."
         },
         "model_evaluation": {
-            "starting": "📈 **Model Evaluation**: Testing model performance on unseen data and generating metrics...",
-            "completed": "✅ **Evaluation Complete**: Accuracy: {:.2%}, F1-Score: {:.2%}. Model is ready for predictions!"
+            "starting": "📈 Model Evaluation: Testing model performance on unseen data and generating metrics...",
+            "completed": "✅ Evaluation Complete: Accuracy: {:.2%}, F1-Score: {:.2%}. Model is ready for predictions!"
         },
         "technical_reporter": {
-            "starting": "📝 **Generating Report**: Creating comprehensive documentation of the entire analysis...",
-            "completed": "✅ **Report Ready**: Technical documentation, notebook, and model are available for download."
+            "starting": "📝 Generating Report: Creating comprehensive documentation of the entire analysis...",
+            "completed": "✅ Report Ready: Technical documentation, notebook, and model are available for download."
         }
     }
     
@@ -84,10 +86,15 @@ def _get_educational_message(agent_name: str, status: str, state: Optional[Dict[
                 plots = len(state.get("eda_plots", []))
                 return template.format(plots)
             elif agent_name == "data_cleaning":
+                # Don't show quality score if it's 0 or None - use general message
                 quality_score = state.get("data_quality_score")
-                quality = (quality_score * 100) if quality_score is not None else 0
                 layer = state.get("layer_usage", {}).get("data_cleaning", "Layer 1")
-                return template.format(int(quality), layer)
+                if quality_score and quality_score > 0:
+                    quality = int(quality_score * 100)
+                    return template.format(quality, layer)
+                else:
+                    # Use general message without quality score
+                    return f"✅ Cleaning Complete: Processed dataset is ready. Data quality has been assessed and improved. Layer {layer} used for adaptive cleaning."
             elif agent_name == "feature_engineering":
                 features = len(state.get("engineered_features") or [])
                 return template.format(features)
@@ -98,7 +105,8 @@ def _get_educational_message(agent_name: str, status: str, state: Optional[Dict[
             elif agent_name == "model_evaluation":
                 metrics = state.get("evaluation_metrics") or {}
                 accuracy = metrics.get("accuracy", 0) or 0
-                f1 = metrics.get("f1_weighted", 0) or 0
+                # ✅ FIX: Use f1_score (main metric) with fallback to f1_weighted for consistency
+                f1 = metrics.get("f1_score", metrics.get("f1_weighted", 0)) or 0
                 return template.format(accuracy, f1)
         except Exception as e:
             logger.warning(f"Error formatting educational message: {e}")
@@ -106,105 +114,295 @@ def _get_educational_message(agent_name: str, status: str, state: Optional[Dict[
     return template
 
 
-def _generate_pm_answer(question: str, state: Dict[str, Any]) -> str:
-    """Generate context-aware answer to user's question with comprehensive knowledge (synchronous for immediate response)"""
+async def _generate_pm_answer(question: str, state: Dict[str, Any]) -> str:
+    """Generate context-aware answer to user's question with comprehensive knowledge using LLM service - ALWAYS uses LLM"""
     import re
+    from ..services.llm_service import get_llm_service, LLMProvider
     
     question_lower = question.lower()
     
-    # Project/Creator questions
-    if any(word in question_lower for word in ["who created", "creator", "author", "developer", "who made", "who built"]):
-        return "👨‍💻 This project was created by Mohan as part of the DS Capstone project at Northeastern University (Fall 2025). It's a multi-agent AI system for automated machine learning classification tasks."
-    
-    # Project questions
-    if any(word in question_lower for word in ["what is this", "about this project", "what does this do", "project description"]):
-        return "🤖 This is Classify AI - an automated ML pipeline system with 8 specialized AI agents. It performs end-to-end classification tasks: data discovery, EDA, cleaning, feature engineering, model building, evaluation, and reporting. Uses a double-layer architecture (hardcoded + LLM-generated code) for robust results."
-    
-    # Agent questions - which agent takes more time
-    if any(word in question_lower for word in ["which agent", "agent taking", "slowest", "longest", "most time"]):
-        agent_times = state.get("agent_execution_times", {})
-        if agent_times:
-            sorted_agents = sorted(agent_times.items(), key=lambda x: x[1], reverse=True)
-            slowest = sorted_agents[0]
-            return f"⏱️ The {slowest[0]} agent typically takes the longest ({slowest[1]:.1f}s). Model building and feature engineering are usually the most time-consuming steps as they involve training multiple models and complex transformations."
-        return "⏱️ Model building and feature engineering agents typically take the most time as they involve training multiple ML models and performing complex feature transformations. Execution time varies based on dataset size."
-    
-    # Data science questions
-    if any(word in question_lower for word in ["what is", "explain", "how does", "what does"]):
-        if "eda" in question_lower or "exploratory" in question_lower:
-            return "📊 EDA (Exploratory Data Analysis) is the process of analyzing datasets to summarize their main characteristics, often using visual methods. It helps identify patterns, detect anomalies, test hypotheses, and check assumptions before modeling."
-        elif "feature engineering" in question_lower:
-            return "⚙️ Feature Engineering is the process of creating new features from existing ones to improve model performance. It includes transformations (log, sqrt), combinations (interactions), encodings (one-hot, target encoding), and domain-specific features."
-        elif "cross validation" in question_lower or "cv" in question_lower:
-            return "🔄 Cross-validation is a technique to assess how well a model generalizes to unseen data. We split data into k folds, train on k-1 folds, validate on the remaining fold, and repeat. This gives us a more reliable performance estimate."
-        elif "overfitting" in question_lower:
-            return "⚠️ Overfitting occurs when a model learns training data too well, including noise, and performs poorly on new data. We prevent it using cross-validation, regularization, and by keeping models simple."
-        elif "classification" in question_lower:
-            return "🎯 Classification is a supervised ML task where we predict discrete categories (classes). Examples: spam detection, image recognition, medical diagnosis. We use algorithms like Random Forest, XGBoost, and Neural Networks."
-    
-    # Status questions
-    if any(word in question_lower for word in ["status", "progress", "how far", "when done", "current"]):
-        completed = len(state.get("completed_agents", []))
-        total = 7
-        progress = (completed / total) * 100 if total > 0 else 0
-        current = state.get("current_agent", "Unknown")
-        layer_usage = state.get("layer_usage", {})
-        current_layer = layer_usage.get(current, "Layer 1")
-        return f"📊 Progress: {progress:.0f}% complete ({completed}/{total} agents finished). Currently executing: {current} ({current_layer}). Estimated completion: ~{(total-completed)*2} minutes."
-    
-    # Agent-specific questions
-    elif "eda" in question_lower or "exploratory" in question_lower or "visualization" in question_lower:
-        plots = len(state.get("eda_plots", []))
-        if plots > 0:
-            return f"📊 EDA Status: Generated {plots} visualizations including correlation heatmaps, distribution plots, and outlier analysis. These help identify patterns and relationships in your data before modeling."
-        return "📊 EDA: Exploratory Data Analysis creates visualizations to understand your data's structure, distributions, correlations, and potential issues. This step is crucial for feature engineering and model selection."
-    
-    # Data cleaning questions
-    elif any(word in question_lower for word in ["clean", "quality", "missing", "duplicate"]):
-        quality = state.get("data_quality_score", 0)
-        if quality > 0:
-            return f"🧹 Data Quality: Quality score is {quality*100:.1f}%. Addressed missing values, duplicates, and outliers. Clean data leads to better model performance."
-        return "🧹 Data Cleaning: This step handles missing values, removes duplicates, fixes data types, and addresses outliers to ensure high-quality input for modeling."
-    
-    # Model questions
-    elif any(word in question_lower for word in ["model", "algorithm", "accuracy", "performance"]):
-        model = state.get("best_model", "")
-        metrics = state.get("evaluation_metrics", {})
-        if model and metrics:
-            acc = metrics.get("accuracy", 0)
-            return f"🤖 Model: Selected {model} with {acc*100:.1f}% accuracy. The system tested multiple algorithms and chose the best performer using cross-validation."
-        return "🤖 Model Training: The system automatically tests multiple ML algorithms (Random Forest, XGBoost, etc.) and selects the best one based on cross-validation performance."
-    
-    # Feature engineering questions
-    elif "feature" in question_lower:
-        features = state.get("engineered_features", [])
-        if features:
-            return f"⚙️ Feature Engineering: Created {len(features)} new features through transformations, combinations, and domain-specific engineering. This improves model learning capacity."
-        return "⚙️ Feature Engineering: Creates new features from existing ones through mathematical transformations, combinations, and encodings to help the model learn better patterns."
-    
-    # Layer 1/2 questions
-    elif any(word in question_lower for word in ["layer", "sandbox", "llm", "ai"]):
-        layer_usage = state.get("layer_usage", {})
-        layer1_count = sum(1 for v in layer_usage.values() if "layer1" in str(v).lower())
-        layer2_count = sum(1 for v in layer_usage.values() if "layer2" in str(v).lower())
-        return f"🏗️ Double-Layer Architecture: Layer 1 provides reliable, hardcoded analysis ({layer1_count} agents used it). Layer 2 uses LLM-generated code executed in a secure Docker sandbox for adaptive insights ({layer2_count} agents used it). Both layers work together for robust results."
-    
-    # Download/results questions
-    elif any(word in question_lower for word in ["download", "notebook", "report", "export"]):
-        if state.get("workflow_status") == "completed":
-            return "📥 Downloads: Once complete, you can download the analysis notebook (.ipynb), trained model (.joblib), technical report, and cleaned dataset from the Results page."
-        return "📥 Downloads: After workflow completion, you'll receive a Jupyter notebook with full analysis, the trained model, technical documentation, and the cleaned dataset."
-    
-    # Workflow questions
-    elif any(word in question_lower for word in ["workflow", "process", "pipeline", "steps"]):
-        agents = ["Data Discovery", "EDA", "Data Cleaning", "Feature Engineering", "Model Building", "Evaluation", "Reporting"]
-        return f"🔄 Workflow: Our pipeline has {len(agents)} main steps: {', '.join(agents)}. Each agent performs specialized tasks and shares knowledge with others. The Project Manager coordinates everything and provides updates."
-    
-    # General/default - use LLM if available
-    else:
+    # ALWAYS use LLM - no hardcoded responses
+    try:
+        # Build comprehensive context from workflow state
+        context_parts = []
+        
+        # Dataset information
+        dataset_shape = state.get("dataset_shape", [])
+        if dataset_shape:
+            context_parts.append(f"Dataset: {dataset_shape[0]} rows × {dataset_shape[1]} columns")
+        
+        # Dataset description
+        user_description = state.get("user_description", "")
+        if user_description:
+            context_parts.append(f"Dataset Description: {user_description}")
+        
+        # Dataset metadata
+        dataset_metadata = state.get("dataset_metadata", {})
+        if dataset_metadata:
+            context_parts.append(f"Dataset Metadata: {str(dataset_metadata)[:200]}")
+        
+        # Column information
+        data_types = state.get("data_types", {})
+        if data_types:
+            numeric_cols = [k for k, v in data_types.items() if v in ['int64', 'float64']]
+            categorical_cols = [k for k, v in data_types.items() if v not in ['int64', 'float64']]
+            context_parts.append(f"Features: {len(numeric_cols)} numeric, {len(categorical_cols)} categorical")
+            context_parts.append(f"Column Names: {', '.join(list(data_types.keys())[:10])}")
+        
+        # Target column
+        target_column = state.get("target_column", "")
+        if target_column:
+            context_parts.append(f"Target Variable: {target_column}")
+        
+        # Workflow status
+        workflow_status = state.get("workflow_status", "unknown")
+        context_parts.append(f"Workflow Status: {workflow_status}")
+        
+        # Completed agents
         completed_agents = state.get("completed_agents", [])
-        agent_summary = ", ".join(completed_agents[-3:]) if completed_agents else "just starting"
-        return f"🤔 I'm here to help! I can answer questions about workflow progress, agent status, model performance, data quality, data science concepts, and more. So far, we've completed: {agent_summary}. What would you like to know?"
+        if completed_agents:
+            context_parts.append(f"Completed Agents: {', '.join(completed_agents)}")
+        
+        # Current agent
+        current_agent = state.get("current_agent", "none")
+        if current_agent:
+            context_parts.append(f"Current Agent: {current_agent}")
+        
+        # EDA findings
+        eda_plots = state.get("eda_plots", [])
+        if eda_plots:
+            context_parts.append(f"EDA Plots Generated: {len(eda_plots)}")
+        
+        correlation_analysis = state.get("correlation_analysis", {})
+        if correlation_analysis:
+            top_corr = correlation_analysis.get("top_correlations", [])
+            if top_corr:
+                context_parts.append(f"Top Correlations Found: {len(top_corr)}")
+        
+        # Data cleaning findings
+        cleaning_actions = state.get("cleaning_actions_taken", [])
+        if cleaning_actions:
+            context_parts.append(f"Data Cleaning Actions: {len(cleaning_actions)} actions taken")
+            context_parts.append(f"Actions: {', '.join(cleaning_actions[:5])}")
+        
+        # Feature engineering
+        engineered_features = state.get("engineered_features", [])
+        if engineered_features:
+            context_parts.append(f"Engineered Features: {len(engineered_features)} features created")
+            context_parts.append(f"New Features: {', '.join(engineered_features[:5])}")
+        
+        # Model information
+        best_model = state.get("best_model")
+        if best_model:
+            context_parts.append(f"Best Model: {best_model}")
+        
+        # Model metrics
+        metrics = state.get("evaluation_metrics", {})
+        if metrics:
+            acc = metrics.get("accuracy", 0)
+            # ✅ FIX: Use main metrics (f1_score, precision, recall) with fallback to weighted for consistency
+            f1 = metrics.get("f1_score", metrics.get("f1_weighted", 0))
+            precision = metrics.get("precision", metrics.get("precision_weighted", 0))
+            recall = metrics.get("recall", metrics.get("recall_weighted", 0))
+            context_parts.append(f"Model Performance: Accuracy={acc*100:.1f}%, F1={f1:.3f}, Precision={precision*100:.1f}%, Recall={recall*100:.1f}%")
+        
+        # Training metrics
+        training_metrics = state.get("training_metrics", {})
+        if training_metrics:
+            train_acc = training_metrics.get("train_accuracy", 0)
+            test_acc = training_metrics.get("test_accuracy", 0)
+            context_parts.append(f"Training Results: Train Accuracy={train_acc*100:.1f}%, Test Accuracy={test_acc*100:.1f}%")
+        
+        # Outlier analysis
+        outlier_analysis = state.get("outlier_analysis", {})
+        if outlier_analysis:
+            outlier_count = outlier_analysis.get("outlier_count", 0)
+            context_parts.append(f"Outliers Detected: {outlier_count}")
+        
+        context = "\n".join(context_parts)
+        
+        # Check if workflow is completed - use enhanced insights service
+        workflow_status = state.get("workflow_status", "unknown")
+        is_completed = workflow_status == "completed" or workflow_status == WorkflowStatus.COMPLETED
+        
+        # For completed workflows, use enhanced PM insights service
+        if is_completed:
+            from ..services.pm_insights_service import get_pm_insights_service
+            
+            # ✅ FIX: Get API key from workflow state
+            api_key = state.get("api_key") or (workflow_states.get(workflow_id, {}).get("api_key") if workflow_id in workflow_states else None)
+            pm_service = get_pm_insights_service(api_key=api_key) if api_key and api_key != "dummy_key" else get_pm_insights_service()
+            
+            # Check if question is about features/insights
+            question_lower = question.lower()
+            if any(word in question_lower for word in ["feature", "important", "focus", "insight", "finding", "what matters", "key", "top"]):
+                # Use feature insights service
+                answer = await pm_service.generate_feature_insights(state, question)
+                return f"🤖 {answer}"
+        
+        # Build comprehensive LLM prompt with project context
+        # Enhanced prompt for completed workflows
+        role_description = """You are a senior data scientist and Project Manager AI assistant named "Project Manager" for Classify AI, a multi-agent machine learning classification system. You act as both a project coordinator AND a senior data scientist mentor, helping users understand their classification results and make data-driven decisions.
+
+IMPORTANT: You have access to the complete workflow results including:
+- Model performance metrics (accuracy, F1, precision, recall)
+- Feature importance rankings
+- EDA findings and correlations
+- Data cleaning actions taken
+- Engineered features
+- Model selection results
+
+Use this information to provide SPECIFIC, ACTIONABLE insights. Do NOT repeat generic information. Answer questions directly and specifically."""
+        
+        instructions = """**Instructions:**
+- Answer as a senior data scientist mentor would explain to a non-expert user
+- Be SPECIFIC about findings from the analysis (use actual feature names, numbers, percentages from the context)
+- Provide actionable insights and recommendations based on the classification results
+- Explain which features matter most and WHY (in simple terms)
+- For feature importance questions, explain the impact on the target variable with specific examples
+- Use simple language but include specific numbers and impacts from the analysis
+- Provide actionable next steps based on findings (what should the user focus on?)
+- Reference actual findings from the analysis (correlations, feature importance rankings, model performance metrics)
+- If asked "what features are important" or "what should I focus on", list the top 3-5 features with their importance scores and explain their impact on the target variable with specific numbers
+- If asked "what matters in my dataset" or "what can we understand", provide insights about key patterns, their effects on the target variable, and actionable recommendations
+- If asked "what should we focus on", prioritize features by importance and explain WHY they matter and WHAT actions to take
+- DO NOT repeat the same generic response - each answer should be unique and contextual
+- Keep answers informative but accessible (3-5 sentences for complex topics, use bullet points for lists)
+- Act as a mentor helping the user understand their data and make data-driven decisions
+- Always reference specific metrics, feature names, and numbers from the workflow results""" if is_completed else """**Instructions:**
+- Answer quickly and knowledgeably as a project coordinator
+- Be SPECIFIC about the CURRENT dataset and workflow state
+- If asked "what the data is about" or "what have you found", provide DETAILED insights about the dataset based on the context above
+- If asked "who are you", explain your role as Project Manager for this system
+- Explain data science concepts clearly and educationally
+- Keep answers concise but informative (2-4 sentences)
+- Act as if you know everything about this project, workflow, and dataset
+- Use the dataset information provided to give specific answers
+- DO NOT repeat generic information - be specific and contextual"""
+        
+        prompt = f"""{role_description}
+
+**Project Context:**
+- Project Owner: Classify AI Team
+- Institution: Northeastern University (Fall 2025)
+- Project Type: DS Capstone Project - Multi-Agent AI System
+- System: Classify AI - Automated ML Pipeline with 8 specialized AI agents
+- Architecture: Double-Layer System (hardcoded analysis + LLM-generated code in Docker sandbox)
+- Purpose: End-to-end classification tasks from data upload to model deployment
+
+**Your Role:**
+You are the Project Manager coordinating all agents. You know everything about:
+- The workflow pipeline (Data Discovery → EDA → Cleaning → Feature Engineering → Model Building → Evaluation → Reporting)
+- Each agent's purpose and current status
+- Data science concepts and ML best practices
+- The double-layer architecture and how it works
+- Project goals and Classify AI Team's requirements
+- The CURRENT dataset being analyzed
+- Classification results, feature importance, and model performance
+
+**Current Workflow Context:**
+{context}
+
+**User Question:** {question}
+
+{instructions}
+
+**Answer:**"""
+        
+        # ✅ FIX: Get LLM service with user-provided API key from workflow state
+        api_key = state.get("api_key") or (workflow_states.get(workflow_id, {}).get("api_key") if workflow_id in workflow_states else None)
+        llm_service = get_llm_service(api_key=api_key) if api_key and api_key != "dummy_key" else get_llm_service()
+        if llm_service and llm_service.clients:
+            # Use LLM to generate detailed answer
+            try:
+                # ✅ CRITICAL FIX: Try Gemini first (synchronous call, but with timeout wrapper)
+                if LLMProvider.GEMINI in llm_service.clients:
+                    model = llm_service.clients[LLMProvider.GEMINI]
+                    # ✅ CRITICAL FIX: Use threading to add timeout to synchronous Gemini call
+                    import threading
+                    import queue
+                    result_queue = queue.Queue()
+                    exception_queue = queue.Queue()
+                    
+                    def call_gemini():
+                        try:
+                            response = model.generate_content(prompt)
+                            result_queue.put(response)
+                        except Exception as e:
+                            exception_queue.put(e)
+                    
+                    thread = threading.Thread(target=call_gemini, daemon=True)
+                    thread.start()
+                    thread.join(timeout=8.0)  # 8 second timeout
+                    
+                    if thread.is_alive():
+                        logger.warning("Gemini LLM response timed out after 8 seconds")
+                        # Fall through to next provider
+                    elif not exception_queue.empty():
+                        raise exception_queue.get()
+                    elif not result_queue.empty():
+                        response = result_queue.get()
+                        answer = response.text.strip()
+                        if answer:
+                            # Remove any markdown formatting from LLM response
+                            answer = answer.replace("**", "").replace("*", "")
+                            return f"🤖 {answer}"
+                # Try OpenAI if Gemini fails
+                if LLMProvider.OPENAI in llm_service.clients:
+                    import openai
+                    client = llm_service.clients[LLMProvider.OPENAI]
+                    max_tokens = 500 if is_completed else 300
+                    response = client.chat.completions.create(
+                        model="gpt-3.5-turbo",
+                        messages=[{"role": "user", "content": prompt}],
+                        max_tokens=max_tokens
+                    )
+                    answer = response.choices[0].message.content.strip()
+                    if answer:
+                        answer = answer.replace("**", "").replace("*", "")
+                        return f"🤖 {answer}"
+                # Try Anthropic if others fail
+                if LLMProvider.ANTHROPIC in llm_service.clients:
+                    client = llm_service.clients[LLMProvider.ANTHROPIC]
+                    max_tokens = 500 if is_completed else 300
+                    response = client.messages.create(
+                        model="claude-3-haiku-20240307",
+                        max_tokens=max_tokens,
+                        messages=[{"role": "user", "content": prompt}]
+                    )
+                    answer = response.content[0].text.strip()
+                    if answer:
+                        answer = answer.replace("**", "").replace("*", "")
+                        return f"🤖 {answer}"
+            except Exception as e:
+                logger.error(f"LLM generation failed: {e}")
+                # Even if LLM fails, provide a contextual answer based on state
+                completed_agents = state.get("completed_agents", [])
+                dataset_shape = state.get("dataset_shape", [])
+                if dataset_shape:
+                    agents_text = ', '.join(completed_agents) if completed_agents else 'The workflow is in progress.'
+                    return f"🤖 I'm analyzing a dataset with {dataset_shape[0]} rows and {dataset_shape[1]} columns. We've completed: {agents_text} Please check back in a moment or ask a more specific question."
+                agents_text = ', '.join(completed_agents) if completed_agents else 'The workflow is running.'
+                return f"🤖 We've completed: {agents_text} What would you like to know?"
+        
+        # If no LLM available, provide contextual answer
+        completed_agents = state.get("completed_agents", [])
+        dataset_shape = state.get("dataset_shape", [])
+        if dataset_shape:
+            agents_text = ', '.join(completed_agents) if completed_agents else 'The workflow is in progress.'
+            return f"🤖 I'm analyzing a dataset with {dataset_shape[0]} rows and {dataset_shape[1]} columns. We've completed: {agents_text} What would you like to know?"
+        agents_text = ', '.join(completed_agents) if completed_agents else 'The workflow is running.'
+        return f"🤖 We've completed: {agents_text} What would you like to know?"
+    except Exception as e:
+        logger.error(f"Error generating PM answer with LLM: {e}")
+        # Fallback with context
+        completed_agents = state.get("completed_agents", [])
+        dataset_shape = state.get("dataset_shape", [])
+        if dataset_shape:
+            agents_text = ', '.join(completed_agents) if completed_agents else 'The workflow is in progress.'
+            return f"🤖 I'm analyzing a dataset with {dataset_shape[0]} rows and {dataset_shape[1]} columns. We've completed: {agents_text} What would you like to know?"
+        agents_text = ', '.join(completed_agents) if completed_agents else 'The workflow is running.'
+        return f"🤖 We've completed: {agents_text} What would you like to know?"
 
 
 def _should_trigger_approval_gate(agent_name: str, state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -213,7 +411,7 @@ def _should_trigger_approval_gate(agent_name: str, state: Dict[str, Any]) -> Opt
         "eda_analysis": {
             "stage": "After EDA",
             "title": "Review Data Insights",
-            "question": "📊 EDA revealed data patterns and potential issues. Would you like to proceed with data cleaning?",
+            "question": "📊 EDA revealed data patterns and potential issues. Please review and approve to proceed with data cleaning.",
             "context": {
                 "plots_generated": len(state.get("eda_plots", [])),
                 "correlations_found": bool(state.get("correlation_analysis")),
@@ -225,7 +423,7 @@ def _should_trigger_approval_gate(agent_name: str, state: Dict[str, Any]) -> Opt
         "data_cleaning": {
             "stage": "After Data Cleaning",
             "title": "Confirm Data Quality",
-            "question": f"🧹 Data cleaning complete with quality score: {(state.get('data_quality_score') or 0)*100:.1f}%. Proceed to feature engineering?",
+            "question": "🧹 Data cleaning complete. Data quality has been assessed and improved. Please approve to proceed to feature engineering.",
             "context": {
                 "quality_score": state.get("data_quality_score") or 0,
                 "actions_taken": len(state.get("cleaning_actions_taken") or []),
@@ -237,7 +435,7 @@ def _should_trigger_approval_gate(agent_name: str, state: Dict[str, Any]) -> Opt
         "feature_engineering": {
             "stage": "Before Model Training",
             "title": "Ready to Train Models",
-            "question": f"⚙️ Created {len(state.get('engineered_features') or [])} new features. Start model training?",
+            "question": f"⚙️ Created {len(state.get('engineered_features') or [])} new features. Please approve to start model training.",
             "context": {
                 "features_created": len(state.get("engineered_features") or []),
                 "total_features": (state.get("dataset_shape") or [0, 0])[1]
@@ -378,11 +576,72 @@ async def start_workflow(
                 detail="Dataset must have at least 2 columns"
             )
         
+        # ✅ Clean up old plots from sandbox_results volume when starting new workflow
+        # ✅ CRITICAL FIX: Make this non-blocking - don't create SandboxExecutor synchronously
+        try:
+            logger.info("Cleaning up old plots from sandbox_results volume...")
+            # ✅ CRITICAL FIX: Use subprocess directly instead of SandboxExecutor to avoid blocking
+            try:
+                # Use docker run to clear PNG files from results volume (non-blocking)
+                subprocess.Popen(
+                    ["docker", "run", "--rm", "-v", "sandbox_results:/data", "busybox:latest",
+                     "sh", "-c", "rm -f /data/*.png /data/*.jpg /data/*.jpeg /data/*.svg"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                logger.info("✅ Plot cleanup started in background (non-blocking)")
+            except Exception as e:
+                logger.warning(f"Could not clean old plots (non-critical): {e}")
+        except Exception as e:
+            logger.warning(f"Plot cleanup error (non-critical): {e}")
+        
         # Get workflow instance
         workflow = get_workflow()
         
         # Start workflow in background
         workflow_id = workflow.workflow_id
+        
+        # ✅ FIX: Clean up old plots from previous workflows to avoid confusion
+        # Only keep plots from the current workflow
+        try:
+            from pathlib import Path
+            import os
+            import shutil
+            
+            # Determine plots directory
+            cwd = os.getcwd()
+            if cwd.endswith('/backend'):
+                base_plots_dir = Path("plots")
+            else:
+                base_plots_dir = Path("backend/plots")
+            
+            if base_plots_dir.exists():
+                # Clean up plots from other workflows (keep only current workflow_id)
+                for plot_dir in base_plots_dir.iterdir():
+                    if plot_dir.is_dir() and plot_dir.name != workflow_id:
+                        try:
+                            # Only delete if it's an old workflow directory
+                            # (workflow IDs are UUIDs, so they're easy to identify)
+                            shutil.rmtree(plot_dir)
+                            logger.info(f"🧹 Cleaned up old plots directory: {plot_dir.name}")
+                        except Exception as e:
+                            logger.warning(f"⚠️ Failed to clean up old plots directory {plot_dir.name}: {e}")
+                
+                # Ensure current workflow plots directory exists and is clean
+                current_plots_dir = base_plots_dir / workflow_id
+                if current_plots_dir.exists():
+                    # Remove any existing plots from a previous run of this workflow
+                    for plot_file in current_plots_dir.glob("*.png"):
+                        plot_file.unlink()
+                    for plot_file in current_plots_dir.glob("*.jpg"):
+                        plot_file.unlink()
+                    logger.info(f"🧹 Cleaned up existing plots for workflow {workflow_id}")
+                else:
+                    current_plots_dir.mkdir(parents=True, exist_ok=True)
+                    logger.info(f"✅ Created plots directory for workflow {workflow_id}")
+        except Exception as e:
+            logger.warning(f"⚠️ Plot cleanup failed (non-critical): {e}")
+            # Don't fail workflow if plot cleanup fails
         
         # Store workflow info (in production, this should be stored in a database)
         workflow_info = {
@@ -391,6 +650,7 @@ async def start_workflow(
             "filename": file.filename,
             "target_column": target_column,
             "description": description,
+            "api_key": api_key,  # ✅ FIX: Store user-provided API key
             "dataset_shape": df.shape,
             "start_time": datetime.now().isoformat(),
             "status": WorkflowStatus.RUNNING,
@@ -408,11 +668,15 @@ async def start_workflow(
             },
             "completed_agents": [],
             "failed_agents": [],
-            "errors": []
+            "errors": [],
+            "pm_messages": []  # ✅ Initialize PM messages list
         }
         
         # Store in memory
         workflow_states[workflow_id] = workflow_info
+        
+        # ✅ FIX: Store API key in workflow state before starting background task
+        workflow_states[workflow_id]["api_key"] = api_key
         
         # Execute workflow asynchronously
         background_tasks.add_task(
@@ -474,15 +738,22 @@ async def get_workflow_status(workflow_id: str) -> Dict[str, Any]:
             "current_agent": sandbox_metrics_raw.get("current_agent", "")
         }
         
+        # ✅ CRITICAL FIX: Ensure status is always a string (not enum) for frontend compatibility
+        status = state.get("status", WorkflowStatus.UNKNOWN)
+        if isinstance(status, WorkflowStatus):
+            status = status.value
+        else:
+            status = str(status)
+        
         return {
             "workflow_id": workflow_id,
-            "status": state.get("status", WorkflowStatus.UNKNOWN),
+            "status": status,  # ✅ Always a string
             "progress": state.get("progress", 0.0),
             "current_phase": state.get("current_agent", "Unknown"),
             "agent_status": state.get("agent_statuses", {}),
             "completed_agents": state.get("completed_agents", []),
             "errors": state.get("errors", []),
-            "message": f"Workflow is {state.get('status', 'unknown')}",
+            "message": f"Workflow is {status}",
             "sandbox_metrics": sandbox_metrics,  # ✅ Real-time sandbox metrics
             "layer_usage": state.get("layer_usage", {}),  # ✅ Layer 1/2 info per agent
             "current_agent_details": {
@@ -512,20 +783,143 @@ async def get_workflow_results(workflow_id: str) -> Dict[str, Any]:
         Dictionary containing workflow results
     """
     try:
-        # Check if workflow exists in our state
-        if workflow_id not in workflow_states:
-            raise HTTPException(status_code=404, detail="Workflow not found")
-        
-        workflow_state = workflow_states[workflow_id]
+        # ✅ FIX: Load from disk if not in memory
+        state = None
+        if workflow_id in workflow_states:
+            state = workflow_states[workflow_id]
+        else:
+            # Try to load from disk (check if results directory exists)
+            results_dir = Path("backend/results") / workflow_id
+            if results_dir.exists():
+                logger.info(f"Workflow {workflow_id} not in memory, loading from disk...")
+                # Load basic state from files
+                state = {
+                    "workflow_id": workflow_id,
+                    "status": "completed",
+                    "workflow_status": "completed",
+                    "progress": 100.0,
+                    # Load file paths
+                    "model_path": str(results_dir / "model.joblib") if (results_dir / "model.joblib").exists() else None,
+                    "notebook_path": str(results_dir / "notebook.ipynb") if (results_dir / "notebook.ipynb").exists() else None,
+                    "report_path": str(results_dir / "report.md") if (results_dir / "report.md").exists() else None,
+                    # Load plots
+                    "eda_plots": [],
+                    "downloadable_files": [],
+                    "evaluation_metrics": {},
+                    "feature_importance_model": {},
+                    "pm_messages": []
+                }
+                
+                # ✅ FIX PLOT ISOLATION: Load plots from workflow-specific plots directory
+                # Plots are stored in backend/plots/{workflow_id}/, not in results directory
+                import os
+                cwd = os.getcwd()
+                if cwd.endswith('/backend'):
+                    base_plots_dir = Path("plots")
+                else:
+                    base_plots_dir = Path("backend/plots")
+                
+                workflow_plots_dir = base_plots_dir / workflow_id
+                
+                # Also check results_dir/plots as fallback
+                results_plots_dir = results_dir / "plots"
+                
+                plot_files = []
+                if workflow_plots_dir.exists():
+                    plot_files = list(workflow_plots_dir.glob("*.png")) + list(workflow_plots_dir.glob("*.jpg")) + list(workflow_plots_dir.glob("*.svg"))
+                    logger.info(f"Found {len(plot_files)} plots in workflow plots directory: {workflow_plots_dir}")
+                elif results_plots_dir.exists():
+                    plot_files = list(results_plots_dir.glob("*.png")) + list(results_plots_dir.glob("*.jpg")) + list(results_plots_dir.glob("*.svg"))
+                    logger.info(f"Found {len(plot_files)} plots in results plots directory: {results_plots_dir}")
+                else:
+                    logger.warning(f"Plots directory not found for workflow {workflow_id}. Checked: {workflow_plots_dir} and {results_plots_dir}")
+                
+                # ✅ FIX PLOT ISOLATION: Filter out placeholder/empty plots and ensure workflow_id match
+                placeholder_patterns = ['plot_2', 'plot2', 'basic_plot', 'multiple_plots', 'empty', 'placeholder']
+                valid_plots = []
+                
+                for f in plot_files:
+                    filename_lower = f.name.lower()
+                    # Skip placeholder plots
+                    if any(pattern in filename_lower for pattern in placeholder_patterns):
+                        logger.info(f"Skipping placeholder plot: {f.name}")
+                        continue
+                    
+                    # ✅ CRITICAL: Ensure plot file is in workflow-specific directory
+                    # Double-check that the plot file path contains the workflow_id
+                    plot_dir = f.parent
+                    if str(workflow_id) not in str(plot_dir):
+                        logger.warning(f"Skipping plot {f.name} - not in workflow directory (found in {plot_dir}, expected {workflow_id})")
+                        continue
+                    
+                    # ✅ FIX: Generate meaningful title
+                    title = f.name.replace("_", " ").replace(".png", "").replace(".jpg", "").replace(".svg", "")
+                    # Capitalize properly
+                    title = " ".join(word.capitalize() for word in title.split())
+                    
+                    # Common plot name mappings
+                    plot_mappings = {
+                        "correlation heatmap": "Correlation Heatmap",
+                        "correlation matrix": "Correlation Matrix",
+                        "distributions histograms": "Feature Distributions",
+                        "outliers boxplots": "Outlier Analysis",
+                        "target distribution": "Target Variable Distribution",
+                        "roc curve": "ROC Curve (AUC)",
+                        "confusion matrix": "Confusion Matrix",
+                        "precision recall curve": "Precision-Recall Curve"
+                    }
+                    
+                    for key, mapped_title in plot_mappings.items():
+                        if key in title.lower():
+                            title = mapped_title
+                            break
+                    
+                    valid_plots.append({
+                        "title": title,
+                        "name": f.name,
+                        "path": f"/api/workflow/plot/{workflow_id}/{f.name}",
+                        "url": f"/api/workflow/plot/{workflow_id}/{f.name}",
+                        "workflow_id": workflow_id  # ✅ CRITICAL: Explicitly tag with workflow_id
+                    })
+                
+                state["eda_plots"] = valid_plots
+                logger.info(f"✅ Loaded {len(valid_plots)} valid plots for workflow {workflow_id} (filtered {len(plot_files) - len(valid_plots)} invalid/placeholder plots)")
+                
+                # Build downloadable files
+                downloadable_files = []
+                if state.get("model_path"):
+                    downloadable_files.append({
+                        "name": "trained_model.joblib",
+                        "type": "model",
+                        "path": state["model_path"],
+                        "size": "Unknown"
+                    })
+                if state.get("notebook_path"):
+                    downloadable_files.append({
+                        "name": "analysis_notebook.ipynb",
+                        "type": "notebook",
+                        "path": state["notebook_path"],
+                        "size": "Unknown"
+                    })
+                if state.get("report_path"):
+                    downloadable_files.append({
+                        "name": "technical_report.md",
+                        "type": "report",
+                        "path": state["report_path"],
+                        "size": "Unknown"
+                    })
+                state["downloadable_files"] = downloadable_files
+                
+                logger.info(f"✅ Loaded workflow {workflow_id} from disk with {len(state.get('eda_plots', []))} plots")
+            else:
+                raise HTTPException(status_code=404, detail="Workflow not found")
         
         # Check if workflow is completed
-        if workflow_state.get("workflow_status") != "completed":
+        if state.get("workflow_status") != "completed" and state.get("status") != "completed":
             raise HTTPException(
                 status_code=400,
-                detail=f"Workflow {workflow_id} is not completed yet. Current status: {workflow_state.get('workflow_status')}"
+                detail=f"Workflow {workflow_id} is not completed yet. Current status: {state.get('workflow_status') or state.get('status')}"
             )
-        
-        state = workflow_states[workflow_id]
         
         # Build comprehensive results from state
         # Convert numpy types to native Python types for JSON serialization
@@ -547,10 +941,43 @@ async def get_workflow_results(workflow_id: str) -> Dict[str, Any]:
                 return tuple(convert_numpy_types(item) for item in obj)
             return obj
         
+        def _extract_workflow_summary(state: Dict[str, Any]) -> Optional[str]:
+            """Extract workflow summary from comprehensive_summary field (Summary section only, not PM chatbot)"""
+            # ✅ FIX: Get comprehensive summary from dedicated field, not PM messages
+            comprehensive_summary = state.get("comprehensive_summary", "")
+            if comprehensive_summary:
+                return comprehensive_summary
+            # Fallback: check technical_reporting section
+            technical_reporting = state.get("technical_reporting", {})
+            if isinstance(technical_reporting, dict):
+                return technical_reporting.get("comprehensive_summary", "")
+            return None
+        
         # ✅ FIX: Extract evaluation metrics properly (check multiple locations)
         eval_metrics = state.get("evaluation_metrics") or {}
         if not eval_metrics and "model_evaluation" in state:
             eval_metrics = state.get("model_evaluation", {}).get("evaluation_metrics", {})
+        
+        # ✅ CRITICAL FIX: Ensure metrics have correct keys for frontend
+        # Frontend expects: accuracy, precision, recall, f1_score (without suffixes for binary)
+        if eval_metrics:
+            # If we have binary classification metrics, use the main keys
+            if eval_metrics.get("is_binary", False):
+                # Ensure main metrics are present
+                if "precision" not in eval_metrics:
+                    eval_metrics["precision"] = eval_metrics.get("precision_binary", eval_metrics.get("precision_weighted", 0))
+                if "recall" not in eval_metrics:
+                    eval_metrics["recall"] = eval_metrics.get("recall_binary", eval_metrics.get("recall_weighted", 0))
+                if "f1_score" not in eval_metrics:
+                    eval_metrics["f1_score"] = eval_metrics.get("f1_binary", eval_metrics.get("f1_weighted", 0))
+            else:
+                # Multi-class: use weighted averages as main metrics
+                if "precision" not in eval_metrics:
+                    eval_metrics["precision"] = eval_metrics.get("precision_weighted", eval_metrics.get("precision_macro", 0))
+                if "recall" not in eval_metrics:
+                    eval_metrics["recall"] = eval_metrics.get("recall_weighted", eval_metrics.get("recall_macro", 0))
+                if "f1_score" not in eval_metrics:
+                    eval_metrics["f1_score"] = eval_metrics.get("f1_weighted", eval_metrics.get("f1_macro", 0))
         
         # ✅ FIX: Build downloadable_files list from available files
         downloadable_files = state.get("downloadable_files", [])
@@ -659,6 +1086,7 @@ async def get_workflow_results(workflow_id: str) -> Dict[str, Any]:
                 "model_evaluation": {
                     "summary": "Model evaluation completed",
                     "evaluation_metrics": eval_metrics,
+                    "plots": state.get("evaluation_plots", []),  # ✅ ADD: Model evaluation plots
                     "confusion_matrix": state.get("confusion_matrix"),
                     "roc_curve_data": state.get("roc_curve_data", {}),
                     "precision_recall_curve": state.get("precision_recall_curve", {}),
@@ -672,6 +1100,7 @@ async def get_workflow_results(workflow_id: str) -> Dict[str, Any]:
                     "final_report": state.get("final_report", ""),
                     "executive_summary": state.get("executive_summary", ""),
                     "technical_documentation": state.get("technical_documentation", ""),
+                    "comprehensive_summary": state.get("comprehensive_summary", ""),  # ✅ ADD: Comprehensive analysis for Summary section
                     "recommendations": state.get("recommendations", []),
                     "limitations": state.get("limitations", []),
                     "future_improvements": state.get("future_improvements", [])
@@ -685,6 +1114,10 @@ async def get_workflow_results(workflow_id: str) -> Dict[str, Any]:
             },
             # ✅ FIX: Top-level downloadable_files for frontend convenience
             "downloadable_files": downloadable_files,
+            # ✅ ADD: Workflow summary from comprehensive_summary field (Summary section only)
+            "workflow_summary": _extract_workflow_summary(state) or state.get("comprehensive_summary", ""),
+            # ✅ ADD: PM messages for frontend and testing
+            "pm_messages": state.get("pm_messages", []),
             "execution_info": {
                 "start_time": state.get("start_time"),
                 "end_time": state.get("end_time"),
@@ -697,6 +1130,13 @@ async def get_workflow_results(workflow_id: str) -> Dict[str, Any]:
             }
         })
         
+        # ✅ FIX: Aggregate ALL plots from ALL agents before returning
+        all_plots = _aggregate_all_plots(state, workflow_id)
+        results["all_plots"] = all_plots
+        results["plots"] = all_plots  # Also add as 'plots' for consistency
+        results["eda_plots"] = state.get("eda_plots", [])  # EDA plots specifically
+        results["evaluation_plots"] = state.get("evaluation_plots", [])  # Model evaluation plots specifically
+        
         return results
         
     except HTTPException:
@@ -704,6 +1144,147 @@ async def get_workflow_results(workflow_id: str) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error getting workflow results: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get workflow results: {str(e)}")
+
+
+def _aggregate_all_plots(state: Dict[str, Any], workflow_id: str) -> List[Dict[str, str]]:
+    """
+    ✅ FIX: Aggregate ALL plots from ALL agents.
+    
+    Collects plots from:
+    - EDA agent (eda_plots)
+    - Model evaluation agent (evaluation_plots)
+    - Any other agents that generate plots
+    
+    Args:
+        state: Workflow state dictionary
+        workflow_id: Workflow ID for plot directory
+        
+    Returns:
+        List of all plot dictionaries with title, name, path, url
+    """
+    all_plots = []
+    seen_paths = set()  # Track seen paths to avoid duplicates
+    
+    # 1. Get EDA plots
+    eda_plots = state.get("eda_plots", [])
+    if isinstance(eda_plots, list):
+        for plot in eda_plots:
+            if isinstance(plot, dict):
+                path = plot.get("path", "") or plot.get("url", "")
+                if path and path not in seen_paths:
+                    all_plots.append(plot)
+                    seen_paths.add(path)
+            elif isinstance(plot, str):
+                if plot not in seen_paths:
+                    all_plots.append({
+                        "title": _generate_plot_title_from_filename(Path(plot).name),
+                        "name": Path(plot).name,
+                        "path": plot,
+                        "url": plot,
+                        "workflow_id": workflow_id
+                    })
+                    seen_paths.add(plot)
+    elif isinstance(eda_plots, dict):
+        path = eda_plots.get("path", "") or eda_plots.get("url", "")
+        if path and path not in seen_paths:
+            all_plots.append(eda_plots)
+            seen_paths.add(path)
+    
+    # 2. Get Model Evaluation plots
+    eval_plots = state.get("evaluation_plots", [])
+    if isinstance(eval_plots, list):
+        for plot in eval_plots:
+            if isinstance(plot, dict):
+                path = plot.get("path", "") or plot.get("url", "")
+                if path and path not in seen_paths:
+                    all_plots.append(plot)
+                    seen_paths.add(path)
+            elif isinstance(plot, str):
+                if plot not in seen_paths:
+                    all_plots.append({
+                        "title": _generate_plot_title_from_filename(Path(plot).name),
+                        "name": Path(plot).name,
+                        "path": plot,
+                        "url": plot,
+                        "workflow_id": workflow_id
+                    })
+                    seen_paths.add(plot)
+    elif isinstance(eval_plots, dict):
+        path = eval_plots.get("path", "") or eval_plots.get("url", "")
+        if path and path not in seen_paths:
+            all_plots.append(eval_plots)
+            seen_paths.add(path)
+    
+    # 3. Also check plot_paths (backward compatibility)
+    plot_paths = state.get("plot_paths", [])
+    if isinstance(plot_paths, list):
+        for path in plot_paths:
+            if isinstance(path, str) and path not in seen_paths:
+                # Convert path to plot dict format
+                filename = Path(path).name if "/" in path else path
+                all_plots.append({
+                    "title": _generate_plot_title_from_filename(filename),
+                    "name": filename,
+                    "path": path,
+                    "url": path,
+                    "workflow_id": workflow_id
+                })
+                seen_paths.add(path)
+    
+    # 4. Load plots from filesystem as fallback
+    import os
+    cwd = os.getcwd()
+    if cwd.endswith('/backend'):
+        base_plots_dir = Path("plots")
+    else:
+        base_plots_dir = Path("backend/plots")
+    
+    workflow_plots_dir = base_plots_dir / workflow_id
+    if workflow_plots_dir.exists():
+        plot_files = list(workflow_plots_dir.glob("*.png")) + list(workflow_plots_dir.glob("*.jpg"))
+        for plot_file in plot_files:
+            api_url = f"/api/workflow/plot/{workflow_id}/{plot_file.name}"
+            # Check if already in all_plots
+            if api_url not in seen_paths:
+                all_plots.append({
+                    "title": _generate_plot_title_from_filename(plot_file.name),
+                    "name": plot_file.name,
+                    "path": api_url,
+                    "url": api_url,
+                    "workflow_id": workflow_id
+                })
+                seen_paths.add(api_url)
+    
+    logger.info(f"✅ Aggregated {len(all_plots)} plots from all agents for workflow {workflow_id}")
+    return all_plots
+
+
+def _generate_plot_title_from_filename(filename: str) -> str:
+    """Generate a readable title from plot filename"""
+    # Remove extension
+    name = filename.replace(".png", "").replace(".jpg", "").replace(".svg", "")
+    
+    # Common plot name mappings
+    plot_mappings = {
+        "correlation_heatmap": "Correlation Heatmap",
+        "distributions_histograms": "Feature Distributions",
+        "outliers_boxplots": "Outlier Analysis",
+        "target_distribution": "Target Variable Distribution",
+        "confusion_matrix": "Confusion Matrix",
+        "roc_curve": "ROC Curve",
+        "precision_recall": "Precision-Recall Curve",
+        "feature_importance": "Feature Importance"
+    }
+    
+    name_lower = name.lower()
+    for key, title in plot_mappings.items():
+        if key in name_lower:
+            return title
+    
+    # Convert filename to title
+    title = name.replace("_", " ").replace("-", " ")
+    title = " ".join(word.capitalize() for word in title.split())
+    return title
 
 
 @router.get("/plot/{plot_path:path}")
@@ -719,14 +1300,30 @@ async def get_plot_image(plot_path: str) -> FileResponse:
         Plot image file
     """
     try:
-        # Construct full path from backend/plots/ directory
-        base_plots_dir = Path("backend/plots")
-        full_path = base_plots_dir / plot_path
+        import os
+        # Get absolute path from project root
+        # Try multiple possible locations based on where the API is running from
+        possible_bases = [
+            Path("backend/plots"),  # From project root
+            Path("plots"),  # From backend directory
+            Path("../backend/plots"),  # From backend/app directory
+            Path(os.path.join(os.path.dirname(__file__), "../../plots")),  # Relative to this file
+        ]
         
-        logger.info(f"Attempting to serve plot from: {full_path}")
+        full_path = None
+        for base_dir in possible_bases:
+            candidate = base_dir / plot_path
+            if candidate.exists():
+                full_path = candidate.resolve()  # Use absolute path
+                logger.info(f"✅ Found plot at: {full_path}")
+                break
         
-        if not full_path.exists():
-            logger.error(f"Plot not found at: {full_path}")
+        if not full_path or not full_path.exists():
+            # Log all attempted paths for debugging
+            logger.error(f"Plot not found. Tried paths:")
+            for base_dir in possible_bases:
+                candidate = base_dir / plot_path
+                logger.error(f"  - {candidate.resolve() if candidate.exists() else candidate} (exists: {candidate.exists()})")
             raise HTTPException(status_code=404, detail=f"Plot not found: {plot_path}")
         
         # Determine media type
@@ -896,7 +1493,7 @@ async def list_workflows(
 @router.delete("/{workflow_id}")
 async def cancel_workflow(workflow_id: str) -> Dict[str, Any]:
     """
-    Cancel a running workflow.
+    Cancel a running workflow and clean up resources.
     
     Args:
         workflow_id: The workflow identifier
@@ -905,18 +1502,195 @@ async def cancel_workflow(workflow_id: str) -> Dict[str, Any]:
         Dictionary containing cancellation status
     """
     try:
-        # TODO: Implement actual workflow cancellation
-        # For now, return success message
+        if workflow_id not in workflow_states:
+            # ✅ FIX: Don't raise error if workflow not found (might have been cleaned up)
+            logger.warning(f"Workflow {workflow_id} not found for cancellation")
+            return {
+                "workflow_id": workflow_id,
+                "status": "cancelled",
+                "message": "Workflow not found (may have been already cancelled or completed)"
+            }
+        
+        # Mark workflow as cancelled
+        workflow_states[workflow_id]["workflow_status"] = WorkflowStatus.CANCELLED
+        workflow_states[workflow_id]["status"] = WorkflowStatus.CANCELLED
+        workflow_states[workflow_id]["workflow_paused"] = False
+        workflow_states[workflow_id]["pending_approval"] = None
+        
+        # ✅ FIX: Emit cancellation event
+        try:
+            from ..services.realtime import emit
+            await emit(workflow_id, "workflow_cancelled", {
+                "workflow_id": workflow_id,
+                "status": "cancelled",
+                "message": "Workflow cancelled by user"
+            })
+        except Exception as e:
+            logger.warning(f"Failed to emit cancellation event: {e}")
+        
+        logger.info(f"Workflow {workflow_id} cancelled")
+        
         return {
             "workflow_id": workflow_id,
             "status": "cancelled",
-            "message": "Workflow cancellation requested"
+            "message": "Workflow cancelled successfully"
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error cancelling workflow: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to cancel workflow: {str(e)}")
 
+
+@router.delete("/cancel-all")
+async def cancel_all_workflows() -> Dict[str, Any]:
+    """
+    Cancel all running workflows (useful for cleanup on page refresh).
+    
+    Returns:
+        Dictionary containing cancellation status
+    """
+    try:
+        cancelled_count = 0
+        cancelled_ids = []
+        
+        for workflow_id, state in list(workflow_states.items()):
+            workflow_status = state.get("workflow_status") or state.get("status")
+            if workflow_status == WorkflowStatus.RUNNING or workflow_status == "running":
+                workflow_states[workflow_id]["workflow_status"] = WorkflowStatus.CANCELLED
+                workflow_states[workflow_id]["status"] = WorkflowStatus.CANCELLED
+                workflow_states[workflow_id]["workflow_paused"] = False
+                workflow_states[workflow_id]["pending_approval"] = None
+                cancelled_ids.append(workflow_id)
+                cancelled_count += 1
+        
+        logger.info(f"Cancelled {cancelled_count} running workflow(s)")
+        
+        return {
+            "cancelled_count": cancelled_count,
+            "cancelled_workflows": cancelled_ids,
+            "message": f"Successfully cancelled {cancelled_count} workflow(s)"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error cancelling all workflows: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to cancel workflows: {str(e)}")
+
+
+@router.get("/{workflow_id}/agent/{agent_name}/summary")
+async def get_agent_summary(
+    workflow_id: str,
+    agent_name: str
+) -> Dict[str, Any]:
+    """
+    Get a human-readable summary of an agent's execution.
+    
+    Args:
+        workflow_id: The workflow identifier
+        agent_name: Name of the agent (e.g., 'eda_analysis', 'data_cleaning')
+        
+    Returns:
+        Agent execution summary
+    """
+    try:
+        if workflow_id not in workflow_states:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+        
+        state = workflow_states[workflow_id]
+        
+        # Map frontend agent IDs to backend agent names
+        agent_mapping = {
+            "discovery": "data_discovery",
+            "eda": "eda_analysis",
+            "cleaning": "data_cleaning",
+            "feature": "feature_engineering",
+            "model": "ml_building",
+            "eval": "model_evaluation",
+            "report": "technical_reporter"
+        }
+        
+        backend_agent_name = agent_mapping.get(agent_name, agent_name)
+        
+        # Generate summary using service
+        from ..services.agent_summary_service import get_agent_summary_service
+        # ✅ FIX: Get API key from workflow state
+        api_key = state.get("api_key") or (workflow_states.get(workflow_id, {}).get("api_key") if workflow_id in workflow_states else None)
+        summary_service = get_agent_summary_service(api_key=api_key) if api_key and api_key != "dummy_key" else get_agent_summary_service()
+        summary = await summary_service.generate_summary(
+            backend_agent_name,
+            state,
+            workflow_id
+        )
+        
+        return {
+            "workflow_id": workflow_id,
+            "agent_name": agent_name,
+            "backend_agent_name": backend_agent_name,
+            "summary": summary,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting agent summary: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get agent summary: {str(e)}")
+
+
+# ✅ OPTION 3: Container management endpoints
+@router.get("/{workflow_id}/sandbox/containers")
+async def get_workflow_containers(workflow_id: str) -> Dict[str, Any]:
+    """Get all containers associated with a workflow"""
+    try:
+        containers = SandboxExecutor.get_workflow_containers(workflow_id)
+        return {
+            "workflow_id": workflow_id,
+            "containers": containers,
+            "count": len(containers)
+        }
+    except Exception as e:
+        logger.error(f"Error getting containers for workflow {workflow_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get containers: {str(e)}")
+
+@router.get("/{workflow_id}/sandbox/container/{container_name}/logs")
+async def get_container_logs(workflow_id: str, container_name: str, tail: int = 100) -> Dict[str, Any]:
+    """Get logs from a specific container"""
+    try:
+        # Verify container belongs to workflow
+        containers = SandboxExecutor.get_workflow_containers(workflow_id)
+        container_names = [c["container_name"] for c in containers]
+        
+        if container_name not in container_names:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Container {container_name} not found for workflow {workflow_id}"
+            )
+        
+        logs = SandboxExecutor.get_container_logs(container_name, tail=tail)
+        return {
+            "workflow_id": workflow_id,
+            "container_name": container_name,
+            **logs
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting logs for container {container_name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get logs: {str(e)}")
+
+@router.delete("/{workflow_id}/sandbox/containers")
+async def cleanup_workflow_containers(workflow_id: str, force: bool = False) -> Dict[str, Any]:
+    """Manually cleanup all containers for a workflow"""
+    try:
+        result = SandboxExecutor.cleanup_workflow_containers(workflow_id, force=force)
+        return {
+            "workflow_id": workflow_id,
+            **result
+        }
+    except Exception as e:
+        logger.error(f"Error cleaning up containers for workflow {workflow_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to cleanup containers: {str(e)}")
 
 @router.post("/{workflow_id}/pm/question")
 async def ask_pm_question(
@@ -943,8 +1717,8 @@ async def ask_pm_question(
         
         state = workflow_states[workflow_id]
         
-        # Generate context-aware answer (synchronous for immediate response)
-        answer = _generate_pm_answer(question, state)
+        # Generate context-aware answer using LLM service
+        answer = await _generate_pm_answer(question, state)
         
         # Store Q&A in state
         if "pm_qa_history" not in state:
@@ -1042,7 +1816,7 @@ async def respond_to_approval_gate(
         action_emoji = {"approve": "✅", "reject": "❌", "modify": "✏️"}
         state["pm_messages"].append({
             "type": "approval_response",
-            "content": f"{action_emoji.get(action, '📝')} **{action.title()}d**: {approval_gate['stage']}. {feedback if feedback else ''}",
+            "content": f"{action_emoji.get(action, '📝')} {action.title()}d: {approval_gate['stage']}. {feedback if feedback else ''}",
             "timestamp": datetime.now().isoformat()
         })
         
@@ -1076,7 +1850,8 @@ async def execute_workflow_with_progress(
     target_column: str,
     description: str,
     user_id: Optional[str],
-    workflow_id: str
+    workflow_id: str,
+    api_key: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Execute workflow with progress updates.
@@ -1110,6 +1885,7 @@ async def execute_workflow_with_progress(
         # 5. ML Building - Train models
         # 6. Model Evaluation - Evaluate performance
         # 7. Technical Reporter - Generate final report
+        # Agents already have Layer 2 enabled by default in their __init__ methods
         agents = {
             "data_discovery": DataDiscoveryAgent(),
             "eda_analysis": EDAAgent(),
@@ -1122,12 +1898,14 @@ async def execute_workflow_with_progress(
         
         # Create initial state
         from ..workflows.state_management import state_manager
+        # ✅ FIX: Use user-provided API key (from parameter or workflow state)
+        user_api_key = api_key or (workflow_states[workflow_id].get("api_key", "dummy_key") if workflow_id in workflow_states else "dummy_key")
         initial_state = state_manager.initialize_state(
             session_id=workflow_id,
             dataset_id=f"dataset_{workflow_id}",
             target_column=target_column,
             user_description=description,
-            api_key="dummy_key",
+            api_key=user_api_key,
             original_dataset=dataset
         )
         
@@ -1136,6 +1914,20 @@ async def execute_workflow_with_progress(
         agent_names = list(agents.keys())
         
         for i, (agent_name, agent) in enumerate(agents.items()):
+            # ✅ FIX: Check if workflow was cancelled before starting each agent
+            if workflow_id in workflow_states:
+                workflow_status_check = workflow_states[workflow_id].get("workflow_status")
+                if workflow_status_check == WorkflowStatus.CANCELLED or workflow_status_check == "cancelled":
+                    logger.info(f"Workflow {workflow_id} was cancelled, stopping execution")
+                    return {
+                        "status": WorkflowStatus.CANCELLED,
+                        "results": {
+                            "message": "Workflow was cancelled",
+                            "agents_completed": i,
+                            "total_agents": len(agents)
+                        }
+                    }
+            
             logger.info(f"Starting agent: {agent_name} for workflow {workflow_id}")
             
             # Update current agent
@@ -1170,15 +1962,31 @@ async def execute_workflow_with_progress(
                 except Exception as e:
                     logger.warning(f"Failed to emit PM message: {e}")
                 
+                # ✅ FIX: Check if workflow was cancelled before executing agent
+                if workflow_id in workflow_states:
+                    workflow_status_check = workflow_states[workflow_id].get("workflow_status")
+                    if workflow_status_check == WorkflowStatus.CANCELLED or workflow_status_check == "cancelled":
+                        logger.info(f"Workflow {workflow_id} was cancelled during agent {agent_name} execution")
+                        break  # Exit agent loop
+                
                 # Execute the actual agent
                 current_state = await agent.execute(current_state)
+                
+                # ✅ FIX: Check again after agent execution
+                if workflow_id in workflow_states:
+                    workflow_status_check = workflow_states[workflow_id].get("workflow_status")
+                    if workflow_status_check == WorkflowStatus.CANCELLED or workflow_status_check == "cancelled":
+                        logger.info(f"Workflow {workflow_id} was cancelled after agent {agent_name} execution")
+                        break  # Exit agent loop
+                
                 logger.info(f"Completed agent: {agent_name} for workflow {workflow_id}")
                 
                 # ✅ CRITICAL FIX: Copy ALL state keys to workflow_states
                 # This ensures results from agents are accessible via the API
                 logger.info(f"📦 Copying state keys to workflow_states for {agent_name}")
                 copied_keys = []
-                skip_keys = {"session_id", "user_id", "workflow_status", "api_key", "original_dataset", "dataset", "processed_dataset"}
+                # ✅ FIX: Keep api_key in workflow_states so it's available for all services
+                skip_keys = {"session_id", "user_id", "workflow_status", "original_dataset", "dataset", "processed_dataset"}
                 
                 for key, value in current_state.items():
                     if key not in skip_keys and value is not None:
@@ -1224,7 +2032,25 @@ async def execute_workflow_with_progress(
                         "timestamp": datetime.now().isoformat()
                     })
                 
-                # ✅ ADD: Check for approval gates
+                # ✅ CRITICAL FIX: Verify Layer 2 completed before checking approval gates
+                # Check if Layer 2 was attempted and ensure it completed
+                layer_usage = current_state.get("layer_usage", {}).get(agent_name, "layer1")
+                layer2_attempted = current_state.get("agent_results", {}).get(agent_name, {}).get("layer2_attempted", False)
+                
+                if layer2_attempted:
+                    # Verify Layer 2 completion by checking for completion log or results
+                    layer2_complete = (
+                        layer_usage == "layer2" or  # Layer 2 was used
+                        current_state.get("agent_results", {}).get(agent_name, {}).get("layer2_error") is not None or  # Layer 2 failed (but completed)
+                        "LAYER 2 COMPLETE" in str(current_state.get("agent_results", {}).get(agent_name, {}))  # Completion marker
+                    )
+                    
+                    if not layer2_complete:
+                        logger.warning(f"⚠️ Layer 2 was attempted for {agent_name} but completion not verified. Waiting...")
+                        # Wait a bit more for Layer 2 to complete (shouldn't happen, but safety check)
+                        await asyncio.sleep(2)
+                
+                # ✅ ADD: Check for approval gates (AFTER Layer 2 completion verified)
                 approval_gate = _should_trigger_approval_gate(agent_name, current_state)
                 if approval_gate:
                     logger.info(f"Triggering approval gate at {approval_gate['stage']}")
@@ -1242,10 +2068,10 @@ async def execute_workflow_with_progress(
                     except Exception as e:
                         logger.warning(f"Failed to emit approval gate event: {e}")
                     
-                    # Add to PM messages
+                    # Add to PM messages (without markdown formatting)
                     workflow_states[workflow_id]["pm_messages"].append({
                         "type": "approval_gate",
-                        "content": f"⏸️ **{approval_gate['title']}**: {approval_gate['question']}",
+                        "content": f"⏸️ {approval_gate['title']}: {approval_gate['question']}",
                         "approval_data": approval_gate,
                         "timestamp": datetime.now().isoformat()
                     })
@@ -1265,7 +2091,7 @@ async def execute_workflow_with_progress(
                         workflow_states[workflow_id]["pending_approval"] = None
                         workflow_states[workflow_id]["pm_messages"].append({
                             "type": "timeout",
-                            "content": "⏰ **Auto-approved**: No response received, continuing workflow automatically.",
+                            "content": "⏰ Auto-approved: No response received, continuing workflow automatically.",
                             "timestamp": datetime.now().isoformat()
                         })
                     elif workflow_states[workflow_id].get("workflow_status") == "rejected":
@@ -1336,12 +2162,19 @@ async def execute_workflow_with_progress(
                     if workflow_states[workflow_id]["model_path"] and workflow_states[workflow_id]["model_selection_results"]:
                         workflow_states[workflow_id]["model_selection_results"]["model_path"] = workflow_states[workflow_id]["model_path"]
                 elif agent_name == "model_evaluation":
-                    workflow_states[workflow_id]["evaluation_metrics"] = current_state.get("evaluation_metrics")
+                    # ✅ FIX: Ensure evaluation_metrics are properly stored with all keys
+                    eval_metrics = current_state.get("evaluation_metrics", {})
+                    workflow_states[workflow_id]["evaluation_metrics"] = eval_metrics
                     workflow_states[workflow_id]["confusion_matrix"] = current_state.get("confusion_matrix")
                     workflow_states[workflow_id]["roc_curve_data"] = current_state.get("roc_curve_data")
                     workflow_states[workflow_id]["precision_recall_curve"] = current_state.get("precision_recall_curve")
                     workflow_states[workflow_id]["feature_importance_model"] = current_state.get("feature_importance_model")
                     workflow_states[workflow_id]["model_performance_analysis"] = current_state.get("model_performance_analysis")
+                    # Log metrics for debugging
+                    if eval_metrics:
+                        logger.info(f"✅ Stored evaluation_metrics: accuracy={eval_metrics.get('accuracy', 0):.3f}, f1_weighted={eval_metrics.get('f1_weighted', 0):.3f}, precision_weighted={eval_metrics.get('precision_weighted', 0):.3f}, recall_weighted={eval_metrics.get('recall_weighted', 0):.3f}")
+                    else:
+                        logger.warning(f"⚠️ No evaluation_metrics found in state for model_evaluation agent")
                 elif agent_name == "technical_reporter":
                     # ✅ FIX: Ensure downloadable_files are populated when reporter completes
                     if "downloadable_files" not in workflow_states[workflow_id]:
@@ -1419,6 +2252,40 @@ async def execute_workflow_with_progress(
             workflow_states[workflow_id]["status"] = WorkflowStatus.COMPLETED
             workflow_states[workflow_id]["workflow_status"] = "completed"  # Add this field for results endpoint
             workflow_states[workflow_id]["end_time"] = datetime.now().isoformat()
+            
+            # ✅ OPTION 3: Mark workflow as completed in SandboxExecutor for container retention
+            try:
+                SandboxExecutor.mark_workflow_completed(workflow_id)
+                logger.info(f"✅ Marked workflow {workflow_id} as completed in SandboxExecutor")
+            except Exception as e:
+                logger.warning(f"Failed to mark workflow completion in SandboxExecutor: {e}")
+        
+        # ✅ ADD: Generate workflow completion summary for Summary section only (NOT PM chatbot)
+        try:
+            from ..services.pm_insights_service import get_pm_insights_service
+            # ✅ FIX: Get API key from workflow state
+            api_key = workflow_states[workflow_id].get("api_key")
+            pm_service = get_pm_insights_service(api_key=api_key) if api_key and api_key != "dummy_key" else get_pm_insights_service()
+            completion_summary = await pm_service.generate_workflow_summary(workflow_states[workflow_id])
+            
+            # ✅ FIX: Store summary in workflow state for Summary section (NOT in PM messages)
+            # This keeps PM chatbot clean and active for user queries
+            workflow_states[workflow_id]["comprehensive_summary"] = completion_summary
+            
+            # Add a simple completion message to PM instead of the full summary
+            if "pm_messages" not in workflow_states[workflow_id]:
+                workflow_states[workflow_id]["pm_messages"] = []
+            
+            workflow_states[workflow_id]["pm_messages"].append({
+                "type": "system",
+                "agent": "System",
+                "content": "✅ Workflow Complete! The comprehensive analysis is available in the Summary section. I'm here to answer any questions about the dataset, classification process, or data science concepts.",
+                "timestamp": datetime.now().isoformat()
+            })
+            
+            logger.info("✅ Generated workflow completion summary for Summary section (not PM chatbot)")
+        except Exception as e:
+            logger.warning(f"Failed to generate workflow completion summary: {e}")
         
         # Emit WebSocket event for workflow completion
         try:
@@ -1498,7 +2365,7 @@ async def execute_workflow_background(
         
         # Execute the workflow with progress updates
         result = await execute_workflow_with_progress(
-            workflow, dataset, target_column, description, user_id, workflow_id
+            workflow, dataset, target_column, description, user_id, workflow_id, api_key
         )
         
         # Update final status
@@ -1506,6 +2373,13 @@ async def execute_workflow_background(
             workflow_states[workflow_id]["status"] = result.get("status", WorkflowStatus.COMPLETED)
             workflow_states[workflow_id]["progress"] = 100.0
             workflow_states[workflow_id]["results"] = result.get("results", {})
+            
+            # ✅ OPTION 3: Mark workflow as completed in SandboxExecutor for container retention
+            try:
+                SandboxExecutor.mark_workflow_completed(workflow_id)
+                logger.info(f"✅ Marked workflow {workflow_id} as completed in SandboxExecutor")
+            except Exception as e:
+                logger.warning(f"Failed to mark workflow completion in SandboxExecutor: {e}")
         
         logger.info(f"Workflow {workflow_id} completed with status: {result['status']}")
         

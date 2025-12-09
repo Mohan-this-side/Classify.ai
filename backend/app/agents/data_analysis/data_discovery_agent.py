@@ -642,38 +642,20 @@ class DataDiscoveryAgent(BaseAgent):
         # Get user description for context
         user_description = state.get("user_description", "")
         
-        prompt = f"""Generate advanced Python code for comprehensive data discovery and analysis based on the following insights:
+        # Use the improved prompt template
+        from .prompts import get_discovery_prompt
+        prompt = get_discovery_prompt(layer1_results)
+        
+        # Add strict formatting instructions
+        prompt += """
 
-## User's Dataset Description:
-{user_description if user_description else "No specific description provided by user."}
-
-## Dataset Overview:
-- Shape: {basic_info.get('shape', 'unknown')}
-- Columns: {basic_info.get('columns', [])}
-- Memory Usage: {basic_info.get('memory_usage_mb', 0):.2f} MB
-
-## Statistical Summary:
-{statistical_summary}
-
-## Detected Data Types:
-{data_types.get('detected_types', {})}
-
-## Correlation Insights:
-{correlations}
-
-## Requirements for Generated Code:
-1. Perform advanced statistical analysis beyond basic summaries
-2. Detect complex patterns: seasonality, trends, cyclic behavior
-3. Identify domain-specific insights based on column names and user description
-4. Generate visualizations (charts, heatmaps, distributions)
-5. Create feature importance rankings
-6. Detect potential data quality issues
-7. Use only: pandas, numpy, matplotlib, seaborn
-8. Add clear comments explaining each analysis
-9. Return structured results (dictionary with findings)
-10. Consider the user's description when generating insights: "{user_description}"
-
-Generate comprehensive, production-ready Python code:"""
+CRITICAL FORMATTING REQUIREMENTS:
+- Return ONLY Python code (no markdown, no code fences)
+- Start imports at column 0 (no leading spaces)
+- Use exactly 4 spaces for indentation (no tabs)
+- Code must be syntactically correct and executable
+- End with: print(result) or return result as dictionary
+"""
         
         return prompt
     
@@ -695,6 +677,14 @@ Generate comprehensive, production-ready Python code:"""
             Processed and validated discovery results
         """
         self.logger.info("🔍 LAYER 2: Processing sandbox results for data discovery")
+        
+        # Handle cases where sandbox execution had issues but still produced output
+        if sandbox_output.get("status") not in ["SUCCESS", "FAILED"]:
+            # If status is unclear, check if we have output
+            if sandbox_output.get("output") or sandbox_output.get("error"):
+                self.logger.warning(f"Sandbox status unclear: {sandbox_output.get('status')}, but output exists. Attempting to process.")
+            else:
+                raise ValueError(f"Sandbox execution failed with status: {sandbox_output.get('status')}")
         
         # Validate sandbox execution was successful
         if sandbox_output.get("status") != "SUCCESS":

@@ -27,7 +27,7 @@ import pandas as pd
 import google.generativeai as genai
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, classification_report
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, classification_report, roc_auc_score
 from sklearn.model_selection import GridSearchCV, cross_val_score, train_test_split
 from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
@@ -37,6 +37,14 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
+
+# Import SMOTE for class imbalance handling
+try:
+    from imblearn.over_sampling import SMOTE
+    SMOTE_AVAILABLE = True
+except ImportError:
+    SMOTE_AVAILABLE = False
+    logging.warning("imblearn not available - SMOTE will not be used")
 
 from ..base_agent import BaseAgent
 from ...workflows.state_management import AgentStatus, ClassificationState, state_manager
@@ -68,16 +76,18 @@ class MLBuilderAgent(BaseAgent):
         )
 
         # Model candidates for analysis
+        # ✅ CRITICAL FIX: Use class_weight='balanced' by default to handle class imbalance
+        # ✅ FIX: Initialize models - will set class_weight later based on imbalance detection
         self.model_candidates = {
-            "random_forest": RandomForestClassifier(random_state=42),
-            "gradient_boosting": GradientBoostingClassifier(random_state=42),
-            "logistic_regression": LogisticRegression(random_state=42, max_iter=1000),
-            "svm": SVC(random_state=42, probability=True),
-            "knn": KNeighborsClassifier(),
-            "naive_bayes": GaussianNB(),
-            "decision_tree": DecisionTreeClassifier(random_state=42),
-            "xgboost": XGBClassifier(random_state=42, eval_metric="logloss"),
-            "lightgbm": LGBMClassifier(random_state=42, verbose=-1),
+            "random_forest": RandomForestClassifier(random_state=42, class_weight='balanced'),
+            "gradient_boosting": GradientBoostingClassifier(random_state=42),  # No class_weight support - use sample_weight instead
+            "logistic_regression": LogisticRegression(random_state=42, max_iter=1000, class_weight='balanced'),
+            "svm": SVC(random_state=42, probability=True, class_weight='balanced'),
+            "knn": KNeighborsClassifier(),  # No class_weight support
+            "naive_bayes": GaussianNB(),  # No class_weight support
+            "decision_tree": DecisionTreeClassifier(random_state=42, class_weight='balanced'),
+            "xgboost": XGBClassifier(random_state=42, eval_metric="logloss", scale_pos_weight=1),  # Will be adjusted
+            "lightgbm": LGBMClassifier(random_state=42, verbose=-1, class_weight='balanced'),
         }
 
         # Hyperparameter grids for analysis
@@ -296,16 +306,59 @@ class MLBuilderAgent(BaseAgent):
 
     def _prepare_data(self, df: pd.DataFrame, target_column: str) -> Tuple[pd.DataFrame, pd.Series]:
         """Prepare data for model training (basic preprocessing only)"""
-        X = df.drop(columns=[target_column])
-        y = df[target_column]
+        # Create a copy to avoid modifying original
+        df_clean = df.copy()
+        
+        # ✅ FIX: Check initial row count
+        initial_rows = len(df_clean)
+        self.logger.info(f"Initial dataset shape: {df_clean.shape}")
+        
+        # Remove rows with NaN in target column (critical for training)
+        if df_clean[target_column].isnull().any():
+            null_count = df_clean[target_column].isnull().sum()
+            self.logger.warning(f"Found {null_count} rows ({null_count/initial_rows*100:.1f}%) with NaN in target column")
+            
+            # ✅ FIX: Check if removing these rows would leave us with too few rows
+            rows_after_removal = initial_rows - null_count
+            if rows_after_removal < 10:  # Minimum threshold for training
+                self.logger.error(f"❌ CRITICAL: Removing NaN target rows would leave only {rows_after_removal} rows (minimum 10 required)")
+                raise ValueError(f"Cannot train model: Only {rows_after_removal} rows would remain after removing NaN target values. Dataset needs at least 10 rows for training.")
+            
+            df_clean = df_clean.dropna(subset=[target_column])
+            self.logger.info(f"Removed {null_count} rows with NaN in target. Remaining rows: {len(df_clean)}")
+        
+        # ✅ FIX: Final validation - ensure we have enough rows
+        if len(df_clean) < 10:
+            self.logger.error(f"❌ CRITICAL: Dataset has only {len(df_clean)} rows after cleaning (minimum 10 required)")
+            raise ValueError(f"Cannot train model: Dataset has only {len(df_clean)} rows. Minimum 10 rows required for training.")
+        
+        X = df_clean.drop(columns=[target_column])
+        y = df_clean[target_column]
+        
+        # Drop datetime columns (they can't be used directly in sklearn models)
+        datetime_cols = X.select_dtypes(include=['datetime64', 'datetime']).columns
+        if len(datetime_cols) > 0:
+            self.logger.info(f"Dropping datetime columns: {list(datetime_cols)}")
+            X = X.drop(columns=datetime_cols)
         
         # Basic one-hot encoding for categorical variables
         X = pd.get_dummies(X, drop_first=True)
         
-        # Handle any remaining missing values
+        # Handle any remaining missing values in features
         if X.isnull().any().any():
-            X = X.fillna(X.mean())
+            # Fill numeric columns with mean
+            numeric_cols = X.select_dtypes(include=[np.number]).columns
+            if len(numeric_cols) > 0:
+                X[numeric_cols] = X[numeric_cols].fillna(X[numeric_cols].mean())
+            # Fill remaining NaN with 0 (for one-hot encoded columns that might have no occurrences)
+            X = X.fillna(0)
         
+        # Ensure target has no NaN (should already be handled above, but double-check)
+        if y.isnull().any():
+            self.logger.error("Target column still contains NaN after cleaning!")
+            raise ValueError("Target column contains NaN values - cannot train model")
+        
+        self.logger.info(f"Prepared data: X shape={X.shape}, y shape={y.shape}, y unique values={y.nunique()}")
         return X, y
 
     # ============================================================================
@@ -365,11 +418,16 @@ REQUIREMENTS:
 2. MUST implement train/test split BEFORE any preprocessing
 3. Use the recommended models: {data_analysis['recommended_models'][:3]}
 4. Include hyperparameter tuning with GridSearchCV
-5. Include comprehensive evaluation metrics
+5. Include comprehensive evaluation metrics (accuracy, F1-score, ROC-AUC, precision, recall)
 6. Add educational comments explaining each step
 7. Handle both numeric and categorical features appropriately
 8. Use proper cross-validation
 9. Save the best model and results
+10. **CRITICAL**: If data is imbalanced (is_balanced={data_analysis['is_balanced']}), you MUST apply SMOTE:
+   - Import: from imblearn.over_sampling import SMOTE
+   - Apply SMOTE to training data: smote = SMOTE(random_state=42); X_train, y_train = smote.fit_resample(X_train, y_train)
+   - This is MANDATORY for imbalanced datasets to prevent biased predictions
+11. **CRITICAL**: Use appropriate metrics for imbalanced data - prioritize F1-score and ROC-AUC over accuracy
 
 Generate complete, production-ready Python code that follows ML best practices.
 The code should be educational and well-commented.
@@ -705,6 +763,68 @@ y_test = pd.read_csv('y_test.csv').iloc[:, 0]   # First column
             cv_scores = cross_val_score(best_model, X_train, y_train, cv=5)
             
             y_pred = best_model.predict(X_test)
+            
+            # ✅ CRITICAL FIX: Validate that model predicts both classes
+            unique_preds = len(np.unique(y_pred))
+            unique_true = len(np.unique(y_test))
+            if unique_preds < unique_true:
+                self.logger.error(f"❌ CRITICAL: Model predicts only {unique_preds} class(es) out of {unique_true} true classes!")
+                self.logger.error(f"   Prediction distribution: {pd.Series(y_pred).value_counts().to_dict()}")
+                self.logger.error(f"   True distribution: {pd.Series(y_test).value_counts().to_dict()}")
+                # ✅ CRITICAL FIX: Retrain with stronger class imbalance handling
+                self.logger.info("🔄 Retraining with stronger class imbalance handling...")
+                # Calculate class weights manually
+                from sklearn.utils.class_weight import compute_class_weight
+                class_weights = compute_class_weight('balanced', classes=np.unique(y_train), y=y_train)
+                class_weight_dict = dict(zip(np.unique(y_train), class_weights))
+                self.logger.info(f"   Calculated class weights: {class_weight_dict}")
+                
+                # Retrain with explicit class weights
+                if hasattr(best_model, 'set_params'):
+                    try:
+                        best_model.set_params(class_weight=class_weight_dict)
+                        best_model.fit(X_train, y_train)
+                        y_pred = best_model.predict(X_test)
+                        unique_preds_retry = len(np.unique(y_pred))
+                        if unique_preds_retry >= unique_true:
+                            self.logger.info(f"✅ Retraining successful - now predicts {unique_preds_retry} classes")
+                        else:
+                            self.logger.warning(f"⚠️ Retraining still predicts only {unique_preds_retry} classes")
+                            # Try SMOTE if available
+                            if SMOTE_AVAILABLE:
+                                try:
+                                    self.logger.info("🔄 Trying SMOTE for class imbalance...")
+                                    smote = SMOTE(random_state=42)
+                                    X_train_resampled, y_train_resampled = smote.fit_resample(X_train, y_train)
+                                    self.logger.info(f"   SMOTE resampled: {len(X_train_resampled)} samples (was {len(X_train)})")
+                                    best_model.fit(X_train_resampled, y_train_resampled)
+                                    y_pred = best_model.predict(X_test)
+                                    unique_preds_smote = len(np.unique(y_pred))
+                                    if unique_preds_smote >= unique_true:
+                                        self.logger.info(f"✅ SMOTE retraining successful - now predicts {unique_preds_smote} classes")
+                                    else:
+                                        self.logger.warning(f"⚠️ SMOTE retraining still predicts only {unique_preds_smote} classes")
+                                except Exception as smote_error:
+                                    self.logger.warning(f"⚠️ SMOTE failed: {smote_error}")
+                    except Exception as retry_error:
+                        self.logger.warning(f"⚠️ Could not retrain with class weights: {retry_error}")
+                        # Try SMOTE if available
+                        if SMOTE_AVAILABLE:
+                            try:
+                                self.logger.info("🔄 Trying SMOTE for class imbalance...")
+                                smote = SMOTE(random_state=42)
+                                X_train_resampled, y_train_resampled = smote.fit_resample(X_train, y_train)
+                                self.logger.info(f"   SMOTE resampled: {len(X_train_resampled)} samples (was {len(X_train)})")
+                                best_model.fit(X_train_resampled, y_train_resampled)
+                                y_pred = best_model.predict(X_test)
+                                unique_preds_smote = len(np.unique(y_pred))
+                                if unique_preds_smote >= unique_true:
+                                    self.logger.info(f"✅ SMOTE retraining successful - now predicts {unique_preds_smote} classes")
+                                else:
+                                    self.logger.warning(f"⚠️ SMOTE retraining still predicts only {unique_preds_smote} classes")
+                            except Exception as smote_error:
+                                self.logger.warning(f"⚠️ SMOTE failed: {smote_error}")
+            
             metrics = self._calculate_metrics(y_test, y_pred)
             
             # Save model
@@ -781,41 +901,138 @@ y_test = pd.read_csv('y_test.csv').iloc[:, 0]   # First column
     # LEGACY METHODS (for fallback compatibility)
     # ============================================================================
     
-    def _select_best_model(self, X: pd.DataFrame, y: pd.Series) -> str:
-        """Select best model using quick evaluation"""
+    def _select_best_model(self, X: pd.DataFrame, y: pd.Series, analysis: Optional[Dict[str, Any]] = None) -> str:
+        """
+        Select best model using quick evaluation.
+        ✅ CRITICAL FIX: Use F1-score for imbalanced data instead of accuracy.
+        """
+        # ✅ CRITICAL FIX: Use F1-score for imbalanced data, accuracy for balanced
+        is_balanced = analysis.get("is_balanced", True) if analysis else True
+        scoring_metric = 'f1_weighted' if not is_balanced else 'accuracy'
+        
+        self.logger.info(f"Selecting best model using {scoring_metric} (is_balanced={is_balanced})")
+        
         scores: Dict[str, float] = {}
         for name, model in self.model_candidates.items():
             try:
                 Xs = X.sample(n=min(1000, len(X)), random_state=42)
                 ys = y.loc[Xs.index]
-                cv = cross_val_score(model, Xs, ys, cv=3, scoring="accuracy")
+                cv = cross_val_score(model, Xs, ys, cv=3, scoring=scoring_metric)
                 scores[name] = cv.mean()
+                
+                # ✅ CRITICAL FIX: Validate model doesn't predict only one class
+                try:
+                    model_copy = type(model)(**model.get_params())
+                    model_copy.fit(Xs[:min(50, len(Xs))], ys[:min(50, len(ys))])
+                    y_pred_sample = model_copy.predict(Xs[:min(50, len(Xs))])
+                    unique_preds = len(np.unique(y_pred_sample))
+                    unique_true = len(np.unique(ys[:min(50, len(ys))]))
+                    
+                    if unique_preds < unique_true:
+                        self.logger.warning(f"⚠️ Model {name} predicts only {unique_preds} class(es) - penalizing score")
+                        scores[name] = scores[name] * 0.1  # Heavily penalize broken models
+                except Exception as e:
+                    self.logger.debug(f"Could not validate {name}: {e}")
             except Exception as e:
                 self.logger.warning(f"Quick eval failed for {name}: {e}")
                 scores[name] = 0.0
+        
         best = max(scores, key=scores.get)
-        self.logger.info(f"Model quick scores: {scores}")
+        self.logger.info(f"Model quick scores ({scoring_metric}): {scores}")
+        self.logger.info(f"✅ Selected best model: {best} ({scoring_metric}={scores[best]:.3f})")
         return best
 
-    def _tune_hyperparameters(self, model_name: str, X: pd.DataFrame, y: pd.Series) -> Tuple[Any, Dict]:
-        """Tune hyperparameters for selected model"""
+    def _tune_hyperparameters(self, model_name: str, X: pd.DataFrame, y: pd.Series, analysis: Optional[Dict[str, Any]] = None) -> Tuple[Any, Dict]:
+        """
+        Tune hyperparameters for selected model.
+        ✅ CRITICAL FIX: Use F1-score for imbalanced data instead of accuracy.
+        """
         if model_name not in self.param_grids:
             return self.model_candidates[model_name], {}
+        
         model = self.model_candidates[model_name]
         grid = self.param_grids[model_name]
-        gs = GridSearchCV(model, grid, cv=3, scoring="accuracy", n_jobs=-1, verbose=0)
+        
+        # ✅ CRITICAL FIX: Use F1-score for imbalanced data, accuracy for balanced
+        is_balanced = analysis.get("is_balanced", True) if analysis else True
+        scoring_metric = 'f1_weighted' if not is_balanced else 'accuracy'
+        
+        # ✅ CRITICAL FIX: Adjust class weights for imbalanced data
+        if not is_balanced and hasattr(model, 'set_params'):
+            # Calculate class weights
+            from sklearn.utils.class_weight import compute_class_weight
+            class_weights = compute_class_weight('balanced', classes=np.unique(y), y=y)
+            class_weight_dict = dict(zip(np.unique(y), class_weights))
+            try:
+                model.set_params(class_weight=class_weight_dict)
+                self.logger.info(f"   Set class weights for {model_name}: {class_weight_dict}")
+            except Exception as e:
+                self.logger.warning(f"   Could not set class weights for {model_name}: {e}")
+                # For XGBoost, use scale_pos_weight
+                if model_name == "xgboost":
+                    try:
+                        pos_count = (y == 1).sum() if 1 in y.values else (y == y.max()).sum()
+                        neg_count = len(y) - pos_count
+                        scale_pos_weight = neg_count / pos_count if pos_count > 0 else 1.0
+                        model.set_params(scale_pos_weight=scale_pos_weight)
+                        self.logger.info(f"   Set scale_pos_weight for XGBoost: {scale_pos_weight:.3f}")
+                    except Exception as e2:
+                        self.logger.warning(f"   Could not set scale_pos_weight: {e2}")
+        
+        self.logger.info(f"Tuning {model_name} using {scoring_metric} (is_balanced={is_balanced})")
+        
+        gs = GridSearchCV(model, grid, cv=3, scoring=scoring_metric, n_jobs=-1, verbose=0)
         gs.fit(X, y)
-        self.logger.info(f"Best params for {model_name}: {gs.best_params_} (score={gs.best_score_:.4f})")
+        
+        # ✅ CRITICAL FIX: Validate tuned model predicts both classes
+        y_pred_sample = gs.best_estimator_.predict(X[:min(100, len(X))])
+        unique_preds = len(np.unique(y_pred_sample))
+        unique_true = len(np.unique(y[:min(100, len(y))]))
+        if unique_preds < unique_true:
+            self.logger.warning(f"⚠️ Tuned {model_name} still predicts only {unique_preds} class(es)")
+            # Try SMOTE if available
+            if SMOTE_AVAILABLE and not is_balanced:
+                try:
+                    self.logger.info(f"🔄 Retrying {model_name} tuning with SMOTE...")
+                    smote = SMOTE(random_state=42)
+                    X_resampled, y_resampled = smote.fit_resample(X, y)
+                    gs_smote = GridSearchCV(model, grid, cv=3, scoring=scoring_metric, n_jobs=-1, verbose=0)
+                    gs_smote.fit(X_resampled, y_resampled)
+                    y_pred_smote = gs_smote.best_estimator_.predict(X[:min(100, len(X))])
+                    unique_preds_smote = len(np.unique(y_pred_smote))
+                    if unique_preds_smote >= unique_true:
+                        self.logger.info(f"✅ SMOTE tuning successful - now predicts {unique_preds_smote} classes")
+                        return gs_smote.best_estimator_, gs_smote.best_params_
+                except Exception as smote_error:
+                    self.logger.warning(f"⚠️ SMOTE tuning failed: {smote_error}")
+        
+        self.logger.info(f"Best params for {model_name}: {gs.best_params_} ({scoring_metric}={gs.best_score_:.4f})")
         return gs.best_estimator_, gs.best_params_
 
-    def _calculate_metrics(self, y_true: pd.Series, y_pred: np.ndarray) -> Dict[str, float]:
-        """Calculate evaluation metrics"""
-        return {
+    def _calculate_metrics(self, y_true: pd.Series, y_pred: np.ndarray, y_pred_proba: Optional[np.ndarray] = None) -> Dict[str, float]:
+        """Calculate comprehensive evaluation metrics"""
+        metrics = {
             "accuracy": float(accuracy_score(y_true, y_pred)),
-            "precision": float(precision_score(y_true, y_pred, average="weighted")),
-            "recall": float(recall_score(y_true, y_pred, average="weighted")),
-            "f1_score": float(f1_score(y_true, y_pred, average="weighted")),
+            "precision": float(precision_score(y_true, y_pred, average="weighted", zero_division=0)),
+            "recall": float(recall_score(y_true, y_pred, average="weighted", zero_division=0)),
+            "f1_score": float(f1_score(y_true, y_pred, average="weighted", zero_division=0)),
+            "precision_macro": float(precision_score(y_true, y_pred, average="macro", zero_division=0)),
+            "recall_macro": float(recall_score(y_true, y_pred, average="macro", zero_division=0)),
+            "f1_macro": float(f1_score(y_true, y_pred, average="macro", zero_division=0)),
         }
+        
+        # Add ROC-AUC if probabilities available
+        if y_pred_proba is not None:
+            try:
+                # Handle binary and multiclass
+                if len(np.unique(y_true)) == 2:
+                    metrics["roc_auc"] = float(roc_auc_score(y_true, y_pred_proba))
+                else:
+                    metrics["roc_auc"] = float(roc_auc_score(y_true, y_pred_proba, multi_class='ovr', average='weighted'))
+            except Exception as e:
+                self.logger.warning(f"Could not calculate ROC-AUC: {e}")
+        
+        return metrics
 
     def _save_model(self, model: Any, session_id: Optional[str]) -> str:
         """Save trained model using storage service"""
@@ -862,22 +1079,188 @@ y_test = pd.read_csv('y_test.csv').iloc[:, 0]   # First column
             if not target_column:
                 raise ValueError("No target column specified")
             
+            # Case-insensitive matching for target column (Feature Engineering may have changed case)
+            target_lower = target_column.lower()
+            matching_cols = [col for col in cleaned_df.columns if col.lower() == target_lower]
+            if matching_cols:
+                actual_target_col = matching_cols[0]
+                if actual_target_col != target_column:
+                    self.logger.info(f"Using case-matched target column: '{actual_target_col}' (requested: '{target_column}')")
+                    target_column = actual_target_col
+            
             # Prepare data
             X, y = self._prepare_data(cleaned_df, target_column)
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=0.2, random_state=42, stratify=y if len(y.unique()) > 1 else None
-            )
+            
+            # Check for temporal data (Date column) - use time-based split if available
+            use_temporal_split = False
+            temporal_info = {}
+            if "Date" in cleaned_df.columns:
+                try:
+                    cleaned_df["Date"] = pd.to_datetime(cleaned_df["Date"])
+                    sorted_indices = cleaned_df["Date"].sort_values().index
+                    split_idx = int(len(sorted_indices) * 0.8)
+                    train_indices = sorted_indices[:split_idx]
+                    test_indices = sorted_indices[split_idx:]
+                    
+                    X_train = X.loc[train_indices]
+                    X_test = X.loc[test_indices]
+                    y_train = y.loc[train_indices]
+                    y_test = y.loc[test_indices]
+                    
+                    use_temporal_split = True
+                    temporal_info = {
+                        "split_method": "temporal",
+                        "train_period": f"{cleaned_df.loc[train_indices, 'Date'].min()} to {cleaned_df.loc[train_indices, 'Date'].max()}",
+                        "test_period": f"{cleaned_df.loc[test_indices, 'Date'].min()} to {cleaned_df.loc[test_indices, 'Date'].max()}",
+                        "train_size": len(train_indices),
+                        "test_size": len(test_indices)
+                    }
+                    self.logger.info(f"✅ Using temporal split: Train {temporal_info['train_period']}, Test {temporal_info['test_period']}")
+                except Exception as e:
+                    self.logger.warning(f"Failed to use temporal split: {e}, falling back to random split")
+                    use_temporal_split = False
+            
+            if not use_temporal_split:
+                # Use random stratified split
+                X_train, X_test, y_train, y_test = train_test_split(
+                    X, y, test_size=0.2, random_state=42, stratify=y if len(y.unique()) > 1 else None
+                )
+                temporal_info = {"split_method": "random_stratified", "test_size": 0.2}
             
             # Analyze data for model selection
             analysis = self._analyze_data_for_model_selection(cleaned_df, target_column)
             
+            # Handle class imbalance with SMOTE if detected
+            imbalance_handling = None
+            if not analysis.get("is_balanced", True):
+                imbalance_ratio = min(analysis["target_distribution"].values()) / max(analysis["target_distribution"].values())
+                if imbalance_ratio < 0.5:  # More than 2:1 imbalance
+                    if SMOTE_AVAILABLE:
+                        try:
+                            # Calculate class distribution before SMOTE
+                            ratio_before = y_train.value_counts(normalize=True).to_dict()
+                            
+                            # Apply SMOTE
+                            smote = SMOTE(random_state=42)
+                            X_train, y_train = smote.fit_resample(X_train, y_train)
+                            
+                            # Calculate class distribution after SMOTE
+                            ratio_after = pd.Series(y_train).value_counts(normalize=True).to_dict()
+                            
+                            imbalance_handling = {
+                                "method": "SMOTE",
+                                "imbalance_ratio_before": imbalance_ratio,
+                                "ratio_before": ratio_before,
+                                "ratio_after": ratio_after,
+                                "samples_generated": len(y_train) - len(X_test) * 4,  # Approximate
+                                "rationale": f"Severe class imbalance detected (ratio: {imbalance_ratio:.3f}), applied SMOTE to balance classes"
+                            }
+                            self.logger.info(f"✅ Applied SMOTE: Before {ratio_before}, After {ratio_after}")
+                        except Exception as e:
+                            self.logger.warning(f"SMOTE failed: {e}, using class weights instead")
+                            imbalance_handling = {
+                                "method": "class_weights",
+                                "imbalance_ratio": imbalance_ratio,
+                                "rationale": f"SMOTE failed, will use class_weight='balanced' in models"
+                            }
+                    else:
+                        imbalance_handling = {
+                            "method": "class_weights",
+                            "imbalance_ratio": imbalance_ratio,
+                            "rationale": "SMOTE not available, will use class_weight='balanced' in models"
+                        }
+            
             # Train model using fallback approach (reliable)
             self.logger.info("Training model using Layer 1 (hardcoded) approach")
-            best_model_name = self._select_best_model(X_train, y_train)
-            best_model, best_params = self._tune_hyperparameters(best_model_name, X_train, y_train)
             
-            # Train model
-            best_model.fit(X_train, y_train)
+            # ✅ CRITICAL FIX: Always ensure models use class_weight='balanced' for imbalanced data
+            # Even if SMOTE was applied, class_weight helps with remaining imbalance
+            if not analysis.get("is_balanced", True):
+                imbalance_ratio = min(analysis["target_distribution"].values()) / max(analysis["target_distribution"].values())
+                if imbalance_ratio < 0.5:  # More than 2:1 imbalance
+                    self.logger.info(f"⚠️ Class imbalance detected (ratio: {imbalance_ratio:.3f}), ensuring models use class_weight='balanced'")
+                # Update models to use class weights
+                for name, model in self.model_candidates.items():
+                    if hasattr(model, 'set_params'):
+                        try:
+                            if 'class_weight' in model.get_params():
+                                model.set_params(class_weight='balanced')
+                                self.logger.debug(f"✅ Set class_weight='balanced' for {name}")
+                            elif name == 'xgboost':
+                                # XGBoost uses scale_pos_weight instead
+                                pos_weight = max(analysis["target_distribution"].values()) / min(analysis["target_distribution"].values())
+                                model.set_params(scale_pos_weight=pos_weight)
+                                self.logger.debug(f"✅ Set scale_pos_weight={pos_weight:.2f} for {name}")
+                        except Exception as e:
+                                self.logger.warning(f"Could not set class_weight for {name}: {e}")
+            
+            best_model_name = self._select_best_model(X_train, y_train, analysis)
+            best_model, best_params = self._tune_hyperparameters(best_model_name, X_train, y_train, analysis)
+            
+            # ✅ CRITICAL FIX: Validate model doesn't predict only one class before training
+            try:
+                # Quick validation on sample
+                sample_size = min(100, len(X_train))
+                model_copy = type(best_model)(**best_model.get_params())
+                model_copy.fit(X_train[:sample_size], y_train[:sample_size])
+                y_pred_sample = model_copy.predict(X_train[:sample_size])
+                unique_preds = len(np.unique(y_pred_sample))
+                unique_true = len(np.unique(y_train[:sample_size]))
+                
+                if unique_preds < unique_true:
+                    self.logger.error(f"❌ Model {best_model_name} predicts only {unique_preds} class(es) - attempting fix...")
+                    # Try to fix by ensuring class_weight is set
+                    if hasattr(best_model, 'set_params') and 'class_weight' in best_model.get_params():
+                        best_model.set_params(class_weight='balanced')
+                        self.logger.info(f"✅ Set class_weight='balanced' for {best_model_name}")
+            except Exception as e:
+                self.logger.warning(f"Could not validate model before training: {e}")
+            
+            # ✅ CRITICAL FIX: Handle class imbalance for GradientBoostingClassifier
+            # GradientBoostingClassifier doesn't support class_weight, so use sample_weight
+            if best_model_name == "gradient_boosting" and not analysis.get("is_balanced", True):
+                # Calculate sample weights based on class distribution
+                from sklearn.utils.class_weight import compute_sample_weight
+                sample_weights = compute_sample_weight('balanced', y_train)
+                self.logger.info(f"⚠️ Using sample_weight for GradientBoostingClassifier to handle class imbalance")
+                best_model.fit(X_train, y_train, sample_weight=sample_weights)
+            else:
+                # Train model normally
+                best_model.fit(X_train, y_train)
+            
+            # ✅ CRITICAL FIX: Validate predictions after training
+            y_pred_validation = best_model.predict(X_train[:min(100, len(X_train))])
+            unique_preds = len(np.unique(y_pred_validation))
+            unique_true = len(np.unique(y_train))
+            
+            if unique_preds < unique_true:
+                self.logger.error(f"❌ CRITICAL: Model {best_model_name} predicts only {unique_preds} class(es) out of {unique_true}!")
+                self.logger.error(f"   Prediction distribution: {pd.Series(y_pred_validation).value_counts().to_dict()}")
+                self.logger.error(f"   True distribution: {pd.Series(y_train[:min(100, len(y_train))]).value_counts().to_dict()}")
+                
+                # ✅ FIX: For GradientBoostingClassifier, retrain with sample_weight
+                if best_model_name == "gradient_boosting":
+                    self.logger.warning(f"⚠️ Retraining GradientBoostingClassifier with sample_weight...")
+                    from sklearn.utils.class_weight import compute_sample_weight
+                    sample_weights = compute_sample_weight('balanced', y_train)
+                    best_model.fit(X_train, y_train, sample_weight=sample_weights)
+                # Try to fix by retraining with class_weight for other models
+                elif hasattr(best_model, 'set_params') and 'class_weight' in best_model.get_params():
+                    self.logger.warning(f"⚠️ Retraining with class_weight='balanced'...")
+                    best_model.set_params(class_weight='balanced')
+                    best_model.fit(X_train, y_train)
+                
+                # Re-validate
+                y_pred_validation = best_model.predict(X_train[:min(100, len(X_train))])
+                unique_preds = len(np.unique(y_pred_validation))
+                if unique_preds < unique_true:
+                    self.logger.error(f"❌ Model still broken after fix. Switching to RandomForest with class_weight...")
+                    # Fallback to RandomForest which handles imbalance better
+                    from sklearn.ensemble import RandomForestClassifier
+                    best_model = RandomForestClassifier(random_state=42, class_weight='balanced', n_estimators=100)
+                    best_model.fit(X_train, y_train)
+                    best_model_name = "random_forest"  # Update name
+                    self.logger.info(f"✅ Switched to RandomForestClassifier to handle class imbalance")
             
             # Extract feature importance
             feature_importance = {}
@@ -905,11 +1288,29 @@ y_test = pd.read_csv('y_test.csv').iloc[:, 0]   # First column
             # Store model externally
             state_manager.external_storage[state.get("dataset_id")]["model"] = best_model
             
+            # Model selection reasoning
+            # Generate model selection reason
+            reason = f"Selected {best_model_name} based on data characteristics"
+            if not analysis.get('is_balanced', True):
+                reason += " (imbalanced data)"
+            if analysis.get('complexity_score', 0.5) > 0.7:
+                reason += " (high complexity)"
+            elif analysis.get('complexity_score', 0.5) < 0.3:
+                reason += " (low complexity)"
+            
+            model_selection_reasoning = {
+                "selected_model": best_model_name,
+                "reason": reason,
+                "alternatives_considered": list(self.model_candidates.keys()),
+                "final_choice_rationale": f"Selected {best_model_name} based on data characteristics: imbalance={not analysis.get('is_balanced', True)}, complexity={analysis.get('complexity_score', 0.5):.2f}"
+            }
+            
             results = {
                 "model_selection_results": {
                     "selected_model": best_model_name,
                     "best_parameters": best_params,
-                    "models_tested": list(self.model_candidates.keys())
+                    "models_tested": list(self.model_candidates.keys()),
+                    "reasoning": model_selection_reasoning
                 },
                 "best_model": best_model_name,
                 "model_hyperparameters": best_params,
@@ -925,7 +1326,10 @@ y_test = pd.read_csv('y_test.csv').iloc[:, 0]   # First column
                 "model_explanation": self._generate_model_explanation(best_model_name, best_params, metrics),
                 "data_analysis": analysis,
                 "pipeline_enforcement": True,
-                "data_leakage_prevention": True
+                "data_leakage_prevention": True,
+                "temporal_split_info": temporal_info,
+                "imbalance_handling": imbalance_handling,
+                "model_selection_reasoning": model_selection_reasoning
             }
             
             self.logger.info(f"✅ Layer 1 model training completed: {best_model_name} with {test_score:.4f} accuracy")
@@ -951,6 +1355,14 @@ y_test = pd.read_csv('y_test.csv').iloc[:, 0]   # First column
             target_column = state.get("target_column")
             if not target_column:
                 return {}
+            
+            # Case-insensitive matching for target column
+            target_lower = target_column.lower()
+            matching_cols = [col for col in cleaned_df.columns if col.lower() == target_lower]
+            if matching_cols:
+                actual_target_col = matching_cols[0]
+                if actual_target_col != target_column:
+                    target_column = actual_target_col
             
             # Prepare data
             X, y = self._prepare_data(cleaned_df, target_column)

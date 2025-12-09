@@ -122,7 +122,8 @@ CLEANING_PROMPT_TEMPLATE_V2 = """
 # Task: Generate Advanced Data Cleaning Code
 
 ## Context
-You are generating data cleaning code based on Layer 1 analysis. The dataset has already been through basic cleaning, but you can apply more sophisticated techniques.
+You are an EXPERIENCED DATA SCIENTIST generating data cleaning code. Your goal is to PRESERVE DATA while improving quality. 
+A good data scientist NEVER removes more than 5-10% of data unless absolutely necessary (e.g., target variable nulls).
 
 ## Dataset Characteristics
 - Shape: {dataset_shape}
@@ -140,19 +141,46 @@ You are generating data cleaning code based on Layer 1 analysis. The dataset has
 ### Data Types:
 {type_details}
 
+## CRITICAL DATA PRESERVATION RULES
+
+**YOU MUST FOLLOW THESE RULES LIKE AN EXPERIENCED DATA SCIENTIST:**
+
+1. **NEVER drop rows** unless:
+   - Target variable is null (supervised learning requirement)
+   - Row has >90% missing values across all columns
+   - Row is an exact duplicate (keep one copy)
+
+2. **ALWAYS cap outliers** instead of removing:
+   - Use percentile-based capping (e.g., 1st and 99th percentiles)
+   - Use IQR method: cap at Q1 - 1.5*IQR (lower) and Q3 + 1.5*IQR (upper)
+   - NEVER use dropna() or drop() for outliers
+   - Preserve data relationships and distributions
+
+3. **ALWAYS impute missing values** instead of removing:
+   - Numeric columns: Use KNNImputer or IterativeImputer
+   - Categorical columns: Use mode or create "Unknown" category
+   - Preserve data relationships and patterns
+
+4. **Preserve data shape**:
+   - Final dataset should have SAME or MORE rows than input (after removing only target nulls)
+   - Only target variable nulls should cause row removal
+   - All other issues should be handled via imputation/capping
+
 ## Code Generation Instructions
 
 Create a function called `advanced_clean_data(df)` that:
 
 1. **Handles missing values intelligently**:
-   - For numeric: Use KNN or iterative imputation
-   - For categorical: Use mode or create "Unknown" category
-   - Preserve data relationships
+   - For numeric: Use KNNImputer or IterativeImputer (NEVER drop rows)
+   - For categorical: Use mode imputation or create "Unknown" category
+   - Preserve data relationships and patterns
+   - Only drop rows if target variable is null (supervised learning requirement)
 
-2. **Treats outliers appropriately**:
-   - Detect using IQR or isolation forest
-   - Cap instead of remove (use percentiles)
-   - Document outlier treatment
+2. **Treats outliers with CAPS, NOT REMOVAL**:
+   - Detect using IQR method: Q1 - 1.5*IQR and Q3 + 1.5*IQR
+   - CAP values at percentiles (1st and 99th) instead of removing
+   - Use np.clip() or np.where() to cap, NEVER drop rows
+   - Document outlier treatment but preserve all rows
 
 3. **Optimizes data types**:
    - Convert to optimal dtypes for memory efficiency
@@ -160,9 +188,18 @@ Create a function called `advanced_clean_data(df)` that:
    - Use categorical dtype for low-cardinality strings
 
 4. **Validates results**:
-   - Check no new NaNs introduced
-   - Verify shape consistency
-   - Ensure data ranges are reasonable
+   - Check shape: final_df.shape[0] should be >= input_df.shape[0] (after removing target nulls)
+   - Verify no excessive data loss (<5% reduction acceptable only for target nulls)
+   - Ensure data ranges are reasonable after capping
+
+## Docker Environment Constraints
+
+**CRITICAL: Your code will run in a Docker sandbox with these constraints:**
+- Dataset is loaded from: `df = pd.read_csv('/app/data/dataset')`
+- Results must be saved/returned as DataFrame
+- No file I/O except reading the dataset
+- No network access
+- Use only: pandas, numpy, sklearn, scipy
 
 ## Allowed Libraries
 - pandas, numpy
@@ -170,19 +207,60 @@ Create a function called `advanced_clean_data(df)` that:
 - sklearn.preprocessing
 - scipy.stats (for statistical tests)
 
-## Code Template
+## Code Template (FOLLOW THIS STRUCTURE EXACTLY)
+
 ```python
+import pandas as pd
+import numpy as np
+from sklearn.impute import KNNImputer, SimpleImputer, IterativeImputer
+from sklearn.preprocessing import LabelEncoder
+
+# CRITICAL: Load dataset from Docker sandbox
+df = pd.read_csv('/app/data/dataset')
+
 def advanced_clean_data(df):
+    \"\"\"
+    Advanced data cleaning that PRESERVES DATA.
+    Returns cleaned DataFrame with SAME or MORE rows (except target nulls).
+    \"\"\"
     cleaned_df = df.copy()
 
-    # Your advanced cleaning steps here
+    # Step 1: Handle missing values (IMPUTE, don't drop)
+    # Use KNNImputer for numeric, mode for categorical
+    
+    # Step 2: Cap outliers (NEVER drop rows for outliers)
+    # Use np.clip() or percentile-based capping
+    
+    # Step 3: Optimize data types
+    # Convert to optimal dtypes
+    
+    # Step 4: Validate - ensure shape preserved
+    assert cleaned_df.shape[0] >= df.shape[0] - df['target_column'].isnull().sum(), \\
+        "Data loss should only occur for target variable nulls"
 
     return cleaned_df
 
+# Execute cleaning
 result = advanced_clean_data(df)
+
+# Print summary
+print(f"Original shape: {{df.shape}}, Cleaned shape: {{result.shape}}")
+print(f"Rows preserved: {{result.shape[0]}}/{{df.shape[0]}} ({{result.shape[0]/df.shape[0]*100:.1f}}%)")
 ```
 
-Generate the complete function now.
+## Output Requirements
+
+Generate COMPLETE, EXECUTABLE Python code that:
+- Starts with imports at column 0 (no indentation)
+- Loads dataset from '/app/data/dataset'
+- Implements advanced_clean_data() function
+- CAPS outliers instead of removing
+- IMPUTES missing values instead of removing rows
+- Preserves at least 95% of data (except target nulls)
+- Prints summary statistics
+- Returns cleaned DataFrame
+
+**Remember: An experienced data scientist preserves data. Only remove rows for target variable nulls.**
 """
 
 

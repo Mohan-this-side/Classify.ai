@@ -8,6 +8,7 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
 import pandas as pd
+import numpy as np
 
 from ..base_agent import BaseAgent
 from ...workflows.state_management import ClassificationState, AgentStatus, state_manager
@@ -36,105 +37,270 @@ class FeatureEngineeringAgent(BaseAgent):
     def get_dependencies(self) -> list:
         return ["eda_analysis"]
 
-    async def execute(self, state: ClassificationState) -> ClassificationState:
-        try:
-            self.logger.info("Starting feature engineering")
-
-            df = state_manager.get_dataset(state, "cleaned")
-            if df is None:
-                df = state_manager.get_dataset(state, "original")
-            if df is None:
-                raise ValueError("No dataset available for feature engineering")
-
-            target = state.get("target_column")
-            if not target or target not in df.columns:
-                raise ValueError("Target column missing for feature engineering")
-
-            # Simple, safe feature operations (do not mutate original stored df until done)
-            fe_df = df.copy()
-
-            # Example: create interaction features for top 2 numeric columns (if exist)
-            numeric_cols = list(fe_df.select_dtypes(include=["number"]).columns)
-            created: List[str] = []
-            if len(numeric_cols) >= 2:
-                a, b = numeric_cols[0], numeric_cols[1]
-                new_col = f"{a}_x_{b}"
-                fe_df[new_col] = fe_df[a] * fe_df[b]
-                created.append(new_col)
-
-            # Record preprocessing steps and selections (no DataFrame in state)
-            state["engineered_features"] = created
-            state["feature_transformations"] = {
-                "one_hot": "applied in ML builder via pd.get_dummies",
-                "interactions": created,
-            }
-            state["feature_selection_results"] = {
-                "method": "heuristic",
-                "kept_features": [c for c in fe_df.columns if c != target][:100],
-            }
-
-            # Store engineered dataset for downstream (as cleaned replacement)
-            state_manager.store_dataset(state, fe_df, "cleaned")
-
-            state["agent_statuses"]["feature_engineering"] = AgentStatus.COMPLETED
-            state["completed_agents"].append("feature_engineering")
-            self.logger.info("Feature engineering completed")
-            return state
-        
-        except Exception as e:
-            self.logger.error(f"Feature engineering failed: {e}")
-            state["agent_statuses"]["feature_engineering"] = AgentStatus.FAILED
-            state["last_error"] = str(e)
-            state["error_count"] = state.get("error_count", 0) + 1
-            return state
     
     async def perform_layer1_analysis(self, state: ClassificationState) -> Dict[str, Any]:
         """
-        LAYER 1: Analyze available data and determine feature engineering opportunities.
+        LAYER 1: Perform basic feature engineering (hardcoded, reliable).
         
         Args:
             state: Current workflow state
             
         Returns:
-            Dictionary containing Layer 1 analysis results
+            Dictionary containing Layer 1 feature engineering results
         """
-        self.logger.info("🔍 LAYER 1: Analyzing feature engineering opportunities")
+        self.logger.info("🔍 LAYER 1: Performing basic feature engineering")
         
         # Get cleaned dataset
         df = state_manager.get_dataset(state, "cleaned")
         if df is None:
-            raise ValueError("No cleaned dataset available")
+            df = state_manager.get_dataset(state, "original")
+        if df is None:
+            raise ValueError("No dataset available for feature engineering")
         
         target = state.get("target_column")
-        if not target or target not in df.columns:
-            raise ValueError("Target column missing")
+        if not target:
+            # Try alternative key names
+            target = state.get("target_col") or state.get("target")
+        
+        if not target:
+            raise ValueError("Target column not specified in state")
+        
+        # Case-insensitive matching for target column
+        target_lower = target.lower()
+        matching_cols = [col for col in df.columns if col.lower() == target_lower]
+        if not matching_cols:
+            self.logger.warning(f"Target column '{target}' not found in dataset columns: {list(df.columns)}")
+            raise ValueError(f"Target column '{target}' not found in dataset")
+        # Use the actual column name (preserve original case)
+        target = matching_cols[0]
+        if target != state.get("target_column"):
+            self.logger.info(f"Using case-matched target column: '{target}' (requested: '{state.get('target_column')}')")
+        
+        # Create a copy to avoid modifying original
+        fe_df = df.copy()
+        feature_reasoning = {}  # Track feature creation/removal reasoning
         
         # Analyze data types
-        numeric_cols = list(df.select_dtypes(include=["number"]).columns)
-        categorical_cols = list(df.select_dtypes(exclude=["number"]).columns)
+        numeric_cols = list(fe_df.select_dtypes(include=["number"]).columns)
+        categorical_cols = list(fe_df.select_dtypes(exclude=["number"]).columns)
         
-        # Check for potential feature engineering opportunities
-        opportunities = []
+        # Remove target from numeric/categorical lists
+        if target in numeric_cols:
+            numeric_cols.remove(target)
+        if target in categorical_cols:
+            categorical_cols.remove(target)
         
+        # CRITICAL: Detect and remove multicollinearity (correlation >0.95)
+        removed_features = []
+        if len(numeric_cols) > 1:
+            corr_matrix = fe_df[numeric_cols].corr().abs()
+            high_corr_pairs = []
+            
+            for i in range(len(corr_matrix.columns)):
+                for j in range(i+1, len(corr_matrix.columns)):
+                    corr_val = corr_matrix.iloc[i, j]
+                    if corr_val > 0.95:  # High multicollinearity threshold
+                        col1 = corr_matrix.columns[i]
+                        col2 = corr_matrix.columns[j]
+                        high_corr_pairs.append((col1, col2, corr_val))
+            
+            # Remove one feature from each high-correlation pair
+            # Keep the feature with higher correlation to target (if available)
+            for col1, col2, corr_val in high_corr_pairs:
+                if col1 in fe_df.columns and col2 in fe_df.columns:
+                    # Check correlation with target to decide which to keep
+                    if target in fe_df.columns:
+                        try:
+                            corr1_target = abs(fe_df[col1].corr(fe_df[target]))
+                            corr2_target = abs(fe_df[col2].corr(fe_df[target]))
+                            keep_col = col1 if corr1_target >= corr2_target else col2
+                            remove_col = col2 if keep_col == col1 else col1
+                        except:
+                            # If correlation calculation fails, remove the second one
+                            keep_col = col1
+                            remove_col = col2
+                    else:
+                        # No target available, remove the second one
+                        keep_col = col1
+                        remove_col = col2
+                    
+                    if remove_col in fe_df.columns:
+                        fe_df = fe_df.drop(columns=[remove_col])
+                        removed_features.append({
+                            "feature": remove_col,
+                            "reason": f"High correlation ({corr_val:.3f}) with {keep_col}",
+                            "correlation": float(corr_val),
+                            "kept_feature": keep_col
+                        })
+                        if remove_col in numeric_cols:
+                            numeric_cols.remove(remove_col)
+                        self.logger.info(f"✅ Removed {remove_col} (correlation {corr_val:.3f} with {keep_col})")
+        
+        # CRITICAL: Create temporal features from Date column if available
+        temporal_features_created = []
+        if "Date" in fe_df.columns:
+            try:
+                fe_df["Date"] = pd.to_datetime(fe_df["Date"])
+                fe_df["month"] = fe_df["Date"].dt.month
+                fe_df["day_of_year"] = fe_df["Date"].dt.dayofyear
+                fe_df["season"] = fe_df["Date"].dt.month % 12 // 3 + 1  # 1=Winter, 2=Spring, 3=Summer, 4=Fall
+                temporal_features_created = ["month", "day_of_year", "season"]
+                feature_reasoning["temporal_features"] = {
+                    "created": temporal_features_created,
+                    "reason": "Extracted temporal patterns from Date column (month, day_of_year, season)",
+                    "rationale": "Temporal features help capture seasonal and cyclical patterns in time-series data"
+                }
+                self.logger.info(f"✅ Created temporal features: {temporal_features_created}")
+            except Exception as e:
+                self.logger.warning(f"Failed to create temporal features: {e}")
+        
+        # CRITICAL: Cyclical encoding for wind directions (circular nature)
+        wind_direction_cols = [col for col in categorical_cols if "Wind" in col and "Dir" in col]
+        cyclical_encoded = []
+        if wind_direction_cols:
+            # Wind directions: N=0, NNE=22.5, NE=45, etc. (16 directions = 360/16 = 22.5 degrees each)
+            wind_mapping = {
+                'N': 0, 'NNE': 22.5, 'NE': 45, 'ENE': 67.5,
+                'E': 90, 'ESE': 112.5, 'SE': 135, 'SSE': 157.5,
+                'S': 180, 'SSW': 202.5, 'SW': 225, 'WSW': 247.5,
+                'W': 270, 'WNW': 292.5, 'NW': 315, 'NNW': 337.5
+            }
+            
+            for col in wind_direction_cols:
+                if col in fe_df.columns:
+                    # Convert to radians for cyclical encoding
+                    wind_angles = fe_df[col].map(wind_mapping).fillna(0) / 180 * np.pi
+                    fe_df[f"{col}_sin"] = np.sin(wind_angles)
+                    fe_df[f"{col}_cos"] = np.cos(wind_angles)
+                    cyclical_encoded.extend([f"{col}_sin", f"{col}_cos"])
+                    # Optionally drop original column (or keep both)
+                    # fe_df = fe_df.drop(columns=[col])
+            
+            if cyclical_encoded:
+                feature_reasoning["cyclical_encoding"] = {
+                    "columns_encoded": wind_direction_cols,
+                    "created_features": cyclical_encoded,
+                    "reason": "Wind directions have circular nature, converted to sin/cos encoding",
+                    "rationale": "Preserves circular relationships (N is close to NNW)"
+                }
+                self.logger.info(f"✅ Created cyclical encoding for wind directions: {cyclical_encoded}")
+        
+        # CRITICAL: Target encoding for high cardinality categorical columns
+        high_cardinality_cols = []
+        for col in categorical_cols:
+            if col in fe_df.columns and fe_df[col].nunique() > 20:  # High cardinality threshold
+                high_cardinality_cols.append({
+                    "column": col,
+                    "cardinality": int(fe_df[col].nunique()),
+                    "encoding_method": "target_encoding",
+                    "reason": f"High cardinality ({fe_df[col].nunique()} values), target encoding preserves information",
+                    "rationale": f"One-hot encoding would create {fe_df[col].nunique()} features, target encoding is more efficient"
+                })
+                self.logger.info(f"✅ Will use target encoding for {col} ({fe_df[col].nunique()} values)")
+        
+        if high_cardinality_cols:
+            feature_reasoning["high_cardinality_encoding"] = high_cardinality_cols
+        
+        # Create interaction features based on correlation analysis
+        created: List[str] = []
+        interaction_reasoning = {}
+        
+        # Strategy: Create interactions between highly correlated numeric features
+        # This captures multiplicative relationships that might be predictive
         if len(numeric_cols) >= 2:
-            opportunities.append("Create interaction features between numeric columns")
+            # Find pairs of numeric features with moderate correlation (0.3-0.7)
+            # Very high correlation (>0.7) suggests redundancy, very low (<0.3) suggests independence
+            corr_matrix = fe_df[numeric_cols].corr().abs()
+            interaction_candidates = []
+            
+            for i in range(len(corr_matrix.columns)):
+                for j in range(i+1, len(corr_matrix.columns)):
+                    corr_val = corr_matrix.iloc[i, j]
+                    if 0.3 <= corr_val <= 0.7:  # Moderate correlation - good for interactions
+                        col1 = corr_matrix.columns[i]
+                        col2 = corr_matrix.columns[j]
+                        interaction_candidates.append((col1, col2, corr_val))
+            
+            # Sort by correlation strength and create top interactions
+            interaction_candidates.sort(key=lambda x: x[2], reverse=True)
+            
+            # Create interactions for top 3 pairs (or fewer if not enough candidates)
+            for col1, col2, corr_val in interaction_candidates[:3]:
+                interaction_col = f"{col1}_x_{col2}"
+                fe_df[interaction_col] = fe_df[col1] * fe_df[col2]
+                created.append(interaction_col)
+                
+                # Calculate correlation with target
+                corr_with_target = None
+                if target in fe_df.columns:
+                    try:
+                        corr_with_target = float(abs(fe_df[interaction_col].corr(fe_df[target])))
+                    except:
+                        pass
+                
+                interaction_reasoning[interaction_col] = {
+                    "features": [col1, col2],
+                    "base_correlation": float(corr_val),
+                    "correlation_with_target": corr_with_target,
+                    "reason": f"Interaction of {col1} and {col2} (correlation: {corr_val:.3f}) captures multiplicative relationship"
+                }
+                target_corr_str = f"{corr_with_target:.3f}" if corr_with_target is not None else "N/A"
+                self.logger.info(f"✅ Created interaction feature: {interaction_col} (base corr: {corr_val:.3f}, target corr: {target_corr_str})")
         
-        if len(categorical_cols) > 0:
-            opportunities.append("Apply one-hot encoding to categorical columns")
+        # Fallback: Create basic interaction for top 2 numeric columns if no correlation-based interactions
+        if len(created) == 0 and len(numeric_cols) >= 2:
+            a, b = numeric_cols[0], numeric_cols[1]
+            new_col = f"{a}_x_{b}"
+            fe_df[new_col] = fe_df[a] * fe_df[b]
+            created.append(new_col)
+            
+            corr_with_target = None
+            if target in fe_df.columns:
+                try:
+                    corr_with_target = float(abs(fe_df[new_col].corr(fe_df[target])))
+                except:
+                    pass
+            
+            interaction_reasoning[new_col] = {
+                "features": [a, b],
+                "correlation_with_target": corr_with_target,
+                "reason": "Interaction of top 2 numeric features"
+            }
         
-        if len(numeric_cols) > 0:
-            opportunities.append("Create polynomial features for linear relationships")
+        # Store engineered dataset for downstream
+        state_manager.store_dataset(state, fe_df, "cleaned")
         
-        analysis_results = {
+        # Prepare results with reasoning
+        results = {
+            "engineered_features": created + temporal_features_created + cyclical_encoded,
+            "feature_transformations": {
+                "one_hot": "applied in ML builder via pd.get_dummies",
+                "interactions": created,
+                "temporal": temporal_features_created,
+                "cyclical": cyclical_encoded,
+            },
+            "feature_selection_results": {
+                "method": "heuristic",
+                "kept_features": [c for c in fe_df.columns if c != target][:100],
+            },
             "numeric_columns": numeric_cols,
             "categorical_columns": categorical_cols,
             "target_column": target,
-            "feature_engineering_opportunities": opportunities,
             "total_features_before": len(df.columns),
+            "total_features_after": len(fe_df.columns),
+            "features_created": len(created) + len(temporal_features_created) + len(cyclical_encoded),
+            "removed_features": removed_features,
+            "feature_reasoning": {
+                "removed": removed_features,
+                "created_interactions": interaction_reasoning,
+                "temporal_features": feature_reasoning.get("temporal_features", {}),
+                "cyclical_encoding": feature_reasoning.get("cyclical_encoding", {}),
+                "high_cardinality_encoding": feature_reasoning.get("high_cardinality_encoding", [])
+            }
         }
         
-        self.logger.info("✅ LAYER 1: Feature engineering analysis complete")
-        return analysis_results
+        self.logger.info(f"✅ LAYER 1: Feature engineering complete - Created {len(created)} features")
+        return results
     
     def generate_layer2_code(self, layer1_results: Dict[str, Any], state: ClassificationState) -> str:
         """
