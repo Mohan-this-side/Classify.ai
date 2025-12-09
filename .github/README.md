@@ -1,18 +1,10 @@
-<<<<<<< HEAD
 <div align="center">
 
-# Classify AI 
+# ✨ Classify AI ✨
 
 ### A Multi-Agent LLM System for Explainable Classification Pipelines
 
 *Transform raw datasets into production-ready ML models with transparency and educational guidance*
-||||||| e44f681
-# Classify AI:
-## A Multi-Agent LLM System for Explainable Classification Pipelines
-=======
-# Classify AI
-## A Multi-Agent LLM System for Explainable Classification Pipelines
->>>>>>> 5b2d7574c3a8dfbfb624d58983417ccd6e681ee3
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
