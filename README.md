@@ -1,7 +1,5 @@
 # Classify AI:
-## A Multi-Agent LLM System
-## for Explainable
-## Classification Pipelines
+## A Multi-Agent LLM System for Explainable Classification Pipelines
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
@@ -45,6 +43,8 @@ The demo covers:
 ### Upload Page
 The clean, intuitive interface makes it easy to get started with your machine learning project:
 
+![Upload Page Interface](docs/images/upload-page.png)
+
 **Features:**
 - **Drag & Drop Upload**: Simply drag your CSV or Excel file into the upload zone
 - **Smart Column Detection**: Automatic detection of available columns for target selection
@@ -53,6 +53,8 @@ The clean, intuitive interface makes it easy to get started with your machine le
 
 ### Workflow Page
 Real-time monitoring of your ML pipeline with interactive Project Manager:
+
+![Workflow Page with Project Manager](docs/images/workflow-page.png)
 
 **Features:**
 - **Real-time Progress**: Live tracking of all 8 agents with execution times and Layer 1/Layer 2 indicators
