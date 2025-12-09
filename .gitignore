@@ -119,3 +119,5 @@ monitor_workflow*.py
 debug_*.py
 *_test_suite.py
 current_workflow_id.txt
+.DS_Store
+**/.DS_Store
