@@ -1,4 +1,4 @@
-# Classify AI:
+# Classify AI
 ## A Multi-Agent LLM System for Explainable Classification Pipelines
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
