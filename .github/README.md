@@ -1,11 +1,22 @@
-# Classify AI:
-## A Multi-Agent LLM System for Explainable Classification Pipelines
+<div align="center">
+
+# Classify AI 
+
+### A Multi-Agent LLM System for Explainable Classification Pipelines
+
+*Transform raw datasets into production-ready ML models with transparency and educational guidance*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com/)
 [![Next.js](https://img.shields.io/badge/Next.js-14+-black.svg)](https://nextjs.org/)
 [![Status: Production Ready](https://img.shields.io/badge/Status-Production%20Ready-green.svg)](https://github.com/Mohan-this-side/Classify.ai)
+[![GitHub stars](https://img.shields.io/github/stars/Mohan-this-side/Classify.ai?style=social)](https://github.com/Mohan-this-side/Classify.ai)
+
+[🚀 Quick Start](#quick-start) • [📖 Documentation](#quick-links) • [🎥 Demo Video](https://www.youtube.com/watch?v=pHOhsWIxguo&t=1s) • [💬 Discussions](https://github.com/Mohan-this-side/Classify.ai/discussions)
+
+</div>
+
 
 ## Overview
 
@@ -666,3 +677,14 @@ If you use Classify AI in your research or project, please cite:
 ```
 
 ---
+
+<div align="center">
+
+**Made with ❤️ by the Classify AI Team**
+
+[![GitHub](https://img.shields.io/badge/GitHub-Repository-181717?style=flat&logo=github)](https://github.com/Mohan-this-side/Classify.ai)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+⭐ **Star us on GitHub** — it motivates us a lot!
+
+</div>
