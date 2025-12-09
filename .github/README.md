@@ -43,7 +43,7 @@ The demo covers:
 ### Upload Page
 The clean, intuitive interface makes it easy to get started with your machine learning project:
 
-![Upload Page Interface](docs/images/upload-page.png)
+![Upload Page Interface](../docs/images/upload-page.png)
 
 **Features:**
 - **Drag & Drop Upload**: Simply drag your CSV or Excel file into the upload zone
@@ -54,7 +54,7 @@ The clean, intuitive interface makes it easy to get started with your machine le
 ### Workflow Page
 Real-time monitoring of your ML pipeline with interactive Project Manager:
 
-![Workflow Page with Project Manager](docs/images/workflow-page.png)
+![Workflow Page with Project Manager](../docs/images/workflow-page.png)
 
 **Features:**
 - **Real-time Progress**: Live tracking of all 8 agents with execution times and Layer 1/Layer 2 indicators
